@@ -126,7 +126,7 @@ describe('createMainWindow', () => {
     ]
     expect(options.backgroundColor).toBe('#0b0f14')
     expect(options.titleBarStyle).toBe('hidden')
-    expect(options.titleBarOverlay).toEqual({ color: '#11161d', symbolColor: '#e7edf5', height: TITLE_BAR_HEIGHT })
+    expect(options.titleBarOverlay).toEqual({ color: '#181e27', symbolColor: '#e7edf5', height: TITLE_BAR_HEIGHT })
   })
 
   it('uses inset native traffic lights and no Windows icon on macOS', () => {
@@ -152,7 +152,7 @@ describe('applyWindowTheme', () => {
 
     expect(mockNativeTheme.themeSource).toBe('light')
     expect(fakeWindow.setBackgroundColor).toHaveBeenCalledWith('#f5f7fa')
-    expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#ffffff', symbolColor: '#1c2733', height: TITLE_BAR_HEIGHT })
+    expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#f0f3f7', symbolColor: '#1c2733', height: TITLE_BAR_HEIGHT })
   })
 
   it('applies the dark theme back', () => {
@@ -160,7 +160,7 @@ describe('applyWindowTheme', () => {
 
     expect(mockNativeTheme.themeSource).toBe('dark')
     expect(fakeWindow.setBackgroundColor).toHaveBeenCalledWith('#0b0f14')
-    expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#11161d', symbolColor: '#e7edf5', height: TITLE_BAR_HEIGHT })
+    expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#181e27', symbolColor: '#e7edf5', height: TITLE_BAR_HEIGHT })
   })
 
   it('does not call the Windows title-bar overlay API on macOS', () => {

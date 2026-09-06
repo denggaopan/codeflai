@@ -59,6 +59,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const setTheme = useAppStore((state) => state.setTheme)
   const locale = useAppStore((state) => state.locale)
   const setLocale = useAppStore((state) => state.setLocale)
+  const showQuickPrompts = useAppStore((state) => state.showQuickPrompts)
+  const setShowQuickPrompts = useAppStore((state) => state.setShowQuickPrompts)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const setSessionKindPreference = useAppStore((state) => state.setSessionKindPreference)
   const beginUpdate = useAppStore((state) => state.beginUpdate)
@@ -273,6 +275,22 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="settings-dialog-section">
+          <span className="settings-dialog-label" id="settings-quick-prompts-label">
+            {t('settings.showQuickPrompts')}
+          </span>
+          <button
+            type="button"
+            className="settings-switch"
+            role="switch"
+            aria-checked={showQuickPrompts}
+            aria-labelledby="settings-quick-prompts-label"
+            onClick={() => setShowQuickPrompts(!showQuickPrompts)}
+          >
+            <span className="settings-switch-thumb" aria-hidden="true" />
+          </button>
         </div>
 
         <div className="settings-dialog-section">

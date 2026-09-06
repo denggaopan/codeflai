@@ -11,11 +11,11 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url))
 export const TITLE_BAR_HEIGHT = 36
 
 // Window-chrome colors per theme. These mirror the renderer's CSS tokens in styles.css
-// (--color-canvas for background, --color-panel/--color-text for the caption-button overlay)
+// (--color-canvas for background, --color-title-bar/--color-text for the caption-button overlay)
 // because the overlay is drawn natively by Windows and cannot read CSS custom properties.
 const WINDOW_THEME_COLORS: Record<ThemePreference, { background: string; overlayColor: string; overlaySymbol: string }> = {
-  dark: { background: '#0b0f14', overlayColor: '#11161d', overlaySymbol: '#e7edf5' },
-  light: { background: '#f5f7fa', overlayColor: '#ffffff', overlaySymbol: '#1c2733' }
+  dark: { background: '#0b0f14', overlayColor: '#181e27', overlaySymbol: '#e7edf5' },
+  light: { background: '#f5f7fa', overlayColor: '#f0f3f7', overlaySymbol: '#1c2733' }
 }
 
 /**

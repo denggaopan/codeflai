@@ -6,6 +6,8 @@ export class FirstInputTracker {
   private captured = ''
   private complete = false
   private escapeState: EscapeState = 'normal'
+  private csiParameters = ''
+  private bracketedPaste = false
   private previousWasCarriageReturn = false
 
   push(data: string): FirstInputResult {
@@ -14,6 +16,12 @@ export class FirstInputTracker {
 
     for (const character of data) {
       if (this.consumeEscape(character)) continue
+
+      // Newlines inside a paste are part of the draft, not the first submitted prompt.
+      if (this.bracketedPaste && (character === '\r' || character === '\n' || character === '\t')) {
+        this.captured += ' '
+        continue
+      }
 
       if (character === '\r') {
         this.previousWasCarriageReturn = true
@@ -67,6 +75,7 @@ export class FirstInputTracker {
         return true
       }
       if (character === '\u009b') {
+        this.csiParameters = ''
         this.escapeState = 'csi'
         return true
       }
@@ -86,8 +95,10 @@ export class FirstInputTracker {
     }
 
     if (this.escapeState === 'escape') {
-      if (character === '[') this.escapeState = 'csi'
-      else if (character === ']') this.escapeState = 'osc'
+      if (character === '[') {
+        this.csiParameters = ''
+        this.escapeState = 'csi'
+      } else if (character === ']') this.escapeState = 'osc'
       else if (character === 'O') this.escapeState = 'ss3'
       else if (['P', 'X', '^', '_'].includes(character)) this.escapeState = 'string'
       else {
@@ -105,7 +116,13 @@ export class FirstInputTracker {
 
     if (this.escapeState === 'csi') {
       const codePoint = character.codePointAt(0) ?? 0
-      if (codePoint >= 0x40 && codePoint <= 0x7e) this.escapeState = 'normal'
+      if (codePoint >= 0x40 && codePoint <= 0x7e) {
+        if (character === '~' && this.csiParameters === '200') this.bracketedPaste = true
+        if (character === '~' && this.csiParameters === '201') this.bracketedPaste = false
+        this.escapeState = 'normal'
+      } else {
+        this.csiParameters = (this.csiParameters + character).slice(-16)
+      }
       return true
     }
 

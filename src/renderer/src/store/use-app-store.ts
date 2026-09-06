@@ -20,6 +20,7 @@ import { emptyWorkspace, reconcileWorkspace } from '../../../shared/workspace-st
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { defaultSessionKindPreferences } from '../session-kind-options'
+import { QUICK_PROMPTS_STORAGE_KEY, quickPromptsSchema, readStoredQuickPrompts, type QuickPrompt } from '../quick-prompts'
 
 export type Notice = {
   message: string
@@ -62,6 +63,8 @@ export type AppStore = {
   sessionKindPreferences: SessionKindPreferences
   /** Project sidebar width in CSS pixels, already clamped (see sidebar-width.ts). */
   sidebarWidth: number
+  quickPrompts: QuickPrompt[]
+  showQuickPrompts: boolean
   /** Drives UpdateDialog; `idle` renders nothing at all. */
   updater: UpdaterState
 
@@ -82,6 +85,8 @@ export type AppStore = {
   /** Clamps to the current viewport before storing, so callers can pass raw pointer maths. */
   setSidebarWidth: (width: number) => void
   resetSidebarWidth: () => void
+  setQuickPrompts: (prompts: QuickPrompt[]) => boolean
+  setShowQuickPrompts: (show: boolean) => void
 
   addProject: (source?: { recentProjectId: string } | CloneProjectRequest) => Promise<boolean>
   reorderProjects: (orderedProjectIds: readonly string[]) => Promise<void>
@@ -124,6 +129,7 @@ export const LOCALE_STORAGE_KEY = 'codefly.locale'
 export const SESSION_KINDS_STORAGE_KEY = 'codefly.sessionKinds'
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'codefly.sidebarWidth'
 export const WINDOW_PINNED_STORAGE_KEY = 'codefly.windowPinned'
+export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codefly.showQuickPrompts'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -180,6 +186,25 @@ const applyLocaleEffects = (locale: Locale): void => {
 const readStoredWindowPinned = (): boolean => {
   try {
     return window.localStorage.getItem(WINDOW_PINNED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+const readStoredShowQuickPrompts = (): boolean => {
+  try {
+    let stored = window.localStorage.getItem(SHOW_QUICK_PROMPTS_STORAGE_KEY)
+    if (stored === null) {
+      stored = window.localStorage.getItem('codefly.showQuickPhrases')
+      if (stored !== null) {
+        try {
+          window.localStorage.setItem(SHOW_QUICK_PROMPTS_STORAGE_KEY, String(stored === 'true'))
+        } catch {
+          // Keep the saved preference for this window even if migration cannot be persisted.
+        }
+      }
+    }
+    return stored === 'true'
   } catch {
     return false
   }
@@ -343,6 +368,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
     windowPinned: false,
     sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+    quickPrompts: [],
+    showQuickPrompts: false,
     updater: { phase: 'idle' },
 
     initialize: () => {
@@ -351,7 +378,11 @@ export const useAppStore = create<AppStore>()((set, get) => {
       let hydratingWorkspace = false
       let workspaceChanged = false
       let latestBroadcast: AppState | undefined
-      set({ sidebarWidth: readStoredSidebarWidth() })
+      set({
+        sidebarWidth: readStoredSidebarWidth(),
+        quickPrompts: readStoredQuickPrompts(),
+        showQuickPrompts: readStoredShowQuickPrompts()
+      })
 
       const persistWorkspace = (): void => {
         const { activeProjectId, activeSessionId, collapsedProjectIds } = get()
@@ -478,6 +509,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         windowPinned: false,
         sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
         sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+        quickPrompts: [],
+        showQuickPrompts: false,
         updater: { phase: 'idle' }
       })
     },
@@ -593,6 +626,27 @@ export const useAppStore = create<AppStore>()((set, get) => {
     resetSidebarWidth: () => {
       set({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH })
       persistSidebarWidth(DEFAULT_SIDEBAR_WIDTH)
+    },
+
+    setQuickPrompts: (prompts) => {
+      const parsed = quickPromptsSchema.safeParse(prompts)
+      if (!parsed.success) return false
+      try {
+        window.localStorage.setItem(QUICK_PROMPTS_STORAGE_KEY, JSON.stringify(parsed.data))
+      } catch {
+        return false
+      }
+      set({ quickPrompts: parsed.data })
+      return true
+    },
+
+    setShowQuickPrompts: (show) => {
+      set({ showQuickPrompts: show })
+      try {
+        window.localStorage.setItem(SHOW_QUICK_PROMPTS_STORAGE_KEY, String(show))
+      } catch {
+        // Match other presentation preferences when localStorage is unavailable.
+      }
     },
 
     addProject: async (source) => {

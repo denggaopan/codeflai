@@ -47,6 +47,12 @@ const { FakeTerminal, FakeFitAddon, FakeWebglAddon, FakeResizeObserver } = vi.ho
     write = vi.fn()
     dispose = vi.fn()
     focus = vi.fn()
+    modes = { bracketedPasteMode: true }
+    paste = vi.fn((data: string) => {
+      const text = data.replace(/\r\n|\n/g, '\r')
+      this.emitData(this.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text)
+    })
+    input = vi.fn((data: string) => this.emitData(data))
     loadAddon = vi.fn((addon: unknown) => {
       // Mirrors the real Terminal.loadAddon, which synchronously calls addon.activate(this)
       // and lets its failure propagate — that is where a missing WebGL2 context surfaces.
@@ -618,6 +624,41 @@ describe('TerminalWorkspace', () => {
 
     expect(handler!(event)).toBe(false)
     expect(event.defaultPrevented).toBe(false)
+    expect(api.writeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('inserts quick prompts into only the active terminal and waits for Enter before capturing a title', async () => {
+    seedStore(runningClaudeSession, runningPowerShellSession)
+    useAppStore.setState({ activeSessionId: runningClaudeSession.id,
+      showQuickPrompts: true, quickPrompts: [{ id: 'review', starred: true, content: 'Check changes\nRun tests' }] })
+    const user = userEvent.setup()
+    render(<TerminalWorkspace />)
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
+    await user.click(screen.getByRole('button', { name: 'Insert Check changes Run tests' }))
+    expect(api.writeTerminal).toHaveBeenCalledExactlyOnceWith(runningClaudeSession.id, '\x1b[200~Check changes\rRun tests\x1b[201~')
+    expect(api.submitFirstInput).not.toHaveBeenCalled()
+    expect(FakeTerminal.instances[0].focus).toHaveBeenCalled()
+
+    act(() => useAppStore.setState({ activeSessionId: runningPowerShellSession.id }))
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(2))
+    await user.click(screen.getByRole('button', { name: 'Insert Check changes Run tests' }))
+    expect(api.writeTerminal).toHaveBeenLastCalledWith(runningPowerShellSession.id, '\x1b[200~Check changes\rRun tests\x1b[201~')
+    expect(FakeTerminal.instances[0].paste).toHaveBeenCalledOnce()
+    expect(api.submitFirstInput).not.toHaveBeenCalled()
+    FakeTerminal.instances[1].emitData('\r')
+    expect(api.submitFirstInput).toHaveBeenCalledExactlyOnceWith(runningPowerShellSession.id, 'Check changes Run tests')
+  })
+
+  it('explains at the prompt bar when a shell cannot paste multiple lines', async () => {
+    seedStore(runningPowerShellSession)
+    useAppStore.setState({ activeSessionId: runningPowerShellSession.id,
+      showQuickPrompts: true, quickPrompts: [{ id: 'commands', starred: true, content: 'first\nsecond' }] })
+    const user = userEvent.setup()
+    render(<TerminalWorkspace />)
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
+    FakeTerminal.instances[0].modes.bracketedPasteMode = false
+    await user.click(screen.getByRole('button', { name: 'Insert first second' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('cannot insert multiple lines')
     expect(api.writeTerminal).not.toHaveBeenCalled()
   })
 

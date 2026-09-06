@@ -207,6 +207,35 @@ bracketed paste) feeds the PTY. It sends Shift+Enter as `ESC CR`, the Meta/Alt+E
 sequence these CLIs accept. Native Shell, PowerShell, and Command Prompt sessions keep xterm's
 normal key handling.
 
+### Quick prompts
+
+Enable **Show quick prompt bar** in Settings to use quick prompts. It is off by default;
+the choice is saved across restarts. Turning it off hides the bar and disables its search
+shortcut while keeping your saved prompts.
+
+The **Quick prompts** bar below the terminal shows only prompts you have starred.
+Click a prompt to insert it at the terminal's current cursor, then press **Enter** when ready
+to send. The **+** button opens a content editor; no name is needed. New prompts are unstarred
+by default. Use the star toggle in the editor or management list to show a prompt in the bar.
+Buttons preview the content, and additional starred prompts are available through **+N** when
+space runs out. The bar stays on one line without a horizontal scrollbar. Saving returns to
+the bar without inserting the prompt.
+
+Click **Quick prompts**, or press **Ctrl+Shift+P** on Windows / **Cmd+Shift+P** on macOS while
+in the workspace, to search. Use **Up/Down** to choose a result, **Enter** to insert it, and
+**Escape** to return to the terminal. Search includes both starred and unstarred prompts.
+The management button opens starring, editing and deletion controls
+in a section below the terminal, keeping the terminal visible above it. Closing an editor or
+switching sessions retains its draft until it is saved or cancelled; use **+** to resume it.
+
+Prompts are shared across all projects and sessions on this computer and survive restarts.
+Existing saved content and the bar visibility preference migrate automatically; older prompts
+remain unstarred until you choose to star them.
+Stopped sessions still allow managing prompts; restore the session before inserting one.
+Agent sessions support multiline prompts. In shell sessions, multiline insertion requires
+bracketed paste support; otherwise CodeFly asks you to use a single-line prompt so a saved
+newline cannot execute a command. Without bracketed paste, indentation tabs become spaces.
+
 ## Session titles
 
 The title shown for a session starts as a placeholder (e.g. "New Claude session") and

@@ -49,6 +49,13 @@ describe('FirstInputTracker', () => {
     expect(tracker.push('A😀B\u007f\u0008C\n')).toEqual({ passthrough: 'A😀B\u007f\u0008C\n', submitted: 'AC' })
   })
 
+  it('waits for Enter after a multiline bracketed paste, including chunked markers', () => {
+    const tracker = new FirstInputTracker()
+    const chunks = ['\u001b[20', '0~Review\r', '\nchanges\tcarefully\r', '\u001b[201', '~']
+    for (const chunk of chunks) expect(tracker.push(chunk)).toEqual({ passthrough: chunk })
+    expect(tracker.push('\r')).toEqual({ passthrough: '\r', submitted: 'Review  changes carefully' })
+  })
+
   it('keeps waiting after empty and whitespace-only lines', () => {
     const tracker = new FirstInputTracker()
 

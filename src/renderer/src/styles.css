@@ -6,8 +6,10 @@
   /* Surfaces, from deepest to nearest the user */
   --color-canvas: #0b0f14;
   --color-panel: #11161d;
+  --color-title-bar: #181e27;
   --color-panel-elevated: #1a212b;
   --color-border: #262f3a;
+  --color-border-subtle: color-mix(in srgb, var(--color-border) 50%, var(--color-canvas));
 
   /* Text */
   --color-text: #e7edf5;
@@ -47,10 +49,11 @@
 
 /* Light theme: the same token contract with light values. use-app-store.ts stamps
    html[data-theme] from the persisted preference (default dark), and window.ts mirrors the
-   canvas/panel/text values for the native caption-button overlay — keep them in sync. */
+   canvas/title-bar/text values for the native caption-button overlay — keep them in sync. */
 :root[data-theme='light'] {
   --color-canvas: #f5f7fa;
   --color-panel: #ffffff;
+  --color-title-bar: #f0f3f7;
   --color-panel-elevated: #e9edf3;
   --color-border: #d5dce5;
 
@@ -191,8 +194,7 @@ input {
   height: env(titlebar-area-height, 36px);
   padding-left: 12px;
   padding-right: calc(100% - env(titlebar-area-width, 100%));
-  background: var(--color-panel);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-title-bar);
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -350,10 +352,8 @@ html[data-platform='darwin'] .title-bar {
   overflow: hidden;
 }
 
-/* Resize handle between sidebar and workspace: a 9px-wide invisible hit area centred on the
-   sidebar's 1px border, painting a 2px accent line on hover/focus/drag. It is positioned so
-   that it overlaps its neighbours (z-index) instead of taking layout space, which keeps the
-   sidebar's border the only visible seam at rest. */
+/* The resize handle overlaps the sidebar/workspace boundary without taking layout space.
+   Its 9px hit area stays invisible until hover/focus/drag reveals a 2px accent line. */
 .sidebar-resizer {
   position: relative;
   z-index: 2;
@@ -434,7 +434,6 @@ body[data-sidebar-resizing='true'] .app-main {
      header (search) and footer (Add Project) stay pinned while projects scroll between. */
   overflow: hidden;
   background: var(--color-panel);
-  border-right: 1px solid var(--color-border);
 }
 
 .project-sidebar-header {
@@ -443,11 +442,11 @@ body[data-sidebar-resizing='true'] .app-main {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .session-search {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
   padding: 6px 10px;
   background: var(--color-panel);
@@ -518,7 +517,6 @@ body[data-sidebar-resizing='true'] .app-main {
   display: flex;
   justify-content: flex-start;
   padding: 10px 12px;
-  border-top: 1px solid var(--color-border);
 }
 
 .add-project-fab {
@@ -526,7 +524,7 @@ body[data-sidebar-resizing='true'] .app-main {
   place-items: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 999px;
   background: var(--color-panel-elevated);
   color: var(--color-text);
@@ -554,7 +552,7 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .project-group {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .project-row {
@@ -635,7 +633,7 @@ body[data-sidebar-resizing='true'] .app-main {
   max-width: calc(100% - 16px);
   max-height: var(--project-options-menu-max-height, none);
   padding: 6px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
   background: var(--color-panel);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -880,7 +878,7 @@ body[data-sidebar-resizing='true'] .app-main {
   right: 0;
   z-index: 20;
   width: 220px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
   background: var(--color-panel-elevated);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -892,7 +890,7 @@ body[data-sidebar-resizing='true'] .app-main {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle);
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
@@ -990,13 +988,14 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .terminal-header {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 8px 14px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-canvas);
   font-family: var(--font-mono);
 }
 
@@ -1075,11 +1074,359 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .terminal-header-path {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-muted);
   font-size: 0.72rem;
+}
+
+.quick-prompts {
+  flex: 0 0 auto;
+  min-width: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-canvas);
+  font-family: var(--font-chrome);
+  container-type: inline-size;
+}
+
+.quick-prompts-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 12px;
+}
+
+.quick-prompts-trigger,
+.quick-prompts-icon-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.quick-prompts-trigger {
+  padding-right: 12px;
+  border-right-color: var(--color-border-subtle);
+  border-radius: 0;
+}
+
+.quick-prompts-chips {
+  position: relative;
+  container-type: inline-size;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  padding: 3px 2px;
+}
+
+.quick-prompts-measure {
+  position: absolute;
+  display: flex;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.quick-prompts-chip {
+  flex: 0 0 auto;
+  max-width: clamp(100px, calc(100cqi - 56px), 180px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-panel-elevated);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.quick-prompts-more {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.quick-prompts-chip[data-inserted='true'] {
+  color: var(--color-state-running);
+  border-color: var(--color-state-running);
+}
+
+.quick-prompts-feedback,
+.quick-prompts-empty-inline {
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+
+.quick-prompts-feedback {
+  flex: 0 0 auto;
+  color: var(--color-state-running);
+}
+
+.quick-prompts-feedback:empty {
+  display: none;
+}
+
+.quick-prompts-action,
+.quick-prompts-primary {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--color-panel-elevated);
+  font-size: 0.76rem;
+}
+
+.quick-prompts button:not(:disabled):hover,
+.quick-prompts button[aria-expanded='true'] {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.quick-prompts-star-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.quick-prompts-star-toggle[aria-pressed='true'] {
+  color: var(--color-state-warning);
+}
+
+.quick-prompts-star-toggle[aria-pressed='true'] svg {
+  fill: currentColor;
+}
+
+.quick-prompts button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-prompts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(340px, 48vh);
+  overflow: auto;
+  padding: 10px 14px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-canvas);
+}
+
+.quick-prompts-heading,
+.quick-prompts-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quick-prompts-heading h2 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.quick-prompts-panel-hint {
+  flex: 1 1 auto;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.quick-prompts-hint,
+.quick-prompts-empty {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.quick-prompts-empty {
+  padding: 12px 0;
+}
+
+.quick-prompts input,
+.quick-prompts textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.quick-prompts textarea {
+  flex: 1 1 auto;
+  min-height: 100px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.quick-prompts-form {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-prompts-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.76rem;
+}
+
+.quick-prompts-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-prompts-list {
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quick-prompts-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quick-prompts-result {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 9px 10px;
+  text-align: left;
+  background: transparent;
+}
+
+.quick-prompts-result[aria-selected='true'],
+.quick-prompts-result:not(:disabled):hover {
+  background: var(--color-panel-elevated);
+}
+
+.quick-prompts-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.quick-prompts-result-action {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.quick-prompts-result-action {
+  opacity: 0;
+}
+
+.quick-prompts-result:is(:hover, :focus-visible, [aria-selected='true']) .quick-prompts-result-action {
+  opacity: 1;
+}
+
+.quick-prompts-actions {
+  justify-content: flex-end;
+}
+
+.quick-prompts-primary {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.quick-prompts-delete-confirmation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.quick-prompts-delete,
+.quick-prompts-error {
+  color: var(--color-state-destructive);
+}
+
+.quick-prompts-error {
+  padding: 8px 14px;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+@container (max-width: 600px) {
+  .quick-prompts-trigger span {
+    display: none;
+  }
+
+  .quick-prompts-panel-hint {
+    font-size: 0.65rem;
+  }
+
+  .quick-prompts-feedback {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .quick-prompts-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quick-prompts-result-action {
+    display: none;
+  }
 }
 
 /* Compact bypass disclosure badge, sitting in the header row beside the status pill. Uses

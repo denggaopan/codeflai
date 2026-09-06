@@ -11,13 +11,16 @@ import { useEffect, useRef, useState } from 'react'
 import { isAgentKind } from '../../../shared/agent-kinds'
 import type { SessionRecord, ThemePreference } from '../../../shared/contracts'
 import type { TerminalReplay } from '../../../shared/pty-protocol'
+import type { TranslationKey } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
 import { sessionKindLabelKey } from '../session-kind-options'
 import { isAgentDone, isSessionRestartable, sessionStatusLabel } from '../session-status'
 import { useAppStore } from '../store/use-app-store'
 import { alignBlockGlyphGrid } from '../terminal/block-glyph-alignment'
 import { FirstInputTracker } from '../terminal/first-input-tracker'
+import { insertQuickPrompt } from '../terminal/insert-quick-prompt'
 import { resolveTerminalKey } from '../terminal/terminal-key-bindings'
+import QuickPrompts from './QuickPrompts'
 
 // The WebGL renderer paints the screen into a canvas, so xterm keeps no DOM text for a test
 // driver to read (see attachWebglRenderer). Each pane's host element carries a back-reference
@@ -162,6 +165,14 @@ export default function TerminalWorkspace() {
   // that re-pushes the terminal size below). Rebuilt from `sessions` on every run of that
   // effect so entries for deleted sessions drop out on their own.
   const lastStatusesRef = useRef<Map<string, SessionRecord['status']>>(new Map())
+
+  const insertPrompt = (sessionId: string, content: string): TranslationKey | null => {
+    const state = useAppStore.getState()
+    const session = state.appState.sessions.find((candidate) => candidate.id === sessionId)
+    const entry = entriesRef.current.get(sessionId)
+    if (!entry || state.activeSessionId !== sessionId || session?.status !== 'running') return 'quickPrompts.stopped'
+    return insertQuickPrompt(entry.terminal, session.kind, content) ? null : 'quickPrompts.multilineUnavailable'
+  }
 
   const applyFit = (sessionId: string): void => {
     const entry = entriesRef.current.get(sessionId)
@@ -478,6 +489,15 @@ export default function TerminalWorkspace() {
           </section>
         )
       })}
+      <QuickPrompts
+        sessionId={activeSessionId}
+        running={activeSessionStatus === 'running'}
+        onInsert={(content) => activeSessionId ? insertPrompt(activeSessionId, content) : 'quickPrompts.stopped'}
+        onFocusTerminal={() => {
+          const id = useAppStore.getState().activeSessionId
+          if (id) entriesRef.current.get(id)?.terminal.focus()
+        }}
+      />
     </div>
   )
 }
