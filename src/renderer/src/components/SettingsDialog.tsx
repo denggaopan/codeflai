@@ -91,21 +91,21 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   }, [open, onClose])
 
   // Re-read on every open (not once per mount): the startup flag can be changed outside
-  // CodeFly, and a stale update result from a previous visit would be misleading.
+  // Codeflai, and a stale update result from a previous visit would be misleading.
   useEffect(() => {
     if (!open) return undefined
 
     let cancelled = false
     setUpdateState({ phase: 'idle' })
     setAutoLaunchError(null)
-    void window.codefly
+    void window.codeflai
       .getAppInfo()
       .then((info) => {
         if (!cancelled) setAppInfo(info)
       })
       .catch(() => undefined)
 
-    void window.codefly
+    void window.codeflai
       .getAutoLaunch()
       .then((enabled) => {
         if (!cancelled) setAutoLaunch(enabled)
@@ -135,7 +135,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     try {
       // The main process answers with the value it read back after writing, so a setting the
       // OS silently refused shows as unchanged instead of as a switch that lies.
-      setAutoLaunch(await window.codefly.setAutoLaunch(next))
+      setAutoLaunch(await window.codeflai.setAutoLaunch(next))
     } catch (error) {
       setAutoLaunchError(t('settings.launchAtLoginFailed', { reason: failureReason(error, t('notice.genericError')) }))
     }
@@ -144,7 +144,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const handleCheckForUpdates = async (): Promise<void> => {
     setUpdateState({ phase: 'checking' })
     try {
-      setUpdateState({ phase: 'done', result: await window.codefly.checkForUpdates() })
+      setUpdateState({ phase: 'done', result: await window.codeflai.checkForUpdates() })
     } catch (error) {
       setUpdateState({
         phase: 'done',
@@ -154,7 +154,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   }
 
   const openLink = (target: ExternalLinkTarget): void => {
-    void window.codefly.openExternalLink(target).catch(() => undefined)
+    void window.codeflai.openExternalLink(target).catch(() => undefined)
   }
 
   // Hands the check's outcome to the app store instead of making UpdateDialog repeat the

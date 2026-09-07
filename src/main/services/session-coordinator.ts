@@ -427,7 +427,7 @@ export class SessionCoordinator {
    * Lets go of the sessions rather than ending them — the method name predates the pty-host
    * and is kept because the composition root's `before-quit` hook still calls it.
    *
-   * Quitting CodeFly (or replacing it with an installer) must leave every PTY, and therefore
+   * Quitting Codeflai (or replacing it with an installer) must leave every PTY, and therefore
    * every agent CLI, running in the resident host so the next UI can attach to them; that is
    * the entire feature. So nothing here kills a PTY. `detach()` drops the connection where the
    * implementation has one. The `stopAll()` fallback is for an implementation that owns its

@@ -1,7 +1,7 @@
 <?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
-  <title>CodeFly mobile app icon - white rocket on a purple ground</title>
+  <title>Codeflai mobile app icon - white rocket on a purple ground</title>
   <!-- Parked here for a future mobile app, not used by the desktop build.
 
        The desktop icon is a transparent purple silhouette, which is what a Windows shortcut
@@ -26,7 +26,7 @@
        2. the rocket body (clockwise, so it fills),
        3. the porthole (counter-clockwise, so it punches a hole).
        The porthole is the source artwork's "U" slot rotated 90 degrees clockwise about its
-       own centre (662.766673, 360.937233) so the negative space reads as a "C" for CodeFly.
+       own centre (662.766673, 360.937233) so the negative space reads as a "C" for Codeflai.
        Punching rather than painting it is what lets the ground show through the "C", so keep
        the transform on the element rather than on a subpath. -->
   <defs>

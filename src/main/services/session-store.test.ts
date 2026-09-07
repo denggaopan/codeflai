@@ -38,7 +38,7 @@ describe('SessionStore', () => {
   let filePath: string
 
   beforeEach(async () => {
-    directory = await mkdtemp(join(tmpdir(), 'codefly-session-store-'))
+    directory = await mkdtemp(join(tmpdir(), 'codeflai-session-store-'))
     filePath = join(directory, 'state.json')
   })
 

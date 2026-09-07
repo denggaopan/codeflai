@@ -45,7 +45,7 @@ export default function TitleBar() {
     <header className="title-bar">
       <button type="button" className="title-bar-brand" aria-label={t('titleBar.launchRocket')} onClick={launchRocket}>
         <img className="title-bar-logo" src={logoUrl} alt="" aria-hidden="true" />
-        <span className="title-bar-app-name">CodeFly</span>
+        <span className="title-bar-app-name">Codeflai</span>
       </button>
       {/* Draggable filler: the brand button and the action buttons are all no-drag, so
           without this the window would have almost no grab area left. */}

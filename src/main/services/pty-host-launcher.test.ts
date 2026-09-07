@@ -21,13 +21,13 @@ import {
   type Sleep
 } from './pty-host-launcher'
 
-const USER_DATA = 'C:\\Users\\tester\\AppData\\Roaming\\CodeFly'
+const USER_DATA = 'C:\\Users\\tester\\AppData\\Roaming\\Codeflai'
 const APP_VERSION = '0.16.0'
 const PLATFORM: NodeJS.Platform = 'win32'
 const ENDPOINT = ptyHostEndpoint(USER_DATA, PLATFORM)
 const ENVIRONMENT: NodeJS.ProcessEnv = { PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\tester' }
 const LAUNCH_SPEC = {
-  runtime: `${USER_DATA}\\pty-host\\0.16.0\\codefly-pty-host.exe`,
+  runtime: `${USER_DATA}\\pty-host\\0.16.0\\codeflai-pty-host.exe`,
   script: `${USER_DATA}\\pty-host\\0.16.0\\pty-host.mjs`,
   logPath: `${USER_DATA}\\logs\\pty-host.log`
 }
@@ -37,7 +37,7 @@ const neverExpires: Sleep = () => new Promise<void>(() => undefined)
 /** A deadline that expires as soon as it is checked. */
 const expiresAtOnce: Sleep = async () => undefined
 
-const notListening = (): Error => Object.assign(new Error('connect ENOENT \\\\.\\pipe\\codefly-pty-host'), { code: 'ENOENT' })
+const notListening = (): Error => Object.assign(new Error('connect ENOENT \\\\.\\pipe\\codeflai-pty-host'), { code: 'ENOENT' })
 
 const welcomeLine = (overrides: Partial<Extract<PtyResponse, { type: 'welcome' }>> = {}): string =>
   `${JSON.stringify({
@@ -190,7 +190,7 @@ type Harness = {
 }
 
 const buildHarness = (
-  options: { sockets?: Array<FakeSocket | Error>; deadline?: Sleep; launchSpec?: ResolveHostLaunchSpec } = {}
+  options: { sockets?: Array<FakeSocket | Error>; deadline?: Sleep; launchSpec?: ResolveHostLaunchSpec; legacyEndpoints?: readonly string[]; onLegacyHostGone?: () => void } = {}
 ): Harness => {
   const connector = new FakeConnector(options.sockets ?? [])
   const spawner = new FakeSpawner()
@@ -208,7 +208,9 @@ const buildHarness = (
       delays.push(ms)
     },
     options.deadline ?? neverExpires,
-    logger
+    logger,
+    options.legacyEndpoints,
+    options.onLegacyHostGone
   )
   return { launcher, connector, spawner, delays, logger }
 }
@@ -220,6 +222,66 @@ const socketAnswering = (chunks: readonly string[]): FakeSocket => {
   }
   return socket
 }
+
+describe('legacy host migration', () => {
+  const legacyEndpoint = '\\\\.\\pipe\\codefly-pty-host-legacy'
+
+  it('reattaches the old host without spawning or retiring any terminals', async () => {
+    const oldHost = socketAnswering([welcomeLine({ hostAppVersion: '0.19.0' })])
+    const harness = buildHarness({ sockets: [notListening(), oldHost], legacyEndpoints: [legacyEndpoint] })
+    const attached = await harness.launcher.attach()
+    expect(attached.status).toBe('attached')
+    expect(harness.connector.endpoints).toEqual([ENDPOINT, legacyEndpoint])
+    expect(harness.spawner.calls).toHaveLength(0)
+    expect(oldHost.requests.map((request) => request.type)).toEqual(['hello'])
+  })
+
+  it('prefers an existing new host over the migration fallback', async () => {
+    const harness = buildHarness({ sockets: [socketAnswering([welcomeLine()])], legacyEndpoints: [legacyEndpoint] })
+    expect((await harness.launcher.attach()).status).toBe('attached')
+    expect(harness.connector.endpoints).toEqual([ENDPOINT])
+  })
+
+  it('starts only the new endpoint when the old host is gone', async () => {
+    const harness = buildHarness({
+      sockets: [notListening(), notListening(), socketAnswering([welcomeLine()])], legacyEndpoints: [legacyEndpoint]
+    })
+    expect((await harness.launcher.attach()).status).toBe('attached')
+    expect(harness.spawner.calls).toHaveLength(1)
+    expect(harness.spawner.calls[0]?.options.env[PTY_HOST_ENV.endpoint]).toBe(ENDPOINT)
+    expect(harness.connector.endpoints).toEqual([ENDPOINT, legacyEndpoint, ENDPOINT])
+  })
+
+  it('blocks automatic resume when the old host accepts but never answers', async () => {
+    const harness = buildHarness({ sockets: [notListening(), new FakeSocket()], deadline: expiresAtOnce, legacyEndpoints: [legacyEndpoint] })
+    expect((await harness.launcher.attach()).status).toBe('incompatible')
+    expect(harness.spawner.calls).toHaveLength(0)
+  })
+
+  it('does not retire or duplicate an incompatible old host', async () => {
+    const oldHost = socketAnswering([welcomeLine({ protocolVersion: PTY_PROTOCOL_VERSION + 1 })])
+    const harness = buildHarness({ sockets: [notListening(), oldHost], legacyEndpoints: [legacyEndpoint] })
+    expect((await harness.launcher.attach()).status).toBe('incompatible')
+    expect(oldHost.requests.map((request) => request.type)).toEqual(['hello'])
+    expect(harness.spawner.calls).toHaveLength(0)
+  })
+
+  it('does not treat permission errors at the old endpoint as an absent host', async () => {
+    const denied = Object.assign(new Error('access denied'), { code: 'EACCES' })
+    const harness = buildHarness({ sockets: [notListening(), denied], legacyEndpoints: [legacyEndpoint] })
+    expect((await harness.launcher.attach()).status).toBe('incompatible')
+    expect(harness.spawner.calls).toHaveLength(0)
+  })
+
+  it('records discovery completion before spawning and blocks spawn if that cannot be saved', async () => {
+    const harness = buildHarness({
+      sockets: [notListening(), notListening()], legacyEndpoints: [legacyEndpoint],
+      onLegacyHostGone: () => { throw new Error('disk full') }
+    })
+    expect((await harness.launcher.attach()).status).toBe('incompatible')
+    expect(harness.spawner.calls).toHaveLength(0)
+  })
+})
 
 describe('decodeResponses', () => {
   it('decodes every complete line in one chunk and keeps the partial tail', () => {
@@ -282,7 +344,7 @@ describe('PtyHostLauncher', () => {
     const harness = buildHarness()
 
     expect(harness.launcher.endpoint).toBe(ENDPOINT)
-    expect(harness.launcher.endpoint).toContain('\\\\.\\pipe\\codefly-pty-host-')
+    expect(harness.launcher.endpoint).toContain('\\\\.\\pipe\\codeflai-pty-host-')
   })
 
   it('attaches to a host that is already listening without spawning one', async () => {

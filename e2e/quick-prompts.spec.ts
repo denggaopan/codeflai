@@ -8,23 +8,23 @@ import type { Terminal } from '@xterm/xterm'
 import { createRepo } from './create-repo'
 
 test('drags quick prompts without terminal input and retains the order after reload', async ({}, testInfo) => {
-  const userDataDir = mkdtempSync(join(tmpdir(), 'codefly-prompts-sort-e2e-'))
+  const userDataDir = mkdtempSync(join(tmpdir(), 'codeflai-prompts-sort-e2e-'))
   const app = await electron.launch({
     args: ['.', `--user-data-dir=${userDataDir}`],
     cwd: resolve('.'),
     env: {
       ...process.env,
-      CODEFLY_E2E: '1',
-      CODEFLY_E2E_PROJECT: createRepo(),
-      CODEFLY_E2E_AGENT_CMD: resolve('e2e/fixtures/fake-agent.cmd'),
-      CODEFLY_E2E_HOST_PID_LOG: join(userDataDir, 'host.pid'),
-      CODEFLY_PTY_HOST_IDLE_MS: '250'
+      CODEFLAI_E2E: '1',
+      CODEFLAI_E2E_PROJECT: createRepo(),
+      CODEFLAI_E2E_AGENT_CMD: resolve('e2e/fixtures/fake-agent.cmd'),
+      CODEFLAI_E2E_HOST_PID_LOG: join(userDataDir, 'host.pid'),
+      CODEFLAI_PTY_HOST_IDLE_MS: '250'
     }
   })
   const page = await app.firstWindow()
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const order = () => page.evaluate(() => JSON.parse(localStorage.getItem('codefly.quickPrompts')!).map((prompt: { id: string }) => prompt.id))
+  const order = () => page.evaluate(() => JSON.parse(localStorage.getItem('codeflai.quickPrompts')!).map((prompt: { id: string }) => prompt.id))
   const row = (name: string) => page.locator('.quick-prompts-item').filter({ has: page.getByRole('button', { name: `Edit ${name}`, exact: true }) })
   const handle = (name: string) => page.getByRole('button', { name: `Reorder ${name}`, exact: true })
   const dragToEdge = async (source: Locator, target: Locator, horizontal: boolean, before: boolean) => {
@@ -47,8 +47,8 @@ test('drags quick prompts without terminal input and retains the order after rel
     await page.getByRole('button', { name: 'Command Prompt', exact: true }).click()
     await expect(page.locator('.terminal-instance-host .xterm')).toBeVisible()
     await page.evaluate(() => {
-      localStorage.setItem('codefly.showQuickPrompts', 'true')
-      localStorage.setItem('codefly.quickPrompts', JSON.stringify([
+      localStorage.setItem('codeflai.showQuickPrompts', 'true')
+      localStorage.setItem('codeflai.quickPrompts', JSON.stringify([
         { id: 'a', content: 'Alpha', starred: true },
         { id: 'b', content: 'Beta', starred: false },
         { id: 'c', content: 'Charlie', starred: true },
@@ -60,7 +60,7 @@ test('drags quick prompts without terminal input and retains the order after rel
     const input: string[] = []
     await page.exposeFunction('recordSortInput', (data: string) => input.push(data))
     await page.locator('.terminal-instance-host').evaluate((host) => {
-      const terminal = (host as HTMLElement & { codeflyTerminal: Terminal }).codeflyTerminal
+      const terminal = (host as HTMLElement & { codeflaiTerminal: Terminal }).codeflaiTerminal
       terminal.onData((data) => {
         void (window as unknown as { recordSortInput(data: string): Promise<void> }).recordSortInput(data)
       })
@@ -110,7 +110,7 @@ test('drags quick prompts without terminal input and retains the order after rel
     try {
       if (!page.isClosed()) {
         await page.evaluate(async () => {
-          for (const project of (await window.codefly.getSnapshot()).state.projects) await window.codefly.removeProject(project.id)
+          for (const project of (await window.codeflai.getSnapshot()).state.projects) await window.codeflai.removeProject(project.id)
         })
       }
     } finally {
@@ -125,17 +125,17 @@ test('drags quick prompts without terminal input and retains the order after rel
 
 test('persists quick prompts and inserts into the real terminal without sending', async ({}, testInfo) => {
   const repoPath = createRepo()
-  const userDataDir = mkdtempSync(join(tmpdir(), 'codefly-prompts-e2e-'))
+  const userDataDir = mkdtempSync(join(tmpdir(), 'codeflai-prompts-e2e-'))
   const app = await electron.launch({
     args: ['.', `--user-data-dir=${userDataDir}`],
     cwd: resolve('.'),
     env: {
       ...process.env,
-      CODEFLY_E2E: '1',
-      CODEFLY_E2E_PROJECT: repoPath,
-      CODEFLY_E2E_AGENT_CMD: resolve('e2e/fixtures/fake-agent.cmd'),
-      CODEFLY_E2E_HOST_PID_LOG: join(userDataDir, 'host.pid'),
-      CODEFLY_PTY_HOST_IDLE_MS: '250'
+      CODEFLAI_E2E: '1',
+      CODEFLAI_E2E_PROJECT: repoPath,
+      CODEFLAI_E2E_AGENT_CMD: resolve('e2e/fixtures/fake-agent.cmd'),
+      CODEFLAI_E2E_HOST_PID_LOG: join(userDataDir, 'host.pid'),
+      CODEFLAI_PTY_HOST_IDLE_MS: '250'
     }
   })
   const page = await app.firstWindow()
@@ -159,12 +159,12 @@ test('persists quick prompts and inserts into the real terminal without sending'
     await page.getByRole('button', { name: 'Add prompt' }).click()
     await expect(page.getByRole('textbox', { name: /Name/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Star in quick bar' })).toHaveAttribute('aria-pressed', 'false')
-    await page.getByRole('textbox', { name: 'Content', exact: true }).fill('echo CODEFLY_PROMPT_E2E')
+    await page.getByRole('textbox', { name: 'Content', exact: true }).fill('echo CODEFLAI_PROMPT_E2E')
     await page.getByRole('button', { name: 'Save prompt' }).click()
     await expect(page.locator('button.quick-prompts-chip')).toHaveCount(0)
     await page.getByRole('button', { name: 'Manage prompts' }).click()
-    await page.getByRole('button', { name: 'Star prompt echo CODEFLY_PROMPT_E2E' }).click()
-    await expect(page.getByRole('button', { name: 'Insert echo CODEFLY_PROMPT_E2E' })).toBeVisible()
+    await page.getByRole('button', { name: 'Star prompt echo CODEFLAI_PROMPT_E2E' }).click()
+    await expect(page.getByRole('button', { name: 'Insert echo CODEFLAI_PROMPT_E2E' })).toBeVisible()
     await page.getByRole('button', { name: 'Close quick prompts' }).click()
 
     await page.reload()
@@ -187,28 +187,28 @@ test('persists quick prompts and inserts into the real terminal without sending'
     const typedInput = () => input.join('').replace(/\x1b\[[IO]/g, '')
     await page.exposeFunction('recordPromptInput', (data: string) => input.push(data))
     await page.locator('.terminal-instance-host').evaluate((host) => {
-      const terminal = (host as HTMLElement & { codeflyTerminal: Terminal }).codeflyTerminal
+      const terminal = (host as HTMLElement & { codeflaiTerminal: Terminal }).codeflaiTerminal
       terminal.onData((data) => {
         void (window as unknown as { recordPromptInput(data: string): Promise<void> }).recordPromptInput(data)
       })
     })
-    await page.getByRole('button', { name: 'Insert echo CODEFLY_PROMPT_E2E' }).click()
-    await expect.poll(typedInput).toBe('echo CODEFLY_PROMPT_E2E')
+    await page.getByRole('button', { name: 'Insert echo CODEFLAI_PROMPT_E2E' }).click()
+    await expect.poll(typedInput).toBe('echo CODEFLAI_PROMPT_E2E')
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
-    expect(await page.evaluate(async () => (await window.codefly.getSnapshot()).state.sessions[0].titleState)).toBe('pending')
+    expect(await page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions[0].titleState)).toBe('pending')
     await page.keyboard.press('Enter')
-    await expect.poll(typedInput).toBe('echo CODEFLY_PROMPT_E2E\r')
-    await expect.poll(() => page.evaluate(async () => (await window.codefly.getSnapshot()).state.sessions[0].titleState)).toBe('complete')
+    await expect.poll(typedInput).toBe('echo CODEFLAI_PROMPT_E2E\r')
+    await expect.poll(() => page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions[0].titleState)).toBe('complete')
 
     await page.keyboard.press('Control+Shift+P')
     const search = page.getByRole('combobox', { name: 'Search prompts' })
     await expect(search).toBeFocused()
     await search.fill('PROMPT_E2E')
     await page.keyboard.press('Enter')
-    await expect.poll(typedInput).toBe('echo CODEFLY_PROMPT_E2E\recho CODEFLY_PROMPT_E2E')
+    await expect.poll(typedInput).toBe('echo CODEFLAI_PROMPT_E2E\recho CODEFLAI_PROMPT_E2E')
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
     await page.keyboard.press('Enter')
-    await expect.poll(typedInput).toBe('echo CODEFLY_PROMPT_E2E\recho CODEFLY_PROMPT_E2E\r')
+    await expect.poll(typedInput).toBe('echo CODEFLAI_PROMPT_E2E\recho CODEFLAI_PROMPT_E2E\r')
 
     await page.getByRole('button', { name: 'Add prompt' }).click()
     await page.getByRole('textbox', { name: 'Content', exact: true }).fill('Review the current changes.\nRun the relevant tests and explain the results.')
@@ -217,7 +217,7 @@ test('persists quick prompts and inserts into the real terminal without sending'
     await page.getByRole('button', { name: 'Quick prompts', exact: true }).click()
     await page.getByRole('option', { name: /^Insert Review the current changes/ }).click()
     await expect(page.getByRole('alert')).toContainText('cannot insert multiple lines')
-    expect(typedInput()).toBe('echo CODEFLY_PROMPT_E2E\recho CODEFLY_PROMPT_E2E\r')
+    expect(typedInput()).toBe('echo CODEFLAI_PROMPT_E2E\recho CODEFLAI_PROMPT_E2E\r')
 
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]
@@ -235,8 +235,8 @@ test('persists quick prompts and inserts into the real terminal without sending'
     await page.getByRole('button', { name: 'Close quick prompts' }).click()
     await page.screenshot({ path: testInfo.outputPath('quick-prompts-dark.png') })
     await page.evaluate(() => {
-      localStorage.setItem('codefly.locale', 'zh-CN')
-      localStorage.setItem('codefly.theme', 'light')
+      localStorage.setItem('codeflai.locale', 'zh-CN')
+      localStorage.setItem('codeflai.theme', 'light')
     })
     await page.reload()
     await page.locator('.quick-prompts-trigger').click()
@@ -252,7 +252,7 @@ test('persists quick prompts and inserts into the real terminal without sending'
     await page.screenshot({ path: testInfo.outputPath('quick-prompts-light-compact.png') })
 
     await page.evaluate(() => {
-      localStorage.setItem('codefly.quickPrompts', JSON.stringify([
+      localStorage.setItem('codeflai.quickPrompts', JSON.stringify([
         ...Array.from({ length: 30 }, (_, index) => ({
           id: `starred-${index}`, content: `Review task ${index + 1}: check the diff and run relevant tests.`, starred: true
         })),
@@ -291,19 +291,19 @@ test('persists quick prompts and inserts into the real terminal without sending'
     await expect(page.getByRole('option', { name: /Keep this unstarred/ })).toBeVisible()
 
     await page.evaluate(() => {
-      localStorage.removeItem('codefly.quickPrompts')
-      localStorage.removeItem('codefly.showQuickPrompts')
-      localStorage.setItem('codefly.quickPhrases', JSON.stringify([{ id: 'legacy', title: 'Old label', content: 'Keep the saved content' }]))
-      localStorage.setItem('codefly.showQuickPhrases', 'true')
-      localStorage.setItem('codefly.locale', 'en')
+      localStorage.removeItem('codeflai.quickPrompts')
+      localStorage.removeItem('codeflai.showQuickPrompts')
+      localStorage.setItem('codeflai.quickPhrases', JSON.stringify([{ id: 'legacy', title: 'Old label', content: 'Keep the saved content' }]))
+      localStorage.setItem('codeflai.showQuickPhrases', 'true')
+      localStorage.setItem('codeflai.locale', 'en')
     })
     await page.reload()
     await expect(page.locator('.quick-prompts-bar')).toBeVisible()
     await expect(page.locator('button.quick-prompts-chip')).toHaveCount(0)
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('codefly.quickPrompts')!))).toEqual([
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('codeflai.quickPrompts')!))).toEqual([
       { id: 'legacy', content: 'Keep the saved content', starred: false }
     ])
-    expect(await page.evaluate(() => localStorage.getItem('codefly.showQuickPrompts'))).toBe('true')
+    expect(await page.evaluate(() => localStorage.getItem('codeflai.showQuickPrompts'))).toBe('true')
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
     await expect(promptBarSwitch).toHaveAttribute('aria-checked', 'true')
     await promptBarSwitch.click()
@@ -316,7 +316,7 @@ test('persists quick prompts and inserts into the real terminal without sending'
     try {
       if (!page.isClosed()) {
         await page.evaluate(async () => {
-          for (const project of (await window.codefly.getSnapshot()).state.projects) await window.codefly.removeProject(project.id)
+          for (const project of (await window.codeflai.getSnapshot()).state.projects) await window.codeflai.removeProject(project.id)
         })
       }
     } finally {

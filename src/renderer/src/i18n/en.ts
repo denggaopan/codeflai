@@ -11,7 +11,7 @@ export const en = {
   'common.remove': 'Remove',
 
   'titleBar.settings': 'Settings',
-  'titleBar.launchRocket': 'CodeFly — launch a rocket',
+  'titleBar.launchRocket': 'Codeflai — launch a rocket',
   'titleBar.pinWindow': 'Keep window on top',
   'titleBar.unpinWindow': 'Stop keeping window on top',
 
@@ -148,18 +148,18 @@ export const en = {
   'settings.versionUnknown': 'Unknown',
   'settings.checkForUpdates': 'Check for updates',
   'settings.checking': 'Checking for updates…',
-  'settings.upToDate': 'CodeFly is up to date.',
+  'settings.upToDate': 'Codeflai is up to date.',
   'settings.updateAvailable': 'Version {version} is available.',
   'settings.updateNoReleases': 'No release has been published yet.',
   'settings.updateFailed': 'Could not check for updates: {reason}',
   'settings.updateNow': 'Update now',
-  'settings.about': 'About CodeFly',
+  'settings.about': 'About Codeflai',
   'settings.linkRepository': 'Project repository',
   'settings.linkChangelog': 'Changelog',
   'settings.linkDownload': 'Downloads',
 
   'update.availableTitle': 'Version {version} is available',
-  'update.availableBody': 'CodeFly can download the installer for you and install it when you are ready.',
+  'update.availableBody': 'Codeflai can download the installer for you and install it when you are ready.',
   'update.noInstallerBody': 'Download this release from the Releases page to install it on this platform.',
   'update.updateNow': 'Update now',
   'update.later': 'Later',
@@ -170,10 +170,10 @@ export const en = {
   'update.downloadProgressLabel': 'Download progress',
   'update.cancelDownload': 'Cancel',
   'update.readyTitle': 'Version {version} is ready to install',
-  'update.readyBody': 'CodeFly will close and run the installer. Save your work in any running session first.',
+  'update.readyBody': 'Codeflai will close and run the installer. Save your work in any running session first.',
   'update.installNow': 'Install now',
   'update.installingTitle': 'Starting the installer for version {version}',
-  'update.installingBody': 'CodeFly is closing its sessions and handing over to the installer.',
+  'update.installingBody': 'Codeflai is closing its sessions and handing over to the installer.',
   'update.failedTitle': 'The update could not be downloaded',
   'update.tryAgain': 'Try again'
 } as const

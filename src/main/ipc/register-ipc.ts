@@ -75,7 +75,7 @@ const publish = (window: BrowserWindow, channel: string, payload: unknown): void
 }
 
 /**
- * Registers every main-process IPC handler and event publisher for the CodeFly desktop
+ * Registers every main-process IPC handler and event publisher for the Codeflai desktop
  * app. Every command parses its renderer-supplied request with the matching Zod schema
  * from shared/contracts.ts before touching a service; unknown project/session ids are
  * left for the services to reject with their own typed errors (SessionNotFoundError,

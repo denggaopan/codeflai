@@ -10,12 +10,12 @@ import {
   type PtyHostRuntimeOptions
 } from './pty-host-runtime'
 
-const INSTALL_DIRECTORY = 'C:\\Program Files\\CodeFly'
-const EXEC_PATH = win32.join(INSTALL_DIRECTORY, 'CodeFly.exe')
+const INSTALL_DIRECTORY = 'C:\\Program Files\\Codeflai'
+const EXEC_PATH = win32.join(INSTALL_DIRECTORY, 'Codeflai.exe')
 const RESOURCES = win32.join(INSTALL_DIRECTORY, 'resources')
 const APP_PATH = win32.join(RESOURCES, 'app.asar')
 const UNPACKED_PATH = win32.join(RESOURCES, 'app.asar.unpacked')
-const USER_DATA = 'C:\\Users\\tester\\AppData\\Roaming\\CodeFly'
+const USER_DATA = 'C:\\Users\\tester\\AppData\\Roaming\\Codeflai'
 const APP_VERSION = '0.16.0'
 const STAGING_ROOT = win32.join(USER_DATA, 'pty-host')
 const VERSION_DIRECTORY = win32.join(STAGING_ROOT, APP_VERSION)
@@ -47,7 +47,7 @@ const nodePtyBytes = (index: number): number => 1_000 + index
  * fixture are derived from this, so a staged copy can never drift from what is expected.
  */
 const STAGED_SIZES: ReadonlyMap<string, number> = new Map<string, number>([
-  ['codefly-pty-host.exe', EXE_BYTES],
+  ['codeflai-pty-host.exe', EXE_BYTES],
   ['icudtl.dat', ICU_BYTES],
   ['v8_context_snapshot.bin', SNAPSHOT_BYTES],
   ['pty-host.mjs', SCRIPT_BYTES],
@@ -291,14 +291,14 @@ describe('PtyHostRuntime', () => {
   describe('platforms that need no staging', () => {
     it('runs the script inside the app bundle on macOS', async () => {
       const fileSystem = new FakeFileSystem()
-      const appPath = '/Applications/CodeFly.app/Contents/Resources/app.asar'
-      const execPath = '/Applications/CodeFly.app/Contents/MacOS/CodeFly'
+      const appPath = '/Applications/Codeflai.app/Contents/Resources/app.asar'
+      const execPath = '/Applications/Codeflai.app/Contents/MacOS/Codeflai'
       const runtime = new PtyHostRuntime({
         platform: 'darwin',
         isPackaged: true,
         execPath,
         appPath,
-        userDataPath: '/Users/tester/Library/Application Support/CodeFly',
+        userDataPath: '/Users/tester/Library/Application Support/Codeflai',
         appVersion: APP_VERSION,
         fileSystem
       })
@@ -339,14 +339,14 @@ describe('PtyHostRuntime', () => {
       const target = await runtime.resolve()
 
       expect(target).toEqual({
-        runtime: win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'),
+        runtime: win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'),
         script: win32.join(VERSION_DIRECTORY, 'pty-host.mjs')
       })
       expect(fileSystem.contentsOf(VERSION_DIRECTORY)).toEqual(EXPECTED_STAGED_FILES)
-      // The image name must not be CodeFly.exe: the NSIS installer's fallback branch kills by
+      // The image name must not be Codeflai.exe: the NSIS installer's fallback branch kills by
       // image name, wherever the process lives.
-      expect(fileSystem.files.get(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))).toBe(EXE_BYTES)
-      expect(fileSystem.exists(win32.join(VERSION_DIRECTORY, 'CodeFly.exe'))).toBe(false)
+      expect(fileSystem.files.get(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))).toBe(EXE_BYTES)
+      expect(fileSystem.exists(win32.join(VERSION_DIRECTORY, 'Codeflai.exe'))).toBe(false)
       // Nothing in the staged path may start with the install directory as a string.
       expect(target.runtime.startsWith(INSTALL_DIRECTORY)).toBe(false)
     })
@@ -394,7 +394,7 @@ describe('PtyHostRuntime', () => {
       // The 244 MB executable and every real file arrive as a second directory entry: no bytes
       // move, and the staged name survives the installer renaming the one in the install dir.
       expect(fileSystem.linked.map((entry) => entry.to)).toEqual([
-        win32.join(STAGING_DIRECTORY, 'codefly-pty-host.exe'),
+        win32.join(STAGING_DIRECTORY, 'codeflai-pty-host.exe'),
         win32.join(STAGING_DIRECTORY, 'icudtl.dat'),
         win32.join(STAGING_DIRECTORY, 'v8_context_snapshot.bin'),
         ...NODE_PTY_FILES.map((name) => win32.join(STAGING_DIRECTORY, 'node_modules', 'node-pty', name))
@@ -409,14 +409,14 @@ describe('PtyHostRuntime', () => {
 
     it('falls back to copying when hard links are refused across volumes', async () => {
       const { runtime, fileSystem } = buildWindowsHarness()
-      fileSystem.linkFailure = named('EXDEV', "EXDEV: cross-device link not permitted, link 'CodeFly.exe'")
+      fileSystem.linkFailure = named('EXDEV', "EXDEV: cross-device link not permitted, link 'Codeflai.exe'")
 
       const target = await runtime.resolve()
 
-      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))
+      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))
       expect(fileSystem.linked).toHaveLength(0)
       expect(fileSystem.copied.map((entry) => entry.to)).toEqual([
-        win32.join(STAGING_DIRECTORY, 'codefly-pty-host.exe'),
+        win32.join(STAGING_DIRECTORY, 'codeflai-pty-host.exe'),
         win32.join(STAGING_DIRECTORY, 'icudtl.dat'),
         win32.join(STAGING_DIRECTORY, 'v8_context_snapshot.bin'),
         ...NODE_PTY_FILES.map((name) => win32.join(STAGING_DIRECTORY, 'node_modules', 'node-pty', name))
@@ -438,7 +438,7 @@ describe('PtyHostRuntime', () => {
       const target = await harness.restart().resolve()
 
       expect(target).toEqual({
-        runtime: win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'),
+        runtime: win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'),
         script: win32.join(VERSION_DIRECTORY, 'pty-host.mjs')
       })
       expect(fileSystem.linked).toHaveLength(linkCount)
@@ -451,11 +451,11 @@ describe('PtyHostRuntime', () => {
       const harness = buildWindowsHarness()
       await harness.runtime.resolve()
       // A truncated executable is the exact failure the size check exists to catch.
-      harness.fileSystem.files.set(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'), 1_024)
+      harness.fileSystem.files.set(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'), 1_024)
 
       await harness.restart().resolve()
 
-      expect(harness.fileSystem.files.get(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))).toBe(EXE_BYTES)
+      expect(harness.fileSystem.files.get(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))).toBe(EXE_BYTES)
       expect(harness.fileSystem.contentsOf(VERSION_DIRECTORY)).toEqual(EXPECTED_STAGED_FILES)
     })
 
@@ -517,7 +517,7 @@ describe('PtyHostRuntime', () => {
       seedInstall(fileSystem)
       const abandoned = win32.join(STAGING_ROOT, `${APP_VERSION}.staging-oldrun`)
       const abandonedOther = win32.join(STAGING_ROOT, '0.15.0.staging-evenolder')
-      fileSystem.addFile(win32.join(abandoned, 'codefly-pty-host.exe'), 12_000)
+      fileSystem.addFile(win32.join(abandoned, 'codeflai-pty-host.exe'), 12_000)
       fileSystem.addFile(win32.join(abandonedOther, 'icudtl.dat'), 900)
       const { runtime, logs } = buildWindowsHarness({ fileSystem })
 
@@ -535,7 +535,7 @@ describe('PtyHostRuntime', () => {
 
       const target = await runtime.resolve()
 
-      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))
+      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))
       // Recognised as complete before any copying starts.
       expect(fileSystem.linked).toHaveLength(0)
       expect(fileSystem.written).toHaveLength(0)
@@ -552,7 +552,7 @@ describe('PtyHostRuntime', () => {
 
       const target = await runtime.resolve()
 
-      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))
+      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))
       expect(fileSystem.renamed).toHaveLength(0)
       expect(fileSystem.removed).toContain(STAGING_DIRECTORY)
       expect(fileSystem.contentsOf(VERSION_DIRECTORY)).toEqual(EXPECTED_STAGED_FILES)
@@ -562,7 +562,7 @@ describe('PtyHostRuntime', () => {
     it('replaces an incomplete version directory rather than trusting it', async () => {
       const { runtime, fileSystem } = buildWindowsHarness()
       // Only half the runtime is there: an interrupted promote from an older build.
-      fileSystem.addFile(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'), EXE_BYTES)
+      fileSystem.addFile(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'), EXE_BYTES)
       fileSystem.addFile(win32.join(VERSION_DIRECTORY, 'pty-host.mjs'), 4_096)
 
       await runtime.resolve()
@@ -577,7 +577,7 @@ describe('PtyHostRuntime', () => {
       const fileSystem = new FakeFileSystem()
       seedInstall(fileSystem)
       const older = win32.join(STAGING_ROOT, '0.15.0')
-      fileSystem.addFile(win32.join(older, 'codefly-pty-host.exe'), EXE_BYTES)
+      fileSystem.addFile(win32.join(older, 'codeflai-pty-host.exe'), EXE_BYTES)
       const { runtime, logs } = buildWindowsHarness({ fileSystem })
 
       await runtime.resolve()
@@ -591,14 +591,14 @@ describe('PtyHostRuntime', () => {
       const fileSystem = new FakeFileSystem()
       seedInstall(fileSystem)
       const older = win32.join(STAGING_ROOT, '0.15.0')
-      fileSystem.addFile(win32.join(older, 'codefly-pty-host.exe'), EXE_BYTES)
+      fileSystem.addFile(win32.join(older, 'codeflai-pty-host.exe'), EXE_BYTES)
       // The whole point of the design: that host is still running the user's agents.
       fileSystem.removeFailures.set(older, named('EBUSY', 'EBUSY: resource busy or locked'))
       const { runtime, logs } = buildWindowsHarness({ fileSystem })
 
       const target = await runtime.resolve()
 
-      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codefly-pty-host.exe'))
+      expect(target.runtime).toBe(win32.join(VERSION_DIRECTORY, 'codeflai-pty-host.exe'))
       expect(fileSystem.exists(older)).toBe(true)
       expect(logs.some((message) => message.includes('kept the superseded host runtime 0.15.0'))).toBe(true)
     })
@@ -607,7 +607,7 @@ describe('PtyHostRuntime', () => {
       const harness = buildWindowsHarness()
       await harness.runtime.resolve()
       const older = win32.join(STAGING_ROOT, '0.15.0')
-      harness.fileSystem.addFile(win32.join(older, 'codefly-pty-host.exe'), EXE_BYTES)
+      harness.fileSystem.addFile(win32.join(older, 'codeflai-pty-host.exe'), EXE_BYTES)
 
       await harness.restart().resolve()
 

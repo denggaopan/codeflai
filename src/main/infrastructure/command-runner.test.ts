@@ -35,7 +35,7 @@ describe('commandRunner', () => {
   })
 
   it('retains spawn diagnostics for a missing executable', async () => {
-    const file = `codefly-missing-${process.pid}.exe`
+    const file = `codeflai-missing-${process.pid}.exe`
 
     await expect(commandRunner.run(file, [])).rejects.toMatchObject({
       file,

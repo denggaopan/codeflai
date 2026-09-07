@@ -58,12 +58,12 @@ const safeDevelopmentRendererUrl = (value: string | undefined): string | undefin
 }
 
 export function createMainWindow(platform: NodeJS.Platform = process.platform): BrowserWindow {
-  // CodeFly has no menu commands: remove the application menu entirely (also disables the
+  // Codeflai has no menu commands: remove the application menu entirely (also disables the
   // default Alt-key menu reveal); autoHideMenuBar is belt-and-braces for any platform path
   // that still attaches a default menu to the window.
   Menu.setApplicationMenu(null)
 
-  // CodeFly starts dark: the renderer re-applies its persisted theme preference over the
+  // Codeflai starts dark: the renderer re-applies its persisted theme preference over the
   // theme:set IPC channel right after it loads (see use-app-store.ts initialize()), so a
   // light-theme user sees at most one dark first frame. Forcing the native theme here (not
   // 'system') keeps native scrollbars/dialogs consistent with the app theme; backgroundColor
@@ -98,7 +98,7 @@ export function createMainWindow(platform: NodeJS.Platform = process.platform): 
     }
   })
 
-  // CodeFly is a workspace, not a utility panel: a terminal beside a project sidebar wants all
+  // Codeflai is a workspace, not a utility panel: a terminal beside a project sidebar wants all
   // the screen it can get, so the window opens maximized. The constructor width/height above
   // stay windowed-sized on purpose — they become the restore bounds when the user un-maximizes.
   window.maximize()

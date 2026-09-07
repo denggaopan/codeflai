@@ -255,7 +255,10 @@ const defaultSleep: Sleep = (ms) =>
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-type ReachResult = { status: 'connected'; socket: PtyHostSocket } | { status: 'failed'; message: string }
+type ReachResult =
+  | { status: 'connected'; socket: PtyHostSocket; legacy?: boolean }
+  | { status: 'failed'; message: string }
+  | { status: 'incompatible'; message: string; hostProtocolVersion: number }
 
 type HandshakeResult =
   | { status: 'ok'; welcome: PtyWelcome; residue: string }
@@ -293,7 +296,9 @@ export class PtyHostLauncher {
      * backoff instant without also making every deadline expire immediately.
      */
     private readonly deadline: Sleep = defaultSleep,
-    private readonly logger: PtyHostLogger = defaultPtyHostLogger
+    private readonly logger: PtyHostLogger = defaultPtyHostLogger,
+    private readonly legacyEndpoints: readonly string[] = [],
+    private readonly onLegacyHostGone: () => void = () => undefined
   ) {
     this.endpoint = ptyHostEndpoint(userDataPath, platform)
   }
@@ -339,15 +344,24 @@ export class PtyHostLauncher {
   private async attachOnce(spawnFirst: boolean): Promise<AttachAttempt> {
     const reached = await this.reachHost(spawnFirst)
     if (reached.status === 'failed') return { status: 'unavailable', message: reached.message }
+    if (reached.status === 'incompatible') return reached
 
     const handshake = await this.shakeHands(reached.socket)
     if (handshake.status === 'failed') {
       reached.socket.destroy()
+      if (reached.legacy) return { status: 'incompatible', message: handshake.message, hostProtocolVersion: 0 }
       return { status: 'unavailable', message: handshake.message }
     }
 
     if (isProtocolCompatible(handshake.welcome.protocolVersion)) {
       return { status: 'attached', socket: reached.socket, welcome: handshake.welcome, residue: handshake.residue }
+    }
+    if (reached.legacy) {
+      reached.socket.destroy()
+      return {
+        status: 'incompatible', hostProtocolVersion: handshake.welcome.protocolVersion,
+        message: 'The CodeFly terminal host uses an incompatible protocol. Finish its sessions before restarting Codeflai.'
+      }
     }
     return { status: 'retire-and-retry', socket: reached.socket, welcome: handshake.welcome }
   }
@@ -356,7 +370,33 @@ export class PtyHostLauncher {
     if (!spawnFirst) {
       // No log for this one: "nothing is listening" is the expected answer on a cold start.
       const existing = await this.tryConnect()
-      if (existing) return { status: 'connected', socket: existing }
+      if (existing) {
+        try {
+          if (this.legacyEndpoints.length > 0) this.onLegacyHostGone()
+        } catch (error) {
+          existing.destroy()
+          return { status: 'incompatible', hostProtocolVersion: 0, message: errorMessage(error) }
+        }
+        return { status: 'connected', socket: existing }
+      }
+      for (const endpoint of this.legacyEndpoints) {
+        try {
+          return { status: 'connected', socket: await this.connect(endpoint), legacy: true }
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code === 'ENOENT' || code === 'ECONNREFUSED') continue
+          // Access denial/timeouts do not prove the old host and its agents have exited.
+          return {
+            status: 'incompatible', hostProtocolVersion: 0,
+            message: `Cannot check the CodeFly terminal host at ${endpoint}: ${errorMessage(error)}`
+          }
+        }
+      }
+      try {
+        if (this.legacyEndpoints.length > 0) this.onLegacyHostGone()
+      } catch (error) {
+        return { status: 'incompatible', hostProtocolVersion: 0, message: errorMessage(error) }
+      }
     }
 
     const started = await this.startHost()

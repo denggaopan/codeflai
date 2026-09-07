@@ -10,11 +10,11 @@ const writeFiles = (names) => {
   for (const name of names) writeFileSync(path.join(directory, name), '')
 }
 const releaseFiles = (version) => [
-  `CodeFly-Setup-${version}-win-x64.exe`,
-  `CodeFly-Setup-${version}-win-x64.exe.blockmap`,
-  `CodeFly-${version}-mac-x64.zip`,
-  `CodeFly-${version}-mac-arm64.zip`,
-  `CodeFly-${version}-mac-arm64.dmg`,
+  `Codeflai-Setup-${version}-win-x64.exe`,
+  `Codeflai-Setup-${version}-win-x64.exe.blockmap`,
+  `Codeflai-${version}-mac-x64.zip`,
+  `Codeflai-${version}-mac-arm64.zip`,
+  `Codeflai-${version}-mac-arm64.dmg`,
   `current-release-${version}.json`,
   `release-notes-${version}.md`,
   `validation-${version}.json`,
@@ -23,18 +23,29 @@ const releaseFiles = (version) => [
 ]
 
 beforeEach(() => {
-  directory = mkdtempSync(path.join(tmpdir(), 'codefly-prune-releases-'))
+  directory = mkdtempSync(path.join(tmpdir(), 'codeflai-prune-releases-'))
 })
 
 afterEach(() => {
   const relative = path.relative(tmpdir(), directory)
-  if (path.isAbsolute(relative) || relative.startsWith('..') || !relative.startsWith('codefly-prune-releases-')) {
+  if (path.isAbsolute(relative) || relative.startsWith('..') || !relative.startsWith('codeflai-prune-releases-')) {
     throw new Error(`Unexpected test directory: ${directory}`)
   }
   rmSync(directory, { recursive: true, force: true })
 })
 
 describe('release retention', () => {
+  it('counts both CodeFly and Codeflai assets when pruning across the rename', () => {
+    writeFiles([
+      'CodeFly-Setup-0.17.0-win-x64.exe', 'CodeFly-0.17.0-mac-arm64.zip',
+      'CodeFly-Setup-0.18.0-win-x64.exe', 'CodeFly-Setup-0.19.0-win-x64.exe',
+      'Codeflai-Setup-0.20.0-win-x64.exe'
+    ])
+    const result = pruneReleases(directory)
+    expect(result.keptVersions).toEqual(['0.20.0', '0.19.0', '0.18.0'])
+    expect(result.removedFiles.sort()).toEqual(['CodeFly-0.17.0-mac-arm64.zip', 'CodeFly-Setup-0.17.0-win-x64.exe'])
+  })
+
   it('keeps three versions across platforms and removes every file belonging to older versions', () => {
     const versions = ['0.15.99', '0.16.8', '0.16.9', '0.16.10', '0.17.0']
     writeFiles(versions.flatMap(releaseFiles))
@@ -69,9 +80,9 @@ describe('release retention', () => {
   it('preserves directories, update manifests, unknown names and malformed versions', () => {
     writeFiles(['0.16.0', '0.16.1', '0.16.2', '0.16.3'].flatMap(releaseFiles))
     const unrelated = ['latest.yml', 'latest-mac.yml', 'builder-debug.yml', 'notes-0.1.0.txt',
-      'OtherApp-Setup-0.1.0-win-x64.exe', 'CodeFly-Setup-invalid-win-x64.exe', 'CodeFly-0.1.0-mac-x64.zip.partial']
+      'OtherApp-Setup-0.1.0-win-x64.exe', 'Codeflai-Setup-invalid-win-x64.exe', 'Codeflai-0.1.0-mac-x64.zip.partial']
     writeFiles(unrelated)
-    const directories = ['win-unpacked', 'cache', 'tools', 'tmp', 'CodeFly-0.1.0-mac-x64.zip']
+    const directories = ['win-unpacked', 'cache', 'tools', 'tmp', 'Codeflai-0.1.0-mac-x64.zip']
     for (const name of directories) {
       mkdirSync(path.join(directory, name))
       writeFileSync(path.join(directory, name, 'keep.txt'), 'keep')
@@ -86,8 +97,8 @@ describe('release retention', () => {
   })
 
   it('cleans legacy Windows installer names and their blockmaps', () => {
-    const oldFiles = ['CodeFly Setup 0.1.0.exe', 'CodeFly Setup 0.1.0.exe.blockmap',
-      'CodeFly-Setup-0.2.0.exe', 'CodeFly-Setup-0.2.0.exe.blockmap']
+    const oldFiles = ['Codeflai Setup 0.1.0.exe', 'Codeflai Setup 0.1.0.exe.blockmap',
+      'Codeflai-Setup-0.2.0.exe', 'Codeflai-Setup-0.2.0.exe.blockmap']
     writeFiles([...oldFiles, ...['0.16.1', '0.16.2', '0.16.3'].flatMap(releaseFiles)])
     expect(pruneReleases(directory).removedFiles.sort()).toEqual(oldFiles.sort())
   })

@@ -170,7 +170,7 @@ const describeFailure = (error: unknown): string =>
 const combineSignals = (cancel: AbortSignal, timeout: AbortSignal | undefined): AbortSignal =>
   timeout ? AbortSignal.any([cancel, timeout]) : cancel
 
-const UNREADABLE_RESPONSE = 'GitHub returned a response CodeFly could not read.'
+const UNREADABLE_RESPONSE = 'GitHub returned a response Codeflai could not read.'
 const WINDOWS_ONLY_UPDATE = 'In-app updates are available on Windows only.'
 
 type ReadyInstaller = { filePath: string; fileName: string; version: string }
@@ -261,13 +261,13 @@ export class UpdaterService {
     }
 
     const launch = await this.launchInstaller(ready.filePath)
-    // CodeFly stays open on failure: quitting would leave the user with neither a running app
+    // Codeflai stays open on failure: quitting would leave the user with neither a running app
     // nor a running installer, and no idea that anything went wrong.
     if (!launch.ok) return { status: 'error', message: `Could not start the installer: ${launch.reason}` }
 
     this.launched = true
 
-    // The installer overwrites files this process holds open, so CodeFly has to exit for it
+    // The installer overwrites files this process holds open, so Codeflai has to exit for it
     // to succeed. A failure to quit is not worth reporting — the installer is already up.
     try {
       this.quit()
@@ -400,7 +400,7 @@ export class UpdaterService {
     }
     // The release is re-resolved here rather than trusted from the earlier check, so a user
     // who already updated by hand cannot be talked into downloading an older installer.
-    if (comparison <= 0) return { status: 'error', message: 'CodeFly is already up to date.' }
+    if (comparison <= 0) return { status: 'error', message: 'Codeflai is already up to date.' }
 
     const installer = pickWindowsInstaller(release.data.assets)
     if (!installer) {
@@ -430,7 +430,7 @@ export class UpdaterService {
     }
 
     // A complete installer of the expected size is reused as-is: the user may have picked
-    // "install later" and reopened CodeFly, and downloading it again would be pure waste.
+    // "install later" and reopened Codeflai, and downloading it again would be pure waste.
     // There is no resume — a file of any other size is replaced by a fresh download.
     const existingBytes = await this.fileSize(targetPath)
     if (installer.size > 0 && existingBytes === installer.size) {

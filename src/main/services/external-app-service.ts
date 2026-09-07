@@ -157,7 +157,7 @@ export class ExternalAppService {
     } catch (cause) {
       // Directly CreateProcess-ing a user-profile executable can be denied (EACCES) by
       // security policy on managed machines for some launch ancestries (observed when
-      // CodeFly itself was started from Explorer/the Start Menu), while the same executable
+      // Codeflai itself was started from Explorer/the Start Menu), while the same executable
       // launches fine through the shell's `start` chain. Retry through ComSpec before
       // giving up; if that also fails, report the ORIGINAL direct-spawn cause.
       // Quoting note: Windows paths cannot contain `"`, and inside cmd quotes the remaining

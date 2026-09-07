@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs INSIDE the codefly-mac-builder container (see package-mac.mjs). Expects the
+# Runs INSIDE the codeflai-mac-builder container (see package-mac.mjs). Expects the
 # repository bind-mounted at /project with out/ already built on the host.
 #
 # 1. electron-builder assembles the x64 and arm64 apps under the container's native /tmp
@@ -15,7 +15,7 @@ set -eu
 cd /project
 
 version=$(node -p "require('./package.json').version")
-output_dir=/tmp/codefly-mac-release
+output_dir=/tmp/codeflai-mac-release
 
 node node_modules/electron-builder/cli.js \
   --config electron-builder.mac-cross.yml \

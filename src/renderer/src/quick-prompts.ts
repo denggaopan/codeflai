@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { readMigratedStorage } from './storage-migration'
 
-export const QUICK_PROMPTS_STORAGE_KEY = 'codefly.quickPrompts'
+export const QUICK_PROMPTS_STORAGE_KEY = 'codeflai.quickPrompts'
 export const MAX_QUICK_PROMPTS = 100
 export const MAX_QUICK_PROMPT_CONTENT = 16_000
 
@@ -42,11 +43,10 @@ export const quickPromptsSchema = z.array(quickPromptSchema).max(MAX_QUICK_PROMP
 
 export const readStoredQuickPrompts = (): QuickPrompt[] => {
   try {
-    const stored = window.localStorage.getItem(QUICK_PROMPTS_STORAGE_KEY)
-    const legacy = stored === null ? window.localStorage.getItem('codefly.quickPhrases') : null
-    const parsed = quickPromptsSchema.safeParse(JSON.parse(stored ?? legacy ?? '[]'))
+    const stored = readMigratedStorage(QUICK_PROMPTS_STORAGE_KEY, ['codefly.quickPhrases', 'codeflai.quickPhrases'])
+    const parsed = quickPromptsSchema.safeParse(JSON.parse(stored ?? '[]'))
     if (!parsed.success) return []
-    if (legacy !== null) {
+    if (stored !== null && stored !== JSON.stringify(parsed.data)) {
       try {
         window.localStorage.setItem(QUICK_PROMPTS_STORAGE_KEY, JSON.stringify(parsed.data))
       } catch {

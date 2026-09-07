@@ -1,7 +1,7 @@
 import type { SessionKind } from './contracts'
 
 /**
- * Every coding-agent CLI CodeFly can host, in the order they are offered in the UI. Claude
+ * Every coding-agent CLI Codeflai can host, in the order they are offered in the UI. Claude
  * and Codex lead because they were the original two and are the ones enabled by default;
  * the rest are opt-in (see the renderer's `defaultSessionKindPreferences`).
  *
@@ -97,7 +97,7 @@ export const AGENT_LAUNCH: Readonly<Record<AgentKind, AgentLaunchSpec>> = {
     // Documented by Qwen Code, but NOT implemented by every build: 0.22.3's argv parser knows
     // no approval flag at all and ignores this one without erroring (verified: exit 0, the CLI
     // still starts). There is nothing better to send — that build takes its approval mode from
-    // ~/.qwen/settings.json or interactively, and CodeFly has no business writing a user's
+    // ~/.qwen/settings.json or interactively, and Codeflai has no business writing a user's
     // settings file. Keeping the flag means it starts working the moment the CLI supports it,
     // and until then the bypass badge over-warns rather than under-warns.
     bypassArgs: ['--approval-mode=yolo'],
@@ -126,7 +126,7 @@ export const agentLaunchArgs = (kind: AgentKind, resume: boolean): readonly stri
  * when the PTY spawns. Empty for every CLI whose bypass is an argv flag.
  *
  * Only interactive sessions get this: the title-generation process must never run with a
- * bypass (see TitleService), and it spawns from CodeFly's own environment, which never
+ * bypass (see TitleService), and it spawns from Codeflai's own environment, which never
  * carries these variables.
  */
 export const agentLaunchEnv = (kind: AgentKind): Readonly<Record<string, string>> =>

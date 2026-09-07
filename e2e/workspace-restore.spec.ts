@@ -8,7 +8,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import type { AppState } from '../src/shared/contracts'
 
 const projectRoot = resolve(import.meta.dirname, '..')
-const executablePath = process.env.CODEFLY_TEST_EXECUTABLE
+const executablePath = process.env.CODEFLAI_TEST_EXECUTABLE
 const isProcessRunning = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
@@ -20,7 +20,7 @@ const isProcessRunning = (pid: number): boolean => {
 
 for (const exitMode of ['window close', 'forced termination', 'renderer reload'] as const) {
   test(`restores project folds and the active session after ${exitMode}`, async () => {
-    const fixtureDir = mkdtempSync(join(tmpdir(), 'codefly-workspace-'))
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'codeflai-workspace-'))
     const userDataDir = join(fixtureDir, 'userdata')
     mkdirSync(userDataDir)
     const state: AppState = {
@@ -44,9 +44,9 @@ for (const exitMode of ['window close', 'forced termination', 'renderer reload']
         args: [...(executablePath ? [] : ['.']), `--user-data-dir=${userDataDir}`],
         cwd: projectRoot,
         env: {
-          ...process.env, CODEFLY_E2E: '1',
-          CODEFLY_E2E_AGENT_CMD: resolve(projectRoot, 'e2e/fixtures/fake-agent.cmd'),
-          CODEFLY_PTY_HOST_IDLE_MS: '250'
+          ...process.env, CODEFLAI_E2E: '1',
+          CODEFLAI_E2E_AGENT_CMD: resolve(projectRoot, 'e2e/fixtures/fake-agent.cmd'),
+          CODEFLAI_PTY_HOST_IDLE_MS: '250'
         }
       })
       page = await app.firstWindow()
@@ -89,8 +89,8 @@ for (const exitMode of ['window close', 'forced termination', 'renderer reload']
       await page.keyboard.type('_AFTER')
       await expect.poll(() => activeTerminal().evaluate((element) => {
         const terminal = (element as HTMLElement & {
-          codeflyTerminal?: { buffer: { active: { length: number; getLine(index: number): { translateToString(trim: boolean): string } | undefined } } }
-        }).codeflyTerminal
+          codeflaiTerminal?: { buffer: { active: { length: number; getLine(index: number): { translateToString(trim: boolean): string } | undefined } } }
+        }).codeflaiTerminal
         const buffer = terminal?.buffer.active
         return buffer ? Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i)?.translateToString(true)).join('\n') : ''
       })).toContain('_AFTER')
@@ -106,8 +106,8 @@ for (const exitMode of ['window close', 'forced termination', 'renderer reload']
       if (app && app.process().exitCode === null) {
         const cleanupPage = await app.firstWindow()
         await cleanupPage.evaluate(async () => {
-          const snapshot = await window.codefly.getSnapshot()
-          for (const project of snapshot.state.projects) await window.codefly.removeProject(project.id)
+          const snapshot = await window.codeflai.getSnapshot()
+          for (const project of snapshot.state.projects) await window.codeflai.removeProject(project.id)
         }).catch(() => undefined)
         await app.close()
       }

@@ -19,7 +19,7 @@ const createFakeApi = () => ({
 type FakeApi = ReturnType<typeof createFakeApi>
 
 const renderDialog = (updater: UpdaterState, api: FakeApi = createFakeApi()): FakeApi => {
-  window.codefly = api as unknown as typeof window.codefly
+  window.codeflai = api as unknown as typeof window.codeflai
   useAppStore.setState({ updater })
   render(<UpdateDialog />)
   return api

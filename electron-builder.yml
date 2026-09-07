@@ -1,5 +1,5 @@
-appId: com.codefly.desktop
-productName: CodeFly
+appId: com.codeflai.desktop
+productName: Codeflai
 artifactName: ${productName}-Setup-${version}-${os}-${arch}.${ext}
 npmRebuild: false
 # Package from the Electron binaries npm already installed instead of letting
@@ -28,6 +28,7 @@ win:
       arch:
         - x64
 nsis:
+  include: build/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
 mac:

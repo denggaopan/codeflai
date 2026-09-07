@@ -1,18 +1,20 @@
-# CodeFly
+# Codeflai
 
 English | [简体中文](README.zh-CN.md)
 
-**CodeFly is a desktop app that manages the terminals and AI coding agent sessions of your
+Previously **CodeFly**. The project and desktop app are now named **Codeflai**.
+
+**Codeflai is a desktop app that manages the terminals and AI coding agent sessions of your
 local projects in one window.**
 
-Pick a project, pick a session kind, and CodeFly starts it — PowerShell or Command Prompt on
+Pick a project, pick a session kind, and Codeflai starts it — PowerShell or Command Prompt on
 Windows, your login Shell on macOS, and up to seven coding-agent CLIs including Claude Code
 and Codex.
 
 It is a terminal workspace, not a code editor. Each session runs either directly in your
 project directory or in its own isolated Git worktree and same-named branch, so an agent can
 work without touching what you have open elsewhere. Every agent runs through the CLI you
-already installed and signed in to: **CodeFly never collects, stores, or reads API keys or
+already installed and signed in to: **Codeflai never collects, stores, or reads API keys or
 CLI credentials.**
 
 > **Before you start an agent session, read
@@ -20,13 +22,14 @@ CLI credentials.**
 > Agent sessions deliberately run with the vendor's permission and sandbox checks switched
 > off, and this release has no switch to turn that back on.
 
-**[Download the latest release](https://github.com/denggaopan/codefly/releases/latest)**
+**[Download the latest release](https://github.com/denggaopan/codeflai/releases/latest)**
 
 ---
 
 ## Contents
 
 - [Install](#install)
+- [Upgrading from CodeFly](#upgrading-from-codefly)
 - [Your first session](#your-first-session)
 - [The window](#the-window)
 - [Adding projects](#adding-projects)
@@ -41,7 +44,7 @@ CLI credentials.**
 - [Settings](#settings)
 - [Updates](#updates)
 - [Sessions keep running after you close the window](#sessions-keep-running-after-you-close-the-window)
-- [What CodeFly remembers](#what-codefly-remembers)
+- [What Codeflai remembers](#what-codeflai-remembers)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -53,16 +56,16 @@ CLI credentials.**
 | --- | --- |
 | **Windows** | Windows 10 or 11, x64. |
 | **macOS** | An Intel or Apple Silicon Mac, using the archive that matches it. |
-| **Git** *(recommended)* | Needed for worktree sessions and for cloning a repository from inside CodeFly. Without Git the app still works, but every session runs in the project's own directory. |
-| **An agent CLI** *(per agent you want to use)* | Install and sign in to the CLI first — CodeFly launches it, it does not replace it. See the table in [Starting a session](#starting-a-session). |
+| **Git** *(recommended)* | Needed for worktree sessions and for cloning a repository from inside Codeflai. Without Git the app still works, but every session runs in the project's own directory. |
+| **An agent CLI** *(per agent you want to use)* | Install and sign in to the CLI first — Codeflai launches it, it does not replace it. See the table in [Starting a session](#starting-a-session). |
 | **VS Code** *(optional)* | For **Open project in VS Code** in the project options menu. |
 
 ### Windows
 
-Download `CodeFly-Setup-<version>-win-x64.exe` from the
-[Releases page](https://github.com/denggaopan/codefly/releases/latest) and run it. The
+Download `Codeflai-Setup-<version>-win-x64.exe` from the
+[Releases page](https://github.com/denggaopan/codeflai/releases/latest) and run it. The
 installer is not code-signed, so SmartScreen may warn once — choose **More info** →
-**Run anyway**. Afterwards CodeFly updates itself from inside the app (see
+**Run anyway**. Afterwards Codeflai updates itself from inside the app (see
 [Updates](#updates)).
 
 ### macOS
@@ -70,25 +73,55 @@ installer is not code-signed, so SmartScreen may warn once — choose **More inf
 The macOS builds are unsigned and un-notarized internal-test bundles, so they need two
 commands before their first launch.
 
-1. Download the archive that matches your Mac: `CodeFly-<version>-mac-arm64.zip` for Apple
-   Silicon, `CodeFly-<version>-mac-x64.zip` for Intel.
-2. Extract it, then in Terminal, from the folder holding `CodeFly.app`:
+1. Download the archive that matches your Mac: `Codeflai-<version>-mac-arm64.zip` for Apple
+   Silicon, `Codeflai-<version>-mac-x64.zip` for Intel.
+2. Extract it, then in Terminal, from the folder holding `Codeflai.app`:
 
    ```bash
-   xattr -cr CodeFly.app
-   codesign --force --deep --sign - CodeFly.app
+   xattr -cr Codeflai.app
+   codesign --force --deep --sign - Codeflai.app
    ```
 
-3. Move `CodeFly.app` to `/Applications` if you like, then open it from Finder. If
+3. Move `Codeflai.app` to `/Applications` if you like, then open it from Finder. If
    Gatekeeper still blocks it, allow it under **System Settings → Privacy & Security →
    Open Anyway**.
 
 That ad-hoc signature applies only to your copy; it is not Developer ID signing.
 
 **One macOS gotcha worth knowing up front:** an app launched from Finder does not inherit
-Terminal's `PATH`. CodeFly therefore looks for agent CLIs through your login shell and in
+Terminal's `PATH`. Codeflai therefore looks for agent CLIs through your login shell and in
 the usual Homebrew and `~/.local/bin` locations. If a CLI you have installed shows up
 disabled, check that `command -v claude` (or whichever CLI) succeeds in a *login* shell.
+
+## Upgrading from CodeFly
+
+Close the old CodeFly window before starting Codeflai. Your terminal background process
+can stay running: Codeflai reconnects to it and retains its output until that host exits.
+New background processes use the Codeflai name.
+
+On Windows, run the Codeflai installer. It removes the previous CodeFly installation
+while keeping application data, creates the new shortcuts and uses the new application
+identity. Launch-at-login is migrated on the first normal launch. If Windows refuses a
+startup-setting change, the app retains the old entry and retries next time.
+
+On macOS, install `Codeflai.app` using the steps above, close CodeFly and move the old
+`CodeFly.app` to the Trash after Codeflai opens successfully. If CodeFly was in Login
+Items, remove that entry in System Settings and enable **Launch at startup** in Codeflai.
+
+On its first launch, Codeflai copies projects, sessions, workspace state and preferences
+from the old application-data directory into the new one:
+
+| Platform | Old directory (retained as a backup) | New directory |
+| --- | --- | --- |
+| Windows | `%APPDATA%\CodeFly` | `%APPDATA%\Codeflai` |
+| macOS | `~/Library/Application Support/CodeFly` | `~/Library/Application Support/Codeflai` |
+
+An existing Codeflai profile is never overwritten. Copy failures stop startup with an
+error, leaving the original data intact so the migration can be retried. Themes,
+language, sidebar width, pinned-window preferences, session kinds and quick prompts
+are imported into the new preference keys. Custom `--user-data-dir` profiles are not
+automatically imported. Keep the old directory until you have checked the new app;
+changes made in Codeflai are not synchronized back to CodeFly.
 
 ## Your first session
 
@@ -106,7 +139,7 @@ one tells you what it is doing. Closing the window does **not** stop them.
 
 ## The window
 
-**Title bar** — the logo and **CodeFly** wordmark (click it for the
+**Title bar** — the logo and **Codeflai** wordmark (click it for the
 [rocket](#the-rocket)), the pin button that
 [keeps the window above everything else](#keeping-the-window-on-top), and the gear that
 opens [Settings](#settings).
@@ -139,18 +172,18 @@ terminal below 360.
 | **Path missing** | The session's directory is no longer there. |
 | **Error** | Something went wrong; the row shows what. |
 
-CodeFly opens maximized every time and restores a 1180×760 window when you un-maximize it.
+Codeflai opens maximized every time and restores a 1180×760 window when you un-maximize it.
 
 ## Adding projects
 
 **Add Project** offers three ways in:
 
 - **Local folder** — pick any project directory on this computer.
-- **Recent projects** — reopen something you removed from the list earlier. CodeFly keeps up
+- **Recent projects** — reopen something you removed from the list earlier. Codeflai keeps up
   to 50 removed projects, across restarts, and hides ones already in your list. Reopening
   brings the folder back but not its old sessions.
 - **Clone Git repository** — paste an HTTPS or SSH address (`git@host:owner/repository.git`
-  works) and choose where to put it. CodeFly shows the full destination, creates a
+  works) and choose where to put it. Codeflai shows the full destination, creates a
   subdirectory named after the repository, and adds the project once Git finishes. An
   existing folder is never overwritten. Private repositories use your existing Git
   credentials or SSH configuration, so set that up before cloning.
@@ -162,7 +195,7 @@ or use its close button to dismiss it.
 
 Which entries you see depends on your platform and on **Session kinds** in Settings:
 
-| Session kind | The CLI CodeFly looks for | Available on |
+| Session kind | The CLI Codeflai looks for | Available on |
 | --- | --- | --- |
 | **PowerShell** | — | Windows |
 | **Command Prompt** | — | Windows |
@@ -217,7 +250,7 @@ while running, and takes Shift+Enter and Ctrl/Cmd+V. Two differences are deliber
 ## Worktree sessions
 
 Create a session from a **(new worktree)** entry in a project that is a Git repository with
-at least one commit, and CodeFly makes an isolated Git worktree plus a same-named branch for
+at least one commit, and Codeflai makes an isolated Git worktree plus a same-named branch for
 it, at `<repository-root>/.worktrees/worktree-YYMMDD-N` (today's date, `N` counting up per
 repository per day). `.worktrees` goes into the repository's *local* exclude file
 (`.git/info/exclude`), never the tracked `.gitignore`, so it never shows up as a change for
@@ -228,17 +261,17 @@ directory. A requested worktree also falls back to an ordinary session when the 
 not a Git repository, or is one with no commits yet. Either way the sidebar says
 "Ordinary session" instead of a worktree name.
 
-**Deleting a worktree session is protected.** CodeFly stops the session, runs `git status`
+**Deleting a worktree session is protected.** Codeflai stops the session, runs `git status`
 inside the worktree, and then:
 
 - **if anything is uncommitted** — modified, staged, or untracked — the delete is
-  **blocked**. The session and worktree stay exactly as they are and CodeFly tells you how
+  **blocked**. The session and worktree stay exactly as they are and Codeflai tells you how
   many files changed. Commit or discard them yourself, then delete again.
 - **if the worktree is clean**, it removes the worktree directory (never with `--force`) and
   the session record.
 
 **The branch is never deleted.** Whatever the session did stays reachable on its branch
-after the session and worktree are gone. CodeFly never force-removes a worktree and never
+after the session and worktree are gone. Codeflai never force-removes a worktree and never
 deletes commits, stashes, or anything in your original project.
 
 ## Agent sessions and the permission bypass
@@ -259,28 +292,28 @@ and nothing else:
 **This bypasses the agent's own permission and sandbox protections for the whole life of the
 session.** The agent reads, writes, and runs commands in its directory without asking you to
 confirm each action. That is a deliberate choice for a fast, low-friction workflow, and
-CodeFly keeps it visible rather than hidden: while the active session is a running agent, a
+Codeflai keeps it visible rather than hidden: while the active session is a running agent, a
 **"Permissions and sandbox bypass enabled"** badge sits in its terminal header the entire
 time.
 
 **There is no per-session switch to turn the bypass off in this release.** If you do not
 want an agent running with its protections bypassed, do not start an agent session in
-CodeFly. Starting agents in a **(new worktree)** session is the cheapest way to limit what
+Codeflai. Starting agents in a **(new worktree)** session is the cheapest way to limit what
 they can disturb.
 
 Two CLIs deviate, both in the safe direction:
 
 - **Comate** has no bypass flag at all — its TUI resets its run mode on every launch, so the
   request has to travel as an environment variable. It is set only for that one session,
-  never for CodeFly's own process.
+  never for Codeflai's own process.
 - **Qwen Code** documents `--approval-mode=yolo`, but not every build implements it: 0.22.3
   ignores it silently and takes its approval mode from `~/.qwen/settings.json` or Shift+Tab
-  in its TUI instead. CodeFly keeps sending the flag (it costs nothing and starts working
+  in its TUI instead. Codeflai keeps sending the flag (it costs nothing and starts working
   the moment the CLI supports it) and never writes your settings file — so on such a build
   the badge warns about a bypass the CLI has not actually applied. An over-warning, never
   the reverse.
 
-The background process CodeFly uses to [name a session](#session-titles) never gets either
+The background process Codeflai uses to [name a session](#session-titles) never gets either
 bypass, does not share the session's terminal, and runs in a neutral directory rather than
 your project or worktree.
 
@@ -297,7 +330,7 @@ your project or worktree.
 | **← / →**, **Home/End**, double-click | the sidebar seam | Resize, jump to a limit, reset. |
 
 Windows has no new-session accelerator on purpose: **Ctrl+T** is a live key inside the
-shells and agent CLIs CodeFly hosts, so it goes to the focused terminal instead. Native
+shells and agent CLIs Codeflai hosts, so it goes to the focused terminal instead. Native
 Shell, PowerShell, and Command Prompt sessions keep the terminal's normal key handling
 throughout.
 
@@ -334,7 +367,7 @@ can save up to 100, each up to 16,000 characters.
 
 A few limits worth knowing: a stopped session still lets you manage prompts, but you have to
 restore it before inserting one. Agent sessions take multi-line prompts; shell sessions need
-bracketed-paste support for those, and without it CodeFly asks you for a single-line prompt
+bracketed-paste support for those, and without it Codeflai asks you for a single-line prompt
 instead — so a saved newline can never run a command by itself. (Without bracketed paste,
 indentation tabs also become spaces.)
 
@@ -354,17 +387,17 @@ folds the row.
 
 - **New session** — the launcher described [above](#starting-a-session).
 - **Open project in VS Code** — opens the project's **original folder**, never a session's
-  worktree. CodeFly finds VS Code via the `code` command and the standard install locations
+  worktree. Codeflai finds VS Code via the `code` command and the standard install locations
   on Windows, or the standard application locations on macOS; with none found the item is
   disabled with an install hint.
 - **Open project folder** — the same directory in Explorer or Finder. No dependencies.
 - **Open Git repository** — appears when the project sits in a Git repository whose remote
-  has a web address. CodeFly reads `origin` (or the first remote when there is no `origin`),
+  has a web address. Codeflai reads `origin` (or the first remote when there is no `origin`),
   turns ssh/scp forms like `git@github.com:owner/repo.git` into their https page, and opens
   it in your default browser. The icon follows the host: the GitHub mark, the GitLab mark
   (self-hosted instances included), or a plain Git mark. Repositories with no remote, or a
   remote that is a local directory, get no entry. Remotes are re-read at every launch, so
-  adding one shows up next time you start CodeFly.
+  adding one shows up next time you start Codeflai.
 - **Remove from list** — forgets the project after a confirmation. Its running sessions stop
   and all of its session records go with it, but **nothing on disk is touched**: the project
   directory, its worktrees, and their branches stay exactly as they are. Add the folder
@@ -372,7 +405,7 @@ folds the row.
 
 ## Keeping the window on top
 
-The pin button next to the gear keeps CodeFly above every other window — which is what you
+The pin button next to the gear keeps Codeflai above every other window — which is what you
 want while an agent works and you watch it from another app. Click it again to release; the
 pressed state and the filled pin show that it is on top. The choice comes back the next time
 you launch. If your window manager refuses the request, the button reflects that instead of
@@ -382,7 +415,7 @@ pretending it worked.
 
 The gear in the title bar opens Settings.
 
-- **Launch at startup** — registers CodeFly as a login item. The switch shows the value read
+- **Launch at startup** — registers Codeflai as a login item. The switch shows the value read
   back from the system *after* writing it, so a change the OS refuses is never displayed as
   if it took effect.
 - **Session kinds** — two switches per kind: whether it appears in the New session menu at
@@ -395,11 +428,11 @@ The gear in the title bar opens Settings.
   session titles that were already generated stay in the language they were produced in.
 - **Version** — the installed version, plus **Check for updates** on demand. See
   [Updates](#updates).
-- **About CodeFly** — links to the project repository, the changelog, and the downloads page.
+- **About Codeflai** — links to the project repository, the changelog, and the downloads page.
 
 ## Updates
 
-CodeFly checks for a new release once in the background at startup, and **stays quiet unless
+Codeflai checks for a new release once in the background at startup, and **stays quiet unless
 there is one** — a failed check, no network, an up-to-date install, all pass without
 interrupting you. When a newer version exists, a dialog appears. You can also start the same
 flow any time from **Check for updates** in Settings.
@@ -411,7 +444,7 @@ away a download that is nearly finished. The check and the download both go thro
 network stack a browser uses, so they honour your system proxy: if GitHub is fast in Chrome,
 it is fast here.
 
-When the download finishes CodeFly asks again. **Install now** closes the app and runs the
+When the download finishes Codeflai asks again. **Install now** closes the app and runs the
 installer — it has to close, because the installer replaces files the running app holds open,
 but [your sessions keep running](#sessions-keep-running-after-you-close-the-window).
 **Later** just closes the dialog and leaves the installer on disk, so choosing **Update now**
@@ -419,7 +452,7 @@ again later finds it already downloaded and goes straight to the install prompt.
 one installer is kept; superseded ones and partial files from an interrupted download are
 swept away with the next successful download.
 
-CodeFly only quits once the operating system confirms the installer actually started. A
+Codeflai only quits once the operating system confirms the installer actually started. A
 blocked, quarantined, or missing installer leaves the app open with an explanation instead of
 closing it and leaving you with nothing.
 
@@ -428,10 +461,10 @@ your Mac; there is no in-app update. macOS never downloads or runs a Windows ins
 
 ## Sessions keep running after you close the window
 
-CodeFly's terminals do not live in the window. They live in a background process that the app
-starts when needed and then leaves running, so **closing CodeFly, a UI crash, and installing
+Codeflai's terminals do not live in the window. They live in a background process that the app
+starts when needed and then leaves running, so **closing Codeflai, a UI crash, and installing
 an update all leave every session — and every agent working inside one — exactly where it
-was.** Reopen CodeFly and it reattaches, repaints each terminal from the output it kept (the
+was.** Reopen Codeflai and it reattaches, repaints each terminal from the output it kept (the
 most recent 256 KB per session), and nudges full-screen agent interfaces into redrawing.
 
 This is what makes updating non-disruptive: **Install now** replaces the application while
@@ -441,11 +474,11 @@ and its sessions are restarted with each agent's own resume flag instead of bein
 
 What actually ends a session: it exiting on its own (quitting the agent, `exit` in a shell),
 you deleting it, removing its project from the list, or restarting the machine. Quitting
-CodeFly is not on that list. The background process shuts itself down once it has held no
+Codeflai is not on that list. The background process shuts itself down once it has held no
 sessions and had no window connected for a minute. On Windows it shows up in Task Manager as
-`codefly-pty-host.exe`.
+`codeflai-pty-host.exe`.
 
-## What CodeFly remembers
+## What Codeflai remembers
 
 Your projects, your sessions and their titles, quick prompts, and workspace preferences —
 which projects were folded, which session was active, the sidebar width, theme, language,
@@ -453,12 +486,12 @@ session kinds. Saved on every change, so an unexpected exit does not lose them.
 
 **Not stored, ever:** API keys, CLI credentials, or terminal scrollback.
 
-The state lives in CodeFly's own application-data folder:
+The state lives in Codeflai's own application-data folder:
 
 | | |
 | --- | --- |
-| Windows | `%APPDATA%\CodeFly` |
-| macOS | `~/Library/Application Support/CodeFly` |
+| Windows | `%APPDATA%\Codeflai` |
+| macOS | `~/Library/Application Support/Codeflai` |
 
 When you reopen the app, sessions that were running are picked back up where they are; ones
 that had stopped on their own are **not** restarted behind your back — click one to restart
@@ -471,7 +504,7 @@ and sessions are ignored on restore, and a session whose directory has gone show
 
 ## Troubleshooting
 
-**A session kind is greyed out.** Its CLI is not where CodeFly looks. Hover the entry for the
+**A session kind is greyed out.** Its CLI is not where Codeflai looks. Hover the entry for the
 exact executable name — remember Cursor's is `agent` and Comate's is `comatecli`. On Windows
 it must be on `PATH`; on macOS it must be findable from a login shell (`command -v claude`),
 because an app opened from Finder does not inherit Terminal's `PATH`.
@@ -499,20 +532,20 @@ still on that worktree's branch.
 
 ## The rocket
 
-Click the logo and the **CodeFly** wordmark. A rocket drops nose-first, swings round, cruises
+Click the logo and the **Codeflai** wordmark. A rocket drops nose-first, swings round, cruises
 for a few seconds, and dashes off the screen. Click again for more of them. It is purely
 decorative — it cannot intercept a click — and it is skipped entirely if your system asks for
 reduced motion.
 
 ## License
 
-CodeFly is licensed under the [MIT License](LICENSE). You may use, copy, modify, and
+Codeflai is licensed under the [MIT License](LICENSE). You may use, copy, modify, and
 distribute it for any purpose, including commercial and closed-source use. Copies or
 substantial portions of the software must retain the copyright notice and license text; you
 do not have to disclose source code.
 
 Third-party dependencies remain subject to their own licenses.
 
-CodeFly is built with Electron, React, TypeScript, xterm.js, and node-pty. If you want to
+Codeflai is built with Electron, React, TypeScript, xterm.js, and node-pty. If you want to
 build it from source, clone the repository and read `CLAUDE.md` and the scripts in
 `package.json`.

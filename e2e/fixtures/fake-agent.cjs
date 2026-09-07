@@ -3,7 +3,7 @@
 
 /**
  * Deterministic stand-in for the real `claude`/`codex` CLIs, used only when the app is
- * launched with CODEFLY_E2E=1 (see src/main/index.ts). It plays two roles with the exact
+ * launched with CODEFLAI_E2E=1 (see src/main/index.ts). It plays two roles with the exact
  * same script, distinguished only by how it is invoked:
  *
  *  - Interactive PTY: TerminalService spawns it (through a cmd.exe shim, see
@@ -16,22 +16,22 @@
  *    for TitleService to capture non-empty output and sanitize/truncate it.
  *
  * In both roles, on startup it writes its own `process.argv.slice(2)` as JSON to the file
- * named by the CODEFLY_E2E_ARGV_LOG environment variable (when set) BEFORE printing a ready
+ * named by the CODEFLAI_E2E_ARGV_LOG environment variable (when set) BEFORE printing a ready
  * marker, so a test can assert exactly which argv a given launch received: the composition
- * root points CODEFLY_E2E_ARGV_LOG at a different file per role (see
- * buildE2ETitleAdapters/CODEFLY_E2E_TITLE_ARGV_LOG in src/main/index.ts), so the interactive
+ * root points CODEFLAI_E2E_ARGV_LOG at a different file per role (see
+ * buildE2ETitleAdapters/CODEFLAI_E2E_TITLE_ARGV_LOG in src/main/index.ts), so the interactive
  * launch argv and the title-process argv never collide.
  */
 
 const fs = require('node:fs')
 
 const argv = process.argv.slice(2)
-const logPath = process.env.CODEFLY_E2E_ARGV_LOG
+const logPath = process.env.CODEFLAI_E2E_ARGV_LOG
 if (logPath) {
   fs.writeFileSync(logPath, JSON.stringify(argv), 'utf8')
 }
 
-process.stdout.write('CODEFLY_E2E_FAKE_AGENT_READY\n')
+process.stdout.write('CODEFLAI_E2E_FAKE_AGENT_READY\n')
 
 let buffer = ''
 

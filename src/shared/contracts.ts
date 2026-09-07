@@ -301,6 +301,6 @@ export type UpdateDownloadResult =
   | { status: 'cancelled' }
   | { status: 'error'; message: string }
 
-// `launched` means the installer process was handed to the OS and CodeFly is quitting; the
+// `launched` means the installer process was handed to the OS and Codeflai is quitting; the
 // renderer will not get another turn, so there is nothing to report on success beyond that.
 export type UpdateInstallResult = { status: 'launched' } | { status: 'error'; message: string }

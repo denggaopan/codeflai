@@ -1,13 +1,13 @@
 <?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="256" height="256">
-  <title>CodeFly Logo - Rocket with a "C" porthole</title>
+  <title>Codeflai Logo - Rocket with a "C" porthole</title>
   <!-- One path, three subpaths, nonzero fill-rule:
        1. the exhaust dash below the rocket,
        2. the rocket body (clockwise, so it fills),
        3. the porthole (counter-clockwise, so it punches a hole).
        The porthole is the source artwork's "U" slot rotated 90 degrees clockwise about its
-       own centre (662.766673, 360.937233) so the negative space reads as a "C" for CodeFly.
+       own centre (662.766673, 360.937233) so the negative space reads as a "C" for Codeflai.
        The path is drawn edge to edge in its 1024-unit box, which made the desktop shortcut
        look oversized next to other Windows app icons (their artwork keeps a margin inside
        the icon slot). The transform scales the whole path to 85% about the box centre

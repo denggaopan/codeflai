@@ -156,7 +156,7 @@ const buildHarness = (options: HarnessOptions = {}) => {
   })
   const stateChanges = vi.fn()
   const server = new PtyHostServer({
-    endpoint: options.endpoint ?? '\\\\.\\pipe\\codefly-pty-host-test',
+    endpoint: options.endpoint ?? '\\\\.\\pipe\\codeflai-pty-host-test',
     registry,
     appVersion: '0.15.1',
     platform: options.platform ?? 'win32',
@@ -492,11 +492,11 @@ describe('PtyHostServer clients', () => {
 
 describe('PtyHostServer single instance', () => {
   it('listens on the endpoint it was given', async () => {
-    const harness = buildHarness({ endpoint: '\\\\.\\pipe\\codefly-pty-host-abc' })
+    const harness = buildHarness({ endpoint: '\\\\.\\pipe\\codeflai-pty-host-abc' })
 
     await expect(harness.server.listen()).resolves.toBe('listening')
 
-    expect(harness.servers.at(-1)?.listenedTo).toBe('\\\\.\\pipe\\codefly-pty-host-abc')
+    expect(harness.servers.at(-1)?.listenedTo).toBe('\\\\.\\pipe\\codeflai-pty-host-abc')
     expect(harness.logs.some((line) => line.includes('Listening on'))).toBe(true)
   })
 
@@ -517,12 +517,12 @@ describe('PtyHostServer single instance', () => {
       platform: 'darwin',
       outcomes: [inUse()],
       probeLive: true,
-      endpoint: '/tmp/codefly-pty-host-abc.sock'
+      endpoint: '/tmp/codeflai-pty-host-abc.sock'
     })
 
     await expect(harness.server.listen()).resolves.toBe('occupied')
 
-    expect(harness.probeEndpoint).toHaveBeenCalledWith('/tmp/codefly-pty-host-abc.sock')
+    expect(harness.probeEndpoint).toHaveBeenCalledWith('/tmp/codeflai-pty-host-abc.sock')
     expect(harness.removeFile).not.toHaveBeenCalled()
   })
 
@@ -531,14 +531,14 @@ describe('PtyHostServer single instance', () => {
       platform: 'darwin',
       outcomes: [inUse(), 'ok'],
       probeLive: false,
-      endpoint: '/tmp/codefly-pty-host-abc.sock'
+      endpoint: '/tmp/codeflai-pty-host-abc.sock'
     })
 
     await expect(harness.server.listen()).resolves.toBe('listening')
 
-    expect(harness.removeFile).toHaveBeenCalledWith('/tmp/codefly-pty-host-abc.sock')
+    expect(harness.removeFile).toHaveBeenCalledWith('/tmp/codeflai-pty-host-abc.sock')
     expect(harness.servers).toHaveLength(2)
-    expect(harness.servers.at(-1)?.listenedTo).toBe('/tmp/codefly-pty-host-abc.sock')
+    expect(harness.servers.at(-1)?.listenedTo).toBe('/tmp/codeflai-pty-host-abc.sock')
     expect(harness.logs.some((line) => line.includes('stale socket'))).toBe(true)
   })
 
@@ -547,7 +547,7 @@ describe('PtyHostServer single instance', () => {
       platform: 'darwin',
       outcomes: [inUse(), inUse()],
       probeLive: false,
-      endpoint: '/tmp/codefly-pty-host-abc.sock'
+      endpoint: '/tmp/codeflai-pty-host-abc.sock'
     })
 
     await expect(harness.server.listen()).resolves.toBe('occupied')

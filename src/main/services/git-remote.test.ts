@@ -4,16 +4,16 @@ import { parseRemoteWebUrl } from './git-remote'
 
 describe('parseRemoteWebUrl', () => {
   it('turns an https GitHub remote into its repository page', () => {
-    expect(parseRemoteWebUrl('https://github.com/denggaopan/codefly.git')).toEqual({
+    expect(parseRemoteWebUrl('https://github.com/denggaopan/codeflai.git')).toEqual({
       host: 'github',
-      webUrl: 'https://github.com/denggaopan/codefly'
+      webUrl: 'https://github.com/denggaopan/codeflai'
     })
   })
 
   it('turns an scp-like ssh remote into an https page on the same host', () => {
-    expect(parseRemoteWebUrl('git@github.com:denggaopan/codefly.git')).toEqual({
+    expect(parseRemoteWebUrl('git@github.com:denggaopan/codeflai.git')).toEqual({
       host: 'github',
-      webUrl: 'https://github.com/denggaopan/codefly'
+      webUrl: 'https://github.com/denggaopan/codeflai'
     })
   })
 

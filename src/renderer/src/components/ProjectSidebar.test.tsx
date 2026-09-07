@@ -28,7 +28,7 @@ import removeIconUrl from '../assets/remove.svg'
 import { useAppStore } from '../store/use-app-store'
 import ProjectSidebar from './ProjectSidebar'
 
-type FakeApi = Window['codefly']
+type FakeApi = Window['codeflai']
 
 const createFakeApi = (): FakeApi => ({
   saveWorkspace: vi.fn(async () => undefined),
@@ -126,7 +126,7 @@ let api: FakeApi
 beforeEach(() => {
   useAppStore.getState().reset()
   api = createFakeApi()
-  window.codefly = api
+  window.codeflai = api
 })
 
 afterEach(() => {
@@ -998,7 +998,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     const restarted: SessionRecord = { ...stoppedSession, status: 'running' }
     api.restoreSession = vi.fn(async () => restarted)
-    window.codefly = api
+    window.codeflai = api
     render(<ProjectSidebar />)
 
     const label = screen.getByText(stoppedSession.title).closest('button') as HTMLButtonElement
@@ -1153,7 +1153,7 @@ describe('ProjectSidebar', () => {
     it('marks project rows draggable and calls reorderProjects with the dropped order', async () => {
       seedStore({ version: 1, projects: [project1, project2], sessions: [] })
       api.reorderProjects = vi.fn(async () => [project2, project1])
-      window.codefly = api
+      window.codeflai = api
       render(<ProjectSidebar />)
 
       const [firstRow, secondRow] = projectRows()
@@ -1225,7 +1225,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     const restarted: SessionRecord = { ...stoppedSession, status: 'running' }
     api.restoreSession = vi.fn(async () => restarted)
-    window.codefly = api
+    window.codeflai = api
     render(<ProjectSidebar />)
 
     expect(screen.getByRole('img', { name: 'Click to restore' })).toHaveAttribute('data-status', 'stopped')
@@ -1329,7 +1329,7 @@ describe('ProjectSidebar', () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     api.deleteSession = vi.fn(async () => ({ status: 'dirty', changedFiles: 2 }) as DeleteSessionResult)
-    window.codefly = api
+    window.codeflai = api
     render(<ProjectSidebar />)
 
     await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
@@ -1428,7 +1428,7 @@ describe('ProjectSidebar', () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     api.deleteSession = vi.fn(async () => ({ status: 'dirty', changedFiles: 1 }) as DeleteSessionResult)
-    window.codefly = api
+    window.codeflai = api
     render(<ProjectSidebar />)
 
     const deleteButton = screen.getByRole('button', { name: `Delete ${stoppedSession.title}` })

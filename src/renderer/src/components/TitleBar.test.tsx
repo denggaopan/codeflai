@@ -59,7 +59,7 @@ function installAnimateStub(): void {
 const rockets = (): NodeListOf<Element> => document.querySelectorAll('.rocket-flight')
 
 const clickBrand = async (): Promise<void> => {
-  await userEvent.click(screen.getByRole('button', { name: 'CodeFly — launch a rocket' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Codeflai — launch a rocket' }))
 }
 
 const readTransform = (keyframe: Keyframe): { x: number; y: number; headingDeg: number } => {

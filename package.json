@@ -1,9 +1,9 @@
 {
-  "name": "codefly",
+  "name": "codeflai",
   "version": "0.19.0",
   "private": true,
   "description": "A Windows and macOS workspace for local terminal and AI coding sessions",
-  "author": "CodeFly Contributors",
+  "author": "Codeflai Contributors",
   "license": "MIT",
   "main": "./out/main/index.js",
   "type": "module",

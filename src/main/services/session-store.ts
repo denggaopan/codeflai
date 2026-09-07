@@ -121,11 +121,11 @@ export class SessionStore {
       : ' The corrupt state could not be archived.'
 
     if (backup.kind === 'valid') {
-      this.startupRecoveryWarning = `CodeFly recovered from backup.${archiveDetail}`
+      this.startupRecoveryWarning = `Codeflai recovered from backup.${archiveDetail}`
       return backup.state
     }
 
-    this.startupRecoveryWarning = `CodeFly could not recover a valid state file and started with empty state.${archiveDetail}`
+    this.startupRecoveryWarning = `Codeflai could not recover a valid state file and started with empty state.${archiveDetail}`
     return emptyState()
   }
 

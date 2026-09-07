@@ -124,7 +124,7 @@ input {
    Motion: 180ms staggered reveal for the sidebar and terminal workspace only.
    ========================================================================== */
 
-@keyframes codefly-reveal {
+@keyframes codeflai-reveal {
   from {
     opacity: 0;
     transform: translateY(8px);
@@ -147,7 +147,7 @@ input {
    document.body instead of reaching for `both` here if that's ever needed. */
 .project-sidebar,
 .terminal-workspace {
-  animation: codefly-reveal 180ms ease-out backwards;
+  animation: codeflai-reveal 180ms ease-out backwards;
 }
 
 .project-sidebar {
@@ -251,7 +251,7 @@ html[data-platform='darwin'] .title-bar {
   transition: transform 140ms ease;
 }
 
-/* The wordmark is set as written, "CodeFly". The tracking and the slightly larger size that
+/* The wordmark is set as written, "Codeflai". The tracking and the slightly larger size that
    come with it are what the case change costs: 0.08em was there to open up small caps, and
    lower-case letters need both less of it and a little more size to carry the same weight. */
 .title-bar-app-name {

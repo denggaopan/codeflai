@@ -17,7 +17,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const IMAGE = 'codefly-mac-builder'
+const IMAGE = 'codeflai-mac-builder'
 const DOCKERFILE = path.join('scripts', 'mac-builder.Dockerfile')
 const CONTAINER_SCRIPT = 'scripts/package-mac.container.sh'
 // On Linux, electron-builder keeps its toolsets under ~/.cache/electron-builder and
@@ -36,8 +36,8 @@ const fail = (message) => {
 
 const hostCacheDir = () =>
   process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, 'codefly-mac-builder', 'cache')
-    : path.join(homedir(), '.cache', 'codefly-mac-builder')
+    ? path.join(process.env.LOCALAPPDATA, 'codeflai-mac-builder', 'cache')
+    : path.join(homedir(), '.cache', 'codeflai-mac-builder')
 
 /** Host proxy settings, rewritten so a loopback proxy is reached through Docker's host alias. */
 const containerProxyEnvironment = () => {

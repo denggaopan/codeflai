@@ -119,8 +119,11 @@ const defaultOpenExternal: OpenExternal = (url) => shell.openExternal(url)
 const defaultTimeoutSignal: TimeoutSignalFactory = (milliseconds) => AbortSignal.timeout(milliseconds)
 
 const defaultLoginItemSettings: LoginItemSettings = {
-  getOpenAtLogin: () => app.getLoginItemSettings().openAtLogin,
-  setOpenAtLogin: (openAtLogin) => app.setLoginItemSettings({ openAtLogin })
+  getOpenAtLogin: () => app.getLoginItemSettings(process.platform === 'win32' ? { path: `"${process.execPath}"`, args: [] } : undefined).openAtLogin,
+  setOpenAtLogin: (openAtLogin) => app.setLoginItemSettings({
+    openAtLogin,
+    ...(process.platform === 'win32' ? { name: 'com.codeflai.desktop', path: process.execPath, args: [] } : {})
+  })
 }
 
 /**
@@ -158,7 +161,7 @@ export class AppInfoService {
     }
 
     // A repository that has never published a release answers 404 here; that is the current
-    // real-world response for CodeFly, so it is a first-class outcome rather than a failure.
+    // real-world response for Codeflai, so it is a first-class outcome rather than a failure.
     if (response.status === 404) return { status: 'none', currentVersion }
     if (!response.ok) return { status: 'error', message: `GitHub returned HTTP ${response.status}.` }
 
@@ -166,11 +169,11 @@ export class AppInfoService {
     try {
       payload = await response.json()
     } catch {
-      return { status: 'error', message: 'GitHub returned a response CodeFly could not read.' }
+      return { status: 'error', message: 'GitHub returned a response Codeflai could not read.' }
     }
 
     const release = latestReleaseSchema.safeParse(payload)
-    if (!release.success) return { status: 'error', message: 'GitHub returned a response CodeFly could not read.' }
+    if (!release.success) return { status: 'error', message: 'GitHub returned a response Codeflai could not read.' }
 
     const latestVersion = stripVersionPrefix(release.data.tag_name)
     if (!parseSemVer(latestVersion)) {

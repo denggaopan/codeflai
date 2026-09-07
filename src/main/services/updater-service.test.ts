@@ -12,12 +12,12 @@ import {
   type UpdaterHttpResponse
 } from './updater-service'
 
-const RELEASE_URL = 'https://api.github.com/repos/denggaopan/codefly/releases/latest'
+const RELEASE_URL = 'https://api.github.com/repos/denggaopan/codeflai/releases/latest'
 const CURRENT_VERSION = '0.4.1'
 const LATEST_VERSION = '0.5.0'
-const INSTALLER_NAME = 'CodeFly-Setup-0.5.0-win-x64.exe'
-const INSTALLER_URL = `https://github.com/denggaopan/codefly/releases/download/v0.5.0/${INSTALLER_NAME}`
-const USER_DATA = join('C:\\Users\\tester\\AppData\\Roaming\\CodeFly')
+const INSTALLER_NAME = 'Codeflai-Setup-0.5.0-win-x64.exe'
+const INSTALLER_URL = `https://github.com/denggaopan/codeflai/releases/download/v0.5.0/${INSTALLER_NAME}`
+const USER_DATA = join('C:\\Users\\tester\\AppData\\Roaming\\Codeflai')
 const UPDATES_DIRECTORY = join(USER_DATA, 'updates')
 const INSTALLER_PATH = join(UPDATES_DIRECTORY, INSTALLER_NAME)
 const PART_PATH = `${INSTALLER_PATH}.part`
@@ -38,7 +38,7 @@ const releaseAsset = (overrides: Record<string, unknown> = {}): unknown => ({
 
 const releasePayload = (overrides: { tag?: string; assets?: unknown[] } = {}): unknown => ({
   tag_name: overrides.tag ?? `v${LATEST_VERSION}`,
-  html_url: `https://github.com/denggaopan/codefly/releases/tag/v${LATEST_VERSION}`,
+  html_url: `https://github.com/denggaopan/codeflai/releases/tag/v${LATEST_VERSION}`,
   id: 7,
   draft: false,
   assets: overrides.assets ?? [releaseAsset()]
@@ -340,13 +340,13 @@ describe('UpdaterService.download: happy path', () => {
     await harness.service.download()
 
     expect(harness.requests.map((request) => request.url)).toEqual([RELEASE_URL, INSTALLER_URL])
-    expect(harness.requests[0]!.headers).toEqual({ Accept: 'application/vnd.github+json', 'User-Agent': 'CodeFly' })
+    expect(harness.requests[0]!.headers).toEqual({ Accept: 'application/vnd.github+json', 'User-Agent': 'Codeflai' })
     // identity encoding: undici would otherwise decompress the body while Content-Length
     // still described the compressed size, failing the completeness check on every download.
     expect(harness.requests[1]!.headers).toEqual({
       Accept: 'application/octet-stream',
       'Accept-Encoding': 'identity',
-      'User-Agent': 'CodeFly'
+      'User-Agent': 'Codeflai'
     })
     // Only the metadata request is time-boxed; a large installer legitimately takes minutes,
     // so the asset request carries the cancellation signal alone. Both requests are
@@ -455,10 +455,10 @@ describe('UpdaterService.download: reusing an installer already on disk', () => 
 
 describe('UpdaterService.download: only trusted GitHub URLs are followed', () => {
   it.each([
-    ['a foreign host', 'https://evil.invalid/CodeFly-Setup-0.5.0-win-x64.exe'],
-    ['plain http', 'http://github.com/denggaopan/codefly/releases/download/v0.5.0/CodeFly-Setup-0.5.0-win-x64.exe'],
-    ['a lookalike host', 'https://github.com.evil.invalid/CodeFly-Setup-0.5.0-win-x64.exe'],
-    ['a file URL', 'file:///C:/temp/CodeFly-Setup-0.5.0-win-x64.exe']
+    ['a foreign host', 'https://evil.invalid/Codeflai-Setup-0.5.0-win-x64.exe'],
+    ['plain http', 'http://github.com/denggaopan/codeflai/releases/download/v0.5.0/Codeflai-Setup-0.5.0-win-x64.exe'],
+    ['a lookalike host', 'https://github.com.evil.invalid/Codeflai-Setup-0.5.0-win-x64.exe'],
+    ['a file URL', 'file:///C:/temp/Codeflai-Setup-0.5.0-win-x64.exe']
   ])('refuses to download from %s', async (_label, url) => {
     const harness = buildHarness({ releasePayload: releasePayload({ assets: [releaseAsset({ browser_download_url: url })] }) })
 
@@ -481,9 +481,9 @@ describe('UpdaterService.download: only trusted GitHub URLs are followed', () =>
   })
 
   it.each([
-    ['a path separator', 'sub/CodeFly-Setup.exe'],
-    ['a parent segment', '..\\CodeFly-Setup.exe'],
-    ['a drive letter', 'C:CodeFly-Setup.exe']
+    ['a path separator', 'sub/Codeflai-Setup.exe'],
+    ['a parent segment', '..\\Codeflai-Setup.exe'],
+    ['a drive letter', 'C:Codeflai-Setup.exe']
   ])('treats an asset named with %s as no installer at all', async (_label, name) => {
     const harness = buildHarness({ releasePayload: releasePayload({ assets: [releaseAsset({ name })] }) })
 
@@ -528,7 +528,7 @@ describe('UpdaterService.download: failures are results, never rejections', () =
 
     await expect(harness.service.download()).resolves.toEqual({
       status: 'error',
-      message: 'GitHub returned a response CodeFly could not read.'
+      message: 'GitHub returned a response Codeflai could not read.'
     })
   })
 
@@ -537,7 +537,7 @@ describe('UpdaterService.download: failures are results, never rejections', () =
 
     await expect(harness.service.download()).resolves.toEqual({
       status: 'error',
-      message: 'GitHub returned a response CodeFly could not read.'
+      message: 'GitHub returned a response Codeflai could not read.'
     })
 
     const thrown = buildHarness({ releaseFails: 'boom' })
@@ -547,7 +547,7 @@ describe('UpdaterService.download: failures are results, never rejections', () =
   it('refuses to download a release that is not newer than the running build', async () => {
     const harness = buildHarness({ version: '0.5.0' })
 
-    await expect(harness.service.download()).resolves.toEqual({ status: 'error', message: 'CodeFly is already up to date.' })
+    await expect(harness.service.download()).resolves.toEqual({ status: 'error', message: 'Codeflai is already up to date.' })
     expect(harness.requests.map((request) => request.url)).toEqual([RELEASE_URL])
   })
 
@@ -571,7 +571,7 @@ describe('UpdaterService.download: failures are results, never rejections', () =
 
   it('reports a release that publishes no Windows installer', async () => {
     const harness = buildHarness({
-      releasePayload: releasePayload({ assets: [releaseAsset({ name: 'CodeFly-0.5.0-win-x64.zip' })] })
+      releasePayload: releasePayload({ assets: [releaseAsset({ name: 'Codeflai-0.5.0-win-x64.zip' })] })
     })
 
     await expect(harness.service.download()).resolves.toEqual({
@@ -804,7 +804,7 @@ describe('UpdaterService.install', () => {
     expect(harness.calls.quits).toBe(0)
   })
 
-  it('keeps CodeFly running when the installer cannot be started', async () => {
+  it('keeps Codeflai running when the installer cannot be started', async () => {
     const harness = buildHarness({ spawnFails: new Error('EACCES: permission denied') })
     await harness.service.download()
 
@@ -911,8 +911,8 @@ describe('UpdaterService: hardening', () => {
     // the user's roaming profile; a crash mid-download leaves a .part behind on top of that.
     const harness = buildHarness({
       existingFiles: {
-        [join(UPDATES_DIRECTORY, 'CodeFly-Setup-0.4.0-win-x64.exe')]: 900,
-        [join(UPDATES_DIRECTORY, 'CodeFly-Setup-0.3.0-win-x64.exe.part')]: 17
+        [join(UPDATES_DIRECTORY, 'Codeflai-Setup-0.4.0-win-x64.exe')]: 900,
+        [join(UPDATES_DIRECTORY, 'Codeflai-Setup-0.3.0-win-x64.exe.part')]: 17
       }
     })
 
@@ -932,7 +932,7 @@ describe('UpdaterService: hardening', () => {
     const harness = buildHarness({
       existingFiles: {
         [INSTALLER_PATH]: 900,
-        [join(UPDATES_DIRECTORY, 'CodeFly-Setup-0.4.0-win-x64.exe')]: 800
+        [join(UPDATES_DIRECTORY, 'Codeflai-Setup-0.4.0-win-x64.exe')]: 800
       }
     })
 

@@ -18,7 +18,7 @@ export type HostComposition = {
  * Not part of `PTY_HOST_ENV`: that file is the wire contract shared with the main process,
  * while this switch exists so a test suite does not have to sit through a real idle timeout.
  */
-export const IDLE_TIMEOUT_ENV = 'CODEFLY_PTY_HOST_IDLE_MS'
+export const IDLE_TIMEOUT_ENV = 'CODEFLAI_PTY_HOST_IDLE_MS'
 
 /**
  * Ignores anything that is not a positive whole number of milliseconds — a zero, a negative
@@ -48,8 +48,8 @@ export const resolveHostComposition = (
   production: HostLocator = cliLocator
 ): HostComposition => {
   const idleTimeoutMs = parseIdleTimeout(environment[IDLE_TIMEOUT_ENV])
-  const agentCommand = environment.CODEFLY_E2E_AGENT_CMD
-  if (environment.CODEFLY_E2E === '1' && agentCommand !== undefined && agentCommand.length > 0) {
+  const agentCommand = environment.CODEFLAI_E2E_AGENT_CMD
+  if (environment.CODEFLAI_E2E === '1' && agentCommand !== undefined && agentCommand.length > 0) {
     return { locator: e2eLocator(agentCommand, production), idleTimeoutMs }
   }
   return { locator: production, idleTimeoutMs }

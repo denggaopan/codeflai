@@ -21,7 +21,7 @@ const adapterFor = (generate: TitleAdapter['generate']): TitleAdapter => ({ gene
 const serviceWith = (
   adapters: Partial<Record<'claude' | 'codex', TitleAdapter>>,
   ensureDirectory = vi.fn(async () => undefined)
-): TitleService => new TitleService(adapters, () => 'C:\\CodeFlyData', ensureDirectory)
+): TitleService => new TitleService(adapters, () => 'C:\\CodeflaiData', ensureDirectory)
 
 const promptFor = (input: string): string => `${TITLE_PROMPT}\n\n<input>\n${input}\n</input>`
 
@@ -62,7 +62,7 @@ describe('TitleService', () => {
 
     await expect(service.generate('session-1', 'claude', input)).resolves.toBe('Generated title')
 
-    const cwd = join('C:\\CodeFlyData', 'title-generator')
+    const cwd = join('C:\\CodeflaiData', 'title-generator')
     expect(ensureDirectory).toHaveBeenCalledWith(cwd)
     expect(generate).toHaveBeenCalledWith(promptFor(input), {
       cwd,
@@ -196,7 +196,7 @@ describe('createCliTitleAdapter', () => {
     )
 
     const pending = adapter.generate('prompt', {
-      cwd: '/Users/Dev Name/Library/Application Support/CodeFly/title-generator',
+      cwd: '/Users/Dev Name/Library/Application Support/Codeflai/title-generator',
       signal: new AbortController().signal,
       maxOutputBytes: TITLE_MAX_OUTPUT_BYTES
     })
@@ -465,7 +465,7 @@ describe.skipIf(process.platform !== 'win32')('createCliTitleAdapter Windows int
     ['claude' as const, 'cmd', '--print'],
     ['codex' as const, 'bat', 'exec --skip-git-repo-check -']
   ])('executes %s through a real spaced .%s shim', async (kind, extension, expectedArgs) => {
-    const directory = await mkdtemp(join(tmpdir(), 'codefly title shim '))
+    const directory = await mkdtemp(join(tmpdir(), 'codeflai title shim '))
     const shim = join(directory, `${kind}.${extension}`)
     const argsFile = join(directory, 'received args.txt')
     const stdinFile = join(directory, 'received stdin.txt')

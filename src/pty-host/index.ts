@@ -8,7 +8,7 @@ import { PtyHostServer } from './server'
 
 /**
  * Entry point of the resident pty-host: an `ELECTRON_RUN_AS_NODE=1` Electron process, spawned
- * detached by the main process, that owns every node-pty CodeFly has open.
+ * detached by the main process, that owns every node-pty Codeflai has open.
  *
  * It is deliberately the one process here with no reason to stop. The UI attaching and
  * detaching, the renderer reloading, the app quitting and even an in-place upgrade all leave
@@ -25,15 +25,15 @@ import { PtyHostServer } from './server'
  * is read ONLY here and wired through the constructor seams `LaunchSpecResolver`,
  * `PtyRegistry`, `PtyHostServer` and `IdleWatchdog` already expose (see
  * `resolveHostComposition`). None of those branch on an environment variable themselves:
- * that rule is what keeps "what CodeFly runs" readable in one place per process, and it is
+ * that rule is what keeps "what Codeflai runs" readable in one place per process, and it is
  * the same rule the domain services on the main side follow.
  *
- * In E2E mode (`CODEFLY_E2E=1` with `CODEFLY_E2E_AGENT_CMD`) only the resolved *executable*
+ * In E2E mode (`CODEFLAI_E2E=1` with `CODEFLAI_E2E_AGENT_CMD`) only the resolved *executable*
  * changes, for agent kinds only. The bypass argv and bypass environment still come from the
  * agent registry through the production launch adapters, because the suite asserts the exact
  * argv Claude and Codex receive — an assertion that is worth nothing if the argv came from a
  * test-only branch. Shell and PowerShell keep resolving through the real locator. With
- * `CODEFLY_E2E` unset — every production build — the composition is byte-for-byte the
+ * `CODEFLAI_E2E` unset — every production build — the composition is byte-for-byte the
  * production one.
  */
 const endpoint = process.env[PTY_HOST_ENV.endpoint]
@@ -83,7 +83,7 @@ const main = async (): Promise<void> => {
     if (event.type === 'exit') watchdog?.evaluate()
   })
 
-  log(`pty-host starting for CodeFly ${appVersion ?? 'unknown'} (idle exit after ${idleTimeoutMs}ms).`)
+  log(`pty-host starting for Codeflai ${appVersion ?? 'unknown'} (idle exit after ${idleTimeoutMs}ms).`)
   const outcome = await server.listen()
   if (outcome === 'occupied') {
     // The host that owns the endpoint owns the sessions too; a second one would answer

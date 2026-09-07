@@ -9,13 +9,13 @@ export type PtyHostLaunchTarget = { runtime: string; script: string }
 const STAGING_ROOT = 'pty-host'
 
 /**
- * Deliberately NOT `CodeFly.exe`. electron-builder's NSIS installer kills the running app
+ * Deliberately NOT `Codeflai.exe`. electron-builder's NSIS installer kills the running app
  * before it writes: its PowerShell branch matches every process whose image path starts with
  * the install directory, and where PowerShell is missing it falls back to matching the image
- * NAME `CodeFly.exe`. The staged copy escapes the first test by living outside the install
+ * NAME `Codeflai.exe`. The staged copy escapes the first test by living outside the install
  * directory and the second one by being called something else.
  */
-const HOST_EXECUTABLE_NAME = 'codefly-pty-host.exe'
+const HOST_EXECUTABLE_NAME = 'codeflai-pty-host.exe'
 
 const HOST_SCRIPT_NAME = 'pty-host.mjs'
 const CHUNKS_DIRECTORY = 'chunks'
@@ -25,7 +25,7 @@ const ASAR_DIRECTORY_NAME = 'app.asar'
 const SCRIPT_SUFFIX = '.mjs'
 
 /**
- * The whole Windows Node runtime: `electron.exe` (which becomes `<INSTDIR>\CodeFly.exe` in a
+ * The whole Windows Node runtime: `electron.exe` (which becomes `<INSTDIR>\Codeflai.exe` in a
  * packaged build, hence `execPath`) plus these two siblings. Measured, not guessed — under
  * `ELECTRON_RUN_AS_NODE=1` those three files alone start Node, `require('node-pty')` and open
  * a ConPTY, with no DLLs, no `locales/` and no `resources.pak`. They also weigh ~256 MB, which
@@ -106,7 +106,7 @@ const defaultLogger: PtyHostRuntimeLogger = (message) => {
 export type PtyHostRuntimeOptions = {
   platform: NodeJS.Platform
   isPackaged: boolean
-  /** `process.execPath`: the packaged `<INSTDIR>\CodeFly.exe`, or Electron's dev binary. */
+  /** `process.execPath`: the packaged `<INSTDIR>\Codeflai.exe`, or Electron's dev binary. */
   execPath: string
   /** `app.getAppPath()`: `<INSTDIR>\resources\app.asar` when packaged, the repo root in dev. */
   appPath: string
@@ -157,7 +157,7 @@ type LinkState = { supported: boolean }
  *
  * The problem this solves is entirely Windows-and-packaged. electron-builder's NSIS installer
  * kills every process whose image path *starts with* the install directory (falling back to
- * matching the image name `CodeFly.exe`), and the outgoing version's uninstaller then runs
+ * matching the image name `Codeflai.exe`), and the outgoing version's uninstaller then runs
  * `un.atomicRMDir`, which renames every single file in the install directory and `Abort`s the
  * whole upgrade if even one rename fails. A host running straight out of `<INSTDIR>` would be
  * killed by the first mechanism — losing every agent CLI, which is the one thing this design
@@ -371,7 +371,7 @@ export class PtyHostRuntime {
    * binaries and a `winpty.dll` alongside. Guessing wrong about which of the 179 files matter
    * would only fail on a user's machine, and the whole package is under 10 MB.
    *
-   * Unlike the chunks, an unreadable node-pty is fatal: there is no build of CodeFly where a
+   * Unlike the chunks, an unreadable node-pty is fatal: there is no build of Codeflai where a
    * host without it could do anything at all.
    */
   private async planNodePty(plan: PlannedFile[]): Promise<void> {

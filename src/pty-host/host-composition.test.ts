@@ -25,11 +25,11 @@ describe('resolveHostComposition without E2E switches', () => {
   })
 
   it.each([
-    [{ CODEFLY_E2E_AGENT_CMD: fixture }],
-    [{ CODEFLY_E2E: '0', CODEFLY_E2E_AGENT_CMD: fixture }],
-    [{ CODEFLY_E2E: 'true', CODEFLY_E2E_AGENT_CMD: fixture }],
-    [{ CODEFLY_E2E: '1' }],
-    [{ CODEFLY_E2E: '1', CODEFLY_E2E_AGENT_CMD: '' }]
+    [{ CODEFLAI_E2E_AGENT_CMD: fixture }],
+    [{ CODEFLAI_E2E: '0', CODEFLAI_E2E_AGENT_CMD: fixture }],
+    [{ CODEFLAI_E2E: 'true', CODEFLAI_E2E_AGENT_CMD: fixture }],
+    [{ CODEFLAI_E2E: '1' }],
+    [{ CODEFLAI_E2E: '1', CODEFLAI_E2E_AGENT_CMD: '' }]
   ])('refuses to substitute anything for %o', async (environment) => {
     const production = productionLocator()
 
@@ -45,7 +45,7 @@ describe('resolveHostComposition in E2E mode', () => {
     const production = productionLocator()
 
     const { locator } = resolveHostComposition(
-      { CODEFLY_E2E: '1', CODEFLY_E2E_AGENT_CMD: fixture },
+      { CODEFLAI_E2E: '1', CODEFLAI_E2E_AGENT_CMD: fixture },
       production
     )
 
@@ -64,7 +64,7 @@ describe('resolveHostComposition in E2E mode', () => {
   // therefore leave the bypass argv, the resume argv and the bypass environment untouched.
   it('changes the executable only, never the argv or the bypass environment', async () => {
     const { locator } = resolveHostComposition(
-      { CODEFLY_E2E: '1', CODEFLY_E2E_AGENT_CMD: '/tmp/fake-agent.cjs' },
+      { CODEFLAI_E2E: '1', CODEFLAI_E2E_AGENT_CMD: '/tmp/fake-agent.cjs' },
       productionLocator()
     )
     const resolver = new LaunchSpecResolver(locator, {}, 'darwin')

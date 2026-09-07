@@ -20,7 +20,7 @@ const jsonResponse = (status: number, body: unknown): HttpResponseLike => ({
   json: async () => body
 })
 
-const release = (tagName: string, htmlUrl = 'https://github.com/denggaopan/codefly/releases/tag/x'): unknown => ({
+const release = (tagName: string, htmlUrl = 'https://github.com/denggaopan/codeflai/releases/tag/x'): unknown => ({
   tag_name: tagName,
   html_url: htmlUrl,
   // Extra fields mirror the real GitHub payload; the service must ignore them.
@@ -118,8 +118,8 @@ describe('AppInfoService.checkForUpdates: request shape', () => {
     await service.checkForUpdates()
 
     expect(requests).toHaveLength(1)
-    expect(requests[0]!.url).toBe('https://api.github.com/repos/denggaopan/codefly/releases/latest')
-    expect(requests[0]!.headers).toEqual({ Accept: 'application/vnd.github+json', 'User-Agent': 'CodeFly' })
+    expect(requests[0]!.url).toBe('https://api.github.com/repos/denggaopan/codeflai/releases/latest')
+    expect(requests[0]!.headers).toEqual({ Accept: 'application/vnd.github+json', 'User-Agent': 'Codeflai' })
     expect(timeouts).toEqual([10_000])
   })
 })
@@ -134,14 +134,14 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
   it('reports `available` with the release URL when the latest tag is newer', async () => {
     const { service } = buildHarness({
       version: '0.4.1',
-      respond: async () => jsonResponse(200, release('v0.5.0', 'https://github.com/denggaopan/codefly/releases/tag/v0.5.0'))
+      respond: async () => jsonResponse(200, release('v0.5.0', 'https://github.com/denggaopan/codeflai/releases/tag/v0.5.0'))
     })
 
     await expect(service.checkForUpdates()).resolves.toEqual({
       status: 'available',
       currentVersion: '0.4.1',
       latestVersion: '0.5.0',
-      releaseUrl: 'https://github.com/denggaopan/codefly/releases/tag/v0.5.0'
+      releaseUrl: 'https://github.com/denggaopan/codeflai/releases/tag/v0.5.0'
     })
   })
 
@@ -164,9 +164,9 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
           ...(release('v0.5.0') as object),
           assets: [
             {
-              name: 'CodeFly-Setup-0.5.0-win-x64.exe',
+              name: 'Codeflai-Setup-0.5.0-win-x64.exe',
               size: 84_231_680,
-              browser_download_url: 'https://github.com/denggaopan/codefly/releases/download/v0.5.0/CodeFly-Setup-0.5.0-win-x64.exe',
+              browser_download_url: 'https://github.com/denggaopan/codeflai/releases/download/v0.5.0/Codeflai-Setup-0.5.0-win-x64.exe',
               // Extra asset fields mirror the real payload and must be ignored.
               content_type: 'application/x-msdownload',
               download_count: 42
@@ -177,7 +177,7 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
 
     await expect(service.checkForUpdates()).resolves.toMatchObject({
       status: 'available',
-      asset: { fileName: 'CodeFly-Setup-0.5.0-win-x64.exe', size: 84_231_680 }
+      asset: { fileName: 'Codeflai-Setup-0.5.0-win-x64.exe', size: 84_231_680 }
     })
     // The download URL stays in the main process: UpdaterService re-resolves it itself.
     await expect(service.checkForUpdates()).resolves.not.toHaveProperty('asset.browser_download_url')
@@ -192,9 +192,9 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
           ...(release('v0.5.0') as object),
           assets: [
             {
-              name: 'CodeFly-Setup-0.5.0-win-x64.exe',
+              name: 'Codeflai-Setup-0.5.0-win-x64.exe',
               size: 84_231_680,
-              browser_download_url: 'https://github.com/denggaopan/codefly/releases/download/v0.5.0/CodeFly-Setup-0.5.0-win-x64.exe'
+              browser_download_url: 'https://github.com/denggaopan/codeflai/releases/download/v0.5.0/Codeflai-Setup-0.5.0-win-x64.exe'
             }
           ]
         })
@@ -213,14 +213,14 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
         jsonResponse(200, {
           ...(release('v0.5.0') as object),
           assets: [
-            { name: 'CodeFly-Portable-0.5.0.exe', size: 10, browser_download_url: 'https://github.com/a.exe' },
-            { name: 'CodeFly-Setup-0.5.0-win-x64.exe', size: 20, browser_download_url: 'https://github.com/b.exe' }
+            { name: 'Codeflai-Portable-0.5.0.exe', size: 10, browser_download_url: 'https://github.com/a.exe' },
+            { name: 'Codeflai-Setup-0.5.0-win-x64.exe', size: 20, browser_download_url: 'https://github.com/b.exe' }
           ]
         })
     })
 
     await expect(service.checkForUpdates()).resolves.toMatchObject({
-      asset: { fileName: 'CodeFly-Setup-0.5.0-win-x64.exe', size: 20 }
+      asset: { fileName: 'Codeflai-Setup-0.5.0-win-x64.exe', size: 20 }
     })
   })
 
@@ -230,7 +230,7 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
       respond: async () =>
         jsonResponse(200, {
           ...(release('v0.5.0') as object),
-          assets: [{ name: 'CodeFly-0.5.0-win-x64.zip', size: 12, browser_download_url: 'https://github.com/a.zip' }]
+          assets: [{ name: 'Codeflai-0.5.0-win-x64.zip', size: 12, browser_download_url: 'https://github.com/a.zip' }]
         })
     })
 
@@ -246,7 +246,7 @@ describe('AppInfoService.checkForUpdates: outcomes', () => {
       respond: async () =>
         jsonResponse(200, {
           ...(release('v0.5.0') as object),
-          assets: [{ name: '../CodeFly-Setup.exe', size: 12, browser_download_url: 'https://github.com/a.exe' }]
+          assets: [{ name: '../Codeflai-Setup.exe', size: 12, browser_download_url: 'https://github.com/a.exe' }]
         })
     })
 
@@ -350,7 +350,7 @@ describe('AppInfoService.checkForUpdates: failures never cross the IPC boundary 
 
     await expect(service.checkForUpdates()).resolves.toEqual({
       status: 'error',
-      message: 'GitHub returned a response CodeFly could not read.'
+      message: 'GitHub returned a response Codeflai could not read.'
     })
   })
 
@@ -359,7 +359,7 @@ describe('AppInfoService.checkForUpdates: failures never cross the IPC boundary 
 
     await expect(service.checkForUpdates()).resolves.toEqual({
       status: 'error',
-      message: 'GitHub returned a response CodeFly could not read.'
+      message: 'GitHub returned a response Codeflai could not read.'
     })
   })
 

@@ -1,8 +1,8 @@
-import type { CodeFlyApi } from './index'
+import type { CodeflaiApi } from './index'
 
 declare global {
   interface Window {
-    codefly: CodeFlyApi
+    codeflai: CodeflaiApi
   }
 }
 

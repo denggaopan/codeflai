@@ -28,7 +28,7 @@ export function useQuickPromptSort(onMove: (sourceId: string, targetId: string, 
       }
       event.stopPropagation()
       // Never offer text/plain: dropping a prompt on xterm must not paste a command.
-      event.dataTransfer.setData('application/x-codefly-quick-prompt', id)
+      event.dataTransfer.setData('application/x-codeflai-quick-prompt', id)
       event.dataTransfer.effectAllowed = 'move'
       activeRef.current = { id, surface }
       suppressClickRef.current = true

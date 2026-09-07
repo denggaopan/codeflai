@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createNetFetch, type NetFetch } from './net-fetch'
 
-const URL = 'https://api.github.com/repos/denggaopan/codefly/releases/latest'
+const URL = 'https://api.github.com/repos/denggaopan/codeflai/releases/latest'
 
 const streamOf = (chunks: readonly Uint8Array[]): AsyncIterable<Uint8Array> => ({
   async *[Symbol.asyncIterator]() {
@@ -30,11 +30,11 @@ describe('createNetFetch', () => {
     const fetch = createNetFetch(fakeNetFetch({ ok: true, status: 200 }, calls))
     const controller = new AbortController()
 
-    await fetch(URL, { headers: { Accept: 'application/octet-stream', 'User-Agent': 'CodeFly' }, signal: controller.signal })
+    await fetch(URL, { headers: { Accept: 'application/octet-stream', 'User-Agent': 'Codeflai' }, signal: controller.signal })
 
     expect(calls).toHaveLength(1)
     expect(calls[0]!.url).toBe(URL)
-    expect(calls[0]!.init.headers).toEqual({ Accept: 'application/octet-stream', 'User-Agent': 'CodeFly' })
+    expect(calls[0]!.init.headers).toEqual({ Accept: 'application/octet-stream', 'User-Agent': 'Codeflai' })
     expect(calls[0]!.init.signal).toBe(controller.signal)
     // The requests only ever go to GitHub's public API and CDN; nothing the default session
     // may hold should ride along.

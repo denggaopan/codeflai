@@ -26,7 +26,7 @@ const iconUrls: Readonly<Record<SessionKind, string>> = {
 /**
  * Brand icon for each session kind, shared by the sidebar rows and the session launcher so
  * a kind always shows the same mark. The codex/cmd sources are recolored light in their
- * asset files because CodeFly's UI is dark-only.
+ * asset files because Codeflai's UI is dark-only.
  *
  * All five opt-in agents use their vendors' own marks, supplied by the maintainer. Two came
  * from raster sources and are stored as PNG rather than SVG: Cursor's arrived greyscale on

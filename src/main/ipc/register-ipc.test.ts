@@ -642,7 +642,7 @@ describe('registerIpc: app:update-check', () => {
       status: 'available',
       currentVersion: '0.4.1',
       latestVersion: '0.5.0',
-      releaseUrl: 'https://github.com/denggaopan/codefly/releases/tag/v0.5.0'
+      releaseUrl: 'https://github.com/denggaopan/codeflai/releases/tag/v0.5.0'
     }
     appInfoService.checkForUpdates.mockResolvedValue(result)
 
@@ -653,7 +653,7 @@ describe('registerIpc: app:update-check', () => {
 describe('registerIpc: app:update-download / app:update-cancel / app:update-install', () => {
   it('starts a download with no renderer-supplied payload and returns the result verbatim', async () => {
     const { ipcMain, updaterService } = buildHarness()
-    const result: UpdateDownloadResult = { status: 'ready', version: '0.5.0', fileName: 'CodeFly-Setup-0.5.0-win-x64.exe' }
+    const result: UpdateDownloadResult = { status: 'ready', version: '0.5.0', fileName: 'Codeflai-Setup-0.5.0-win-x64.exe' }
     updaterService.download.mockResolvedValue(result)
 
     await expect(ipcMain.invoke(IPC.appUpdateDownload)).resolves.toEqual(result)

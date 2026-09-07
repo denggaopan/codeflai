@@ -10,7 +10,7 @@ import type { CommandRunner, CommandResult } from '../infrastructure/command-run
 import { WorktreeService } from './worktree-service'
 import type { SessionLocation, WorktreeFileSystem } from './worktree-service'
 
-const TEMP_PREFIX = 'codefly-worktree-service-'
+const TEMP_PREFIX = 'codeflai-worktree-service-'
 const roots = new Set<string>()
 const clock = () => new Date(2026, 7, 26, 12)
 
@@ -31,8 +31,8 @@ const makeRepo = async (commit = true): Promise<string> => {
 
 const initializeRepo = async (root: string, commit = true): Promise<void> => {
   await git(root, ['init'])
-  await git(root, ['config', 'user.email', 'codefly-tests@example.com'])
-  await git(root, ['config', 'user.name', 'CodeFly Tests'])
+  await git(root, ['config', 'user.email', 'codeflai-tests@example.com'])
+  await git(root, ['config', 'user.name', 'Codeflai Tests'])
   if (commit) {
     await writeFile(join(root, 'tracked.txt'), 'committed\n', 'utf8')
     await writeFile(join(root, '.gitignore'), 'dist/\n', 'utf8')
@@ -279,7 +279,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     await new WorktreeService(undefined, clock).create(projectFor(root), [])
 
     expect(await readFile(excludePath, 'utf8')).toBe('first\r\nsecond\r\n/.worktrees/\r\n')
-    await expectMissing(join(root, '.git', '.codefly-exclude.lock'))
+    await expectMissing(join(root, '.git', '.codeflai-exclude.lock'))
   })
 
   it('rejects a .worktrees junction without writing through it', async () => {
@@ -349,7 +349,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     await expect(new WorktreeService(undefined, clock, fileSystem).create(projectFor(root), [])).rejects.toThrow(/symbolic|changed/i)
     expect(await readFile(replacement, 'utf8')).toBe('external sentinel\n')
     expect(await readFile(heldPath, 'utf8')).not.toContain('/.worktrees/')
-    await expectMissing(join(root, '.git', '.codefly-exclude.lock'))
+    await expectMissing(join(root, '.git', '.codeflai-exclude.lock'))
   })
 
   it('places the exclude lock directly under the physical common dir when info is a junction', async () => {
@@ -369,7 +369,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
       stat,
       realpath,
       async open(path, flags) {
-        if (flags === 'wx' && basename(path) === '.codefly-exclude.lock') lockPaths.push(resolve(path))
+        if (flags === 'wx' && basename(path) === '.codeflai-exclude.lock') lockPaths.push(resolve(path))
         return open(path, flags)
       },
       unlink,
@@ -378,9 +378,9 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
 
     await new WorktreeService(undefined, clock, fileSystem).create(projectFor(root), [])
 
-    expect(lockPaths).toEqual([join(await realpath(commonDir), '.codefly-exclude.lock')])
-    await expectMissing(join(safeInfo, 'codefly-exclude.lock'))
-    await expectMissing(join(commonDir, '.codefly-exclude.lock'))
+    expect(lockPaths).toEqual([join(await realpath(commonDir), '.codeflai-exclude.lock')])
+    await expectMissing(join(safeInfo, 'codeflai-exclude.lock'))
+    await expectMissing(join(commonDir, '.codeflai-exclude.lock'))
   })
 
   it('commits the exclude replacement to its verified physical entry when the info junction changes', async () => {
@@ -397,7 +397,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     const fileSystem: WorktreeFileSystem = {
       access, readdir, readFile: (path, encoding) => readFile(path, encoding), mkdir, lstat, stat, realpath, open, unlink,
       async rename(oldPath, newPath) {
-        if (!swapped && basename(oldPath).startsWith('.codefly-exclude-') && basename(oldPath).endsWith('.tmp')) {
+        if (!swapped && basename(oldPath).startsWith('.codeflai-exclude-') && basename(oldPath).endsWith('.tmp')) {
           swapped = true
           await unlink(infoPath)
           await symlink(external, infoPath, 'junction')
@@ -417,7 +417,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     const root = await makeRepo()
     const external = await makeDirectory()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     const target = join(external, 'lock-target')
     await writeFile(target, 'external lock sentinel\n', 'utf8')
     await symlink(target, lockPath, 'file')
@@ -431,7 +431,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('never reclaims an old exclude lock owned by a live process', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     const metadata = JSON.stringify({ nonce: 'live', pid: process.pid, createdAt: 0 })
     await writeFile(lockPath, metadata, 'utf8')
     const startedAt = Date.now()
@@ -448,7 +448,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     async (failingMethod) => {
       const root = await makeRepo()
       const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-      const lockPath = join(commonDir, '.codefly-exclude.lock')
+      const lockPath = join(commonDir, '.codeflai-exclude.lock')
       let injected = false
       let closed = false
       const fileSystem: WorktreeFileSystem = {
@@ -511,7 +511,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('does not delete a replacement installed while exclude lock initialization fails', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     const heldLock = `${lockPath}.held`
     let swapped = false
     const fileSystem: WorktreeFileSystem = {
@@ -546,7 +546,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('cleans the saved lock identity when release close reports an error and permits immediate reacquisition', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     let closeFailed = false
     const fileSystem: WorktreeFileSystem = {
       access, readdir, readFile: (path, encoding) => readFile(path, encoding), mkdir, lstat, stat, realpath, unlink, rename,
@@ -582,7 +582,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('preserves release close and cleanup errors while released metadata permits immediate recovery', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     let closeFailed = false
     let cleanupFailed = false
     const fileSystem: WorktreeFileSystem = {
@@ -633,7 +633,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('does not reclaim a fresh malformed exclude lock', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, 'malformed fresh lock\n', 'utf8')
 
     await expect(new WorktreeService(undefined, clock, undefined, { timeoutMs: 50, pollMs: 5 }).create(projectFor(root), []))
@@ -645,7 +645,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('reclaims an old malformed exclude lock after the conservative threshold', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, 'malformed old lock\n', 'utf8')
     await utimes(lockPath, new Date(0), new Date(0))
 
@@ -657,8 +657,8 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('does not unlink a replacement of the acquired exclude lock', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
-    const heldLock = join(commonDir, '.codefly-exclude.lock.held')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
+    const heldLock = join(commonDir, '.codeflai-exclude.lock.held')
     let replaced = false
     const fileSystem: WorktreeFileSystem = {
       access,
@@ -690,7 +690,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('does not delete a replacement installed while release close reports an error', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     const heldLock = `${lockPath}.held`
     let swapped = false
     const fileSystem: WorktreeFileSystem = {
@@ -726,7 +726,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('recovers an ordinary exclude lock left by a dead process', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, JSON.stringify({ nonce: 'dead', pid: 2147483647, ownerStartedAt: 0, createdAt: 0 }), 'utf8')
 
     await new WorktreeService(undefined, clock).create(projectFor(root), [])
@@ -737,7 +737,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('retries lock competition when an EEXIST lock disappears before lstat', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, 'transient', 'utf8')
     let released = false
     const fileSystem: WorktreeFileSystem = {
@@ -762,7 +762,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('retries when a stale lock disappears between inspection and quarantine claim', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, JSON.stringify({ nonce: 'dead', pid: 2147483647, ownerStartedAt: 0, createdAt: 0 }), 'utf8')
     let disappeared = false
     const fileSystem: WorktreeFileSystem = {
@@ -785,7 +785,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
   it('waits for a live exclude lock instead of stealing it', async () => {
     const root = await makeRepo()
     const commonDir = await realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).stdout.trim()))
-    const lockPath = join(commonDir, '.codefly-exclude.lock')
+    const lockPath = join(commonDir, '.codeflai-exclude.lock')
     await writeFile(lockPath, JSON.stringify({ nonce: 'live', pid: process.pid, ownerStartedAt: clock().getTime() - 1000, createdAt: clock().getTime() }), 'utf8')
     const release = setTimeout(() => void unlink(lockPath), 50)
     try {
@@ -823,7 +823,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
       access, readdir, readFile: (path, encoding) => readFile(path, encoding), mkdir, lstat, stat, realpath, unlink, rename,
       async open(path, flags) {
         const handle = await open(path, flags)
-        if (flags !== 'wx' || !basename(path).startsWith('.codefly-exclude-') || !basename(path).endsWith('.tmp')) return handle
+        if (flags !== 'wx' || !basename(path).startsWith('.codeflai-exclude-') || !basename(path).endsWith('.tmp')) return handle
         return new Proxy(handle, {
           get(target, property) {
             if (property === 'close' && failingMethod === 'close') {
@@ -843,8 +843,8 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
     await expect(new WorktreeService(undefined, clock, fileSystem).create(projectFor(root), [])).rejects.toThrow(`injected ${failingMethod} failure`)
 
     expect(await readFile(excludePath, 'utf8')).toBe(original)
-    expect((await readdir(dirname(excludePath))).filter((name) => name.startsWith('.codefly-exclude-') && name.endsWith('.tmp'))).toEqual([])
-    await expectMissing(join(commonDir, '.codefly-exclude.lock'))
+    expect((await readdir(dirname(excludePath))).filter((name) => name.startsWith('.codeflai-exclude-') && name.endsWith('.tmp'))).toEqual([])
+    await expectMissing(join(commonDir, '.codeflai-exclude.lock'))
   })
 
   it('uses the shared common-dir exclude from a linked worktree repository root', async () => {
@@ -1402,7 +1402,7 @@ describe.sequential('WorktreeService real Git lifecycle', { timeout: 30_000 }, (
 
   it('honors the exclude path returned by git rev-parse --git-path', async () => {
     const root = await makeRepo()
-    const alternateExclude = join(root, '.git', 'codefly-info', 'exclude')
+    const alternateExclude = join(root, '.git', 'codeflai-info', 'exclude')
     const runner: CommandRunner = {
       async run(file, args, cwd) {
         if (file === 'git' && args.length === 5 && args[0] === '-C' && args[1] === root && args[2] === 'rev-parse' && args[3] === '--git-path' && args[4] === 'info/exclude') {

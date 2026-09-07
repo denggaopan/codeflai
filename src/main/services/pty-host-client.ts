@@ -194,7 +194,7 @@ export class PtyHostClient {
 
   /**
    * Drops the connection without touching a single PTY. This is the app-exit path: the whole
-   * reason the host exists is that quitting CodeFly, reloading it, or replacing it with a new
+   * reason the host exists is that quitting Codeflai, reloading it, or replacing it with a new
    * build must leave the agents running.
    *
    * Does not notify `onDisconnected` — this disconnection is the caller's own decision, and

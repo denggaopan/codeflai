@@ -3,7 +3,7 @@ import type { Translations } from './en-types'
 /**
  * Simplified Chinese dictionary. Typed as `Translations`, so adding a key to en.ts breaks
  * the build here until it is translated — the dictionaries can never silently drift apart.
- * Product names (CodeFly, Claude, Codex, PowerShell, VS Code) and CLI flags stay verbatim.
+ * Product names (Codeflai, Claude, Codex, PowerShell, VS Code) and CLI flags stay verbatim.
  */
 export const zhCN: Translations = {
   'common.cancel': '取消',
@@ -12,7 +12,7 @@ export const zhCN: Translations = {
   'common.remove': '移除',
 
   'titleBar.settings': '设置',
-  'titleBar.launchRocket': 'CodeFly — 发射一枚火箭',
+  'titleBar.launchRocket': 'Codeflai — 发射一枚火箭',
   'titleBar.pinWindow': '窗口置顶',
   'titleBar.unpinWindow': '取消窗口置顶',
 
@@ -148,18 +148,18 @@ export const zhCN: Translations = {
   'settings.versionUnknown': '未知',
   'settings.checkForUpdates': '检查更新',
   'settings.checking': '正在检查更新…',
-  'settings.upToDate': 'CodeFly 已是最新版本。',
+  'settings.upToDate': 'Codeflai 已是最新版本。',
   'settings.updateAvailable': '新版本 {version} 可用。',
   'settings.updateNoReleases': '尚未发布任何版本。',
   'settings.updateFailed': '检查更新失败：{reason}',
   'settings.updateNow': '立即更新',
-  'settings.about': '关于 CodeFly',
+  'settings.about': '关于 Codeflai',
   'settings.linkRepository': '项目地址',
   'settings.linkChangelog': '更新日志',
   'settings.linkDownload': '下载地址',
 
   'update.availableTitle': '新版本 {version} 可用',
-  'update.availableBody': 'CodeFly 可以为你下载安装包，待你准备好后再安装。',
+  'update.availableBody': 'Codeflai 可以为你下载安装包，待你准备好后再安装。',
   'update.noInstallerBody': '请前往 Releases 页面下载适用于当前平台的版本并手动安装。',
   'update.updateNow': '立即更新',
   'update.later': '稍后更新',
@@ -170,10 +170,10 @@ export const zhCN: Translations = {
   'update.downloadProgressLabel': '下载进度',
   'update.cancelDownload': '取消',
   'update.readyTitle': '版本 {version} 已可安装',
-  'update.readyBody': 'CodeFly 将关闭并运行安装程序。请先保存正在运行的会话中的工作。',
+  'update.readyBody': 'Codeflai 将关闭并运行安装程序。请先保存正在运行的会话中的工作。',
   'update.installNow': '立即安装',
   'update.installingTitle': '正在启动版本 {version} 的安装程序',
-  'update.installingBody': 'CodeFly 正在关闭会话并交由安装程序接管。',
+  'update.installingBody': 'Codeflai 正在关闭会话并交由安装程序接管。',
   'update.failedTitle': '更新下载失败',
   'update.tryAgain': '重试'
 }

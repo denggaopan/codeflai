@@ -14,7 +14,7 @@ describe('ProjectService.clone', () => {
   const repositoryUrl = 'https://example.com/team/my-repo.git'
 
   beforeEach(async () => {
-    directory = await mkdtemp(join(tmpdir(), 'codefly-clone-'))
+    directory = await mkdtemp(join(tmpdir(), 'codeflai-clone-'))
     directory = await realpath(directory)
     store = new SessionStore(join(directory, 'state.json'))
   })

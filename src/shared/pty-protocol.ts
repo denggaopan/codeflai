@@ -9,7 +9,7 @@ import { sessionKindSchema } from './contracts'
 /**
  * The wire format between the Electron main process and the resident pty-host process.
  *
- * The host outlives the UI: closing the window, reloading the renderer, or quitting CodeFly
+ * The host outlives the UI: closing the window, reloading the renderer, or quitting Codeflai
  * leaves every PTY — and therefore every agent CLI — running, and the next UI attaches to
  * them. That is only safe if both sides agree on this file, so the version below is bumped
  * whenever a message shape changes in a way an older peer would misread. A UI that meets a
@@ -38,7 +38,7 @@ const dimensionSchema = z.number().int().min(1).max(1000)
 
 /**
  * What the host knows about one live PTY. `hostAppVersion` in the welcome tells the UI which
- * CodeFly build spawned these — after an in-place update the host is deliberately the older
+ * Codeflai build spawned these — after an in-place update the host is deliberately the older
  * build, still holding the sessions that were running before the installer ran.
  */
 export const ptySessionSummarySchema = z.strictObject({
@@ -179,9 +179,9 @@ export type PtyRequestType = PtyRequest['type']
 
 /** Environment variables the main process sets when it spawns a host. */
 export const PTY_HOST_ENV = {
-  endpoint: 'CODEFLY_PTY_HOST_ENDPOINT',
-  appVersion: 'CODEFLY_PTY_HOST_APP_VERSION',
-  logFile: 'CODEFLY_PTY_HOST_LOG'
+  endpoint: 'CODEFLAI_PTY_HOST_ENDPOINT',
+  appVersion: 'CODEFLAI_PTY_HOST_APP_VERSION',
+  logFile: 'CODEFLAI_PTY_HOST_LOG'
 } as const
 
 /**
@@ -193,9 +193,13 @@ export const PTY_HOST_ENV = {
 export const ptyHostEndpoint = (userDataPath: string, platform: NodeJS.Platform): string => {
   const fingerprint = createHash('sha256').update(userDataPath).digest('hex').slice(0, 16)
   return platform === 'win32'
-    ? `\\\\.\\pipe\\codefly-pty-host-${fingerprint}`
-    : join(tmpdir(), `codefly-pty-host-${fingerprint}.sock`)
+    ? `\\\\.\\pipe\\codeflai-pty-host-${fingerprint}`
+    : join(tmpdir(), `codeflai-pty-host-${fingerprint}.sock`)
 }
+
+/** Discovery only: no new host is ever spawned with the pre-rename endpoint. */
+export const legacyPtyHostEndpoint = (userDataPath: string, platform: NodeJS.Platform): string =>
+  ptyHostEndpoint(userDataPath, platform).replace('codeflai-pty-host-', 'codefly-pty-host-')
 
 /**
  * Whether a UI speaking `PTY_PROTOCOL_VERSION` can adopt the sessions of a host that

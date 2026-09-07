@@ -20,7 +20,7 @@ describe('stored quick prompts', () => {
   })
 
   it('migrates named prompts without starring them or losing their content', () => {
-    window.localStorage.setItem('codefly.quickPhrases', JSON.stringify([
+    window.localStorage.setItem('codeflai.quickPhrases', JSON.stringify([
       { id: 'old', title: 'Old name', content: '  Keep this\r\nexact content\n' },
       { id: 'new', content: 'Already starred', starred: true }
     ]))
@@ -34,7 +34,7 @@ describe('stored quick prompts', () => {
   })
 
   it('still reads legacy content if migration storage is unavailable', () => {
-    window.localStorage.setItem('codefly.quickPhrases', JSON.stringify([{ id: 'old', title: 'Old', content: 'Keep this' }]))
+    window.localStorage.setItem('codeflai.quickPhrases', JSON.stringify([{ id: 'old', title: 'Old', content: 'Keep this' }]))
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage full') })
     expect(readStoredQuickPrompts()).toEqual([{ id: 'old', content: 'Keep this', starred: false }])
   })

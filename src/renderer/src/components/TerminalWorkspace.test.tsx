@@ -176,10 +176,10 @@ vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: FakeFitAddon }))
 vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: FakeWebglAddon }))
 
-// Deliberately NOT annotated with a `CodeFlyApi`-shaped return type (see App.test.tsx): that
+// Deliberately NOT annotated with a `CodeflaiApi`-shaped return type (see App.test.tsx): that
 // would widen every vi.fn() property down to a plain function type and lose access to mock
 // helpers like mockResolvedValueOnce/mockClear used below. Structural compatibility with
-// window.codefly is still checked at the `window.codefly = api` assignment site.
+// window.codeflai is still checked at the `window.codeflai = api` assignment site.
 const createFakeApi = () => {
   const dataListeners = new Set<(payload: { sessionId: string; data: string; sequence?: number }) => void>()
   const exitListeners = new Set<(payload: { sessionId: string; exitCode: number }) => void>()
@@ -308,7 +308,7 @@ let api: FakeApi
 beforeEach(() => {
   useAppStore.getState().reset()
   api = createFakeApi()
-  window.codefly = api
+  window.codeflai = api
   FakeTerminal.instances = []
   FakeFitAddon.instances = []
   FakeWebglAddon.instances = []
@@ -466,11 +466,11 @@ describe('TerminalWorkspace', () => {
     seedStore(runningClaudeSession)
     render(<TerminalWorkspace />)
 
-    api.emitTerminalData({ sessionId: runningClaudeSession.id, data: 'CODEFLY_FAKE_AGENT_READY\r\n' })
+    api.emitTerminalData({ sessionId: runningClaudeSession.id, data: 'CODEFLAI_FAKE_AGENT_READY\r\n' })
     act(() => useAppStore.setState({ activeSessionId: runningClaudeSession.id }))
 
     await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
-    expect(FakeTerminal.instances[0].write).toHaveBeenCalledWith('CODEFLY_FAKE_AGENT_READY\r\n')
+    expect(FakeTerminal.instances[0].write).toHaveBeenCalledWith('CODEFLAI_FAKE_AGENT_READY\r\n')
   })
 
   it('does not redraw pre-hydration live output already covered by the pty-host replay', async () => {

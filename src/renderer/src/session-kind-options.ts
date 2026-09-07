@@ -2,7 +2,7 @@ import type { HostPlatform, SessionKind, SessionKindPreferences } from '../../sh
 import type { TranslationKey } from './i18n'
 
 /**
- * `primary` kinds are the ones CodeFly has always offered and enables by default; `additional`
+ * `primary` kinds are the ones Codeflai has always offered and enables by default; `additional`
  * kinds are the opt-in agent CLIs. Settings renders the two groups separately — the additional
  * one collapsed — so switching on a tenth kind never turns the section into a wall of rows.
  * The launcher ignores the grouping entirely and just honours the enabled switches.

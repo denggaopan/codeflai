@@ -174,7 +174,7 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
             <div className="add-project-directory">
               <input id="clone-target-directory" value={targetDirectory} readOnly placeholder={t('addProject.directoryPlaceholder')} title={targetDirectory} />
               <button type="button" className="settings-update-button" disabled={busy !== null} onClick={() => void run(async () => {
-                const selected = await window.codefly.selectCloneDirectory()
+                const selected = await window.codeflai.selectCloneDirectory()
                 if (selected) setTargetDirectory(selected)
                 return false
               }, 'directory')}>

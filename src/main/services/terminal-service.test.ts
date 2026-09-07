@@ -530,7 +530,7 @@ describe('TerminalService lifecycle', () => {
 
 describe.skipIf(process.platform !== 'win32')('TerminalService Windows shim integration', () => {
   it('runs a spaced command shim with the exact fixed argument through node-pty', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'codefly terminal shim '))
+    const directory = await mkdtemp(join(tmpdir(), 'codeflai terminal shim '))
     const shim = join(directory, 'claude.cmd')
     const argsFile = join(directory, 'received args.txt')
     const script = ['@echo off', `> "${argsFile}" echo %*`, 'exit /b 0', ''].join('\r\n')

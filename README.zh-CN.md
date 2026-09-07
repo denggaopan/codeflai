@@ -1,23 +1,26 @@
-# CodeFly
+# Codeflai
 
 [English](README.md) | 简体中文
 
-**CodeFly 是一个桌面应用，用一个窗口管理本地项目的多个终端和 AI 编程 agent 会话。**
+项目与桌面应用已由 **CodeFly** 更名为 **Codeflai**。
 
-选好项目、选好会话类型，CodeFly 就把它启动起来——Windows 上是 PowerShell 或命令提示符，macOS 上是你的登录 Shell，另外还有最多七种编程 agent CLI，包括 Claude Code 和 Codex。
+**Codeflai 是一个桌面应用，用一个窗口管理本地项目的多个终端和 AI 编程 agent 会话。**
 
-它是终端工作区，不是代码编辑器。每个会话要么直接跑在项目目录里，要么跑在自己独立的 Git worktree 和同名分支上，让 agent 干活时不碰你正在别处编辑的内容。所有 agent 都通过你自己已安装、已登录的 CLI 运行：**CodeFly 从不收集、存储或读取 API 密钥和 CLI 凭据。**
+选好项目、选好会话类型，Codeflai 就把它启动起来——Windows 上是 PowerShell 或命令提示符，macOS 上是你的登录 Shell，另外还有最多七种编程 agent CLI，包括 Claude Code 和 Codex。
+
+它是终端工作区，不是代码编辑器。每个会话要么直接跑在项目目录里，要么跑在自己独立的 Git worktree 和同名分支上，让 agent 干活时不碰你正在别处编辑的内容。所有 agent 都通过你自己已安装、已登录的 CLI 运行：**Codeflai 从不收集、存储或读取 API 密钥和 CLI 凭据。**
 
 > **开启 agent 会话之前，请先读[agent 会话与权限绕过](#agent-会话与权限绕过)。**
 > agent 会话是刻意关掉厂商的权限确认与沙箱保护来运行的，本版本没有把它开回来的开关。
 
-**[下载最新版本](https://github.com/denggaopan/codefly/releases/latest)**
+**[下载最新版本](https://github.com/denggaopan/codeflai/releases/latest)**
 
 ---
 
 ## 目录
 
 - [安装](#安装)
+- [从 CodeFly 升级](#从-codefly-升级)
 - [第一次使用](#第一次使用)
 - [界面](#界面)
 - [添加项目](#添加项目)
@@ -32,7 +35,7 @@
 - [设置](#设置)
 - [更新](#更新)
 - [关闭窗口后会话继续运行](#关闭窗口后会话继续运行)
-- [CodeFly 记住了什么](#codefly-记住了什么)
+- [Codeflai 记住了什么](#codeflai-记住了什么)
 - [疑难解答](#疑难解答)
 - [开源协议](#开源协议)
 
@@ -44,31 +47,48 @@
 | --- | --- |
 | **Windows** | Windows 10 或 11，x64。 |
 | **macOS** | Intel 或 Apple Silicon Mac，下载对应架构的压缩包。 |
-| **Git**（推荐） | worktree 会话和在 CodeFly 内克隆仓库需要它。没有 Git 应用照样能用，只是所有会话都跑在项目自身目录里。 |
-| **agent CLI**（按需） | 想用哪个 agent，先自己安装并登录它的 CLI——CodeFly 负责启动它，不替代它。可用类型见[新建会话](#新建会话)。 |
+| **Git**（推荐） | worktree 会话和在 Codeflai 内克隆仓库需要它。没有 Git 应用照样能用，只是所有会话都跑在项目自身目录里。 |
+| **agent CLI**（按需） | 想用哪个 agent，先自己安装并登录它的 CLI——Codeflai 负责启动它，不替代它。可用类型见[新建会话](#新建会话)。 |
 | **VS Code**（可选） | 用于项目操作菜单里的「Open project in VS Code（在 VS Code 中打开项目）」。 |
 
 ### Windows
 
-在 [Releases 页面](https://github.com/denggaopan/codefly/releases/latest)下载 `CodeFly-Setup-<版本号>-win-x64.exe` 并运行。安装包未做代码签名，SmartScreen 可能会拦一次——选「更多信息」→「仍要运行」。装好之后就可以在应用内更新了，见[更新](#更新)。
+在 [Releases 页面](https://github.com/denggaopan/codeflai/releases/latest)下载 `Codeflai-Setup-<版本号>-win-x64.exe` 并运行。安装包未做代码签名，SmartScreen 可能会拦一次——选「更多信息」→「仍要运行」。装好之后就可以在应用内更新了，见[更新](#更新)。
 
 ### macOS
 
 macOS 版本是未签名、未公证的内部测试包，首次启动前需要执行两条命令。
 
-1. 下载与你的 Mac 匹配的压缩包：Apple Silicon 用 `CodeFly-<版本号>-mac-arm64.zip`，Intel 用 `CodeFly-<版本号>-mac-x64.zip`。
-2. 解压后在「终端」里进入 `CodeFly.app` 所在目录，执行：
+1. 下载与你的 Mac 匹配的压缩包：Apple Silicon 用 `Codeflai-<版本号>-mac-arm64.zip`，Intel 用 `Codeflai-<版本号>-mac-x64.zip`。
+2. 解压后在「终端」里进入 `Codeflai.app` 所在目录，执行：
 
    ```bash
-   xattr -cr CodeFly.app
-   codesign --force --deep --sign - CodeFly.app
+   xattr -cr Codeflai.app
+   codesign --force --deep --sign - Codeflai.app
    ```
 
-3. 需要的话把 `CodeFly.app` 移到 `/Applications`，然后从 Finder 打开。如果 Gatekeeper 仍然阻止，在「系统设置 → 隐私与安全性」中选「仍要打开」。
+3. 需要的话把 `Codeflai.app` 移到 `/Applications`，然后从 Finder 打开。如果 Gatekeeper 仍然阻止，在「系统设置 → 隐私与安全性」中选「仍要打开」。
 
 这个临时签名只对你这份副本生效，不等于 Developer ID 签名。
 
-**macOS 上有一个值得提前知道的坑：**从 Finder 启动的应用不会继承「终端」的 `PATH`。所以 CodeFly 通过你的登录 Shell 查找 agent CLI，并额外检查 Homebrew 和 `~/.local/bin` 等常见位置。如果某个明明装好的 CLI 显示为禁用，先确认在**登录 Shell** 里执行 `command -v claude`（或对应 CLI）能成功。
+**macOS 上有一个值得提前知道的坑：**从 Finder 启动的应用不会继承「终端」的 `PATH`。所以 Codeflai 通过你的登录 Shell 查找 agent CLI，并额外检查 Homebrew 和 `~/.local/bin` 等常见位置。如果某个明明装好的 CLI 显示为禁用，先确认在**登录 Shell** 里执行 `command -v claude`（或对应 CLI）能成功。
+
+## 从 CodeFly 升级
+
+首次打开 Codeflai 前，请先关闭旧 CodeFly 窗口。终端后台进程可以继续运行：Codeflai 会接回原来的会话和输出；旧后台退出后，新启动的后台进程统一使用 Codeflai 名称。
+
+Windows 上运行 Codeflai 安装程序即可。安装程序会保留应用数据、卸载旧 CodeFly，创建新快捷方式并使用新的应用标识。开机自启动在首次正常启动时迁移；若 Windows 拒绝修改，旧启动项会保留，并在下次启动时重试。
+
+macOS 上按前面的步骤安装 `Codeflai.app`，关闭 CodeFly，确认 Codeflai 正常打开后再将旧 `CodeFly.app` 移到废纸篓。若旧应用设置了登录时启动，请在系统设置中移除旧登录项，然后在 Codeflai 中开启 **Launch at startup（开机自启动）**。
+
+首次启动会将项目、会话、工作区状态与偏好复制到新目录，旧目录保留为备份：
+
+| 平台 | 旧目录（保留备份） | 新目录 |
+| --- | --- | --- |
+| Windows | `%APPDATA%\CodeFly` | `%APPDATA%\Codeflai` |
+| macOS | `~/Library/Application Support/CodeFly` | `~/Library/Application Support/Codeflai` |
+
+已有 Codeflai 数据不会被覆盖。复制失败会停止启动并显示错误，原始数据保持完整，修复问题后可以重试。主题、语言、侧边栏宽度、窗口置顶、会话类型与快捷提示词会迁入新的配置键。自定义 `--user-data-dir` 目录不自动导入。确认新版本正常前请保留旧目录；在 Codeflai 中做的新修改不会同步回 CodeFly。
 
 ## 第一次使用
 
@@ -81,7 +101,7 @@ macOS 版本是未签名、未公证的内部测试包，首次启动前需要�
 
 ## 界面
 
-**标题栏** —— Logo 和 **CodeFly** 字标（点它有[火箭](#火箭彩蛋)）、把[窗口置顶](#窗口置顶)的图钉按钮，以及打开[设置](#设置)的齿轮。
+**标题栏** —— Logo 和 **Codeflai** 字标（点它有[火箭](#火箭彩蛋)）、把[窗口置顶](#窗口置顶)的图钉按钮，以及打开[设置](#设置)的齿轮。
 
 **侧边栏** —— 顶部是 **Search sessions（搜索会话）** 输入框，中间是你的项目，底部是 **Add Project（添加项目）**。点项目名只折叠该项目自己的会话列表，切换会话不会改变任何折叠状态。搜索会临时展示所有项目中匹配的会话，清空搜索后各项目恢复原来的折叠状态。每个项目行有 ⋯ 按钮打开[操作菜单](#项目操作菜单)，每个会话行有删除按钮。
 
@@ -100,15 +120,15 @@ macOS 版本是未签名、未公证的内部测试包，首次启动前需要�
 | **Path missing（路径不存在）** | 会话所在目录已经不在了。 |
 | **Error（错误）** | 出错了，这一行会写明原因。 |
 
-CodeFly 每次都最大化启动，取消最大化后恢复为 1180×760 的窗口。
+Codeflai 每次都最大化启动，取消最大化后恢复为 1180×760 的窗口。
 
 ## 添加项目
 
 **Add Project（添加项目）** 提供三种方式：
 
 - **Local folder（本地文件夹）** —— 选本机任意项目目录。
-- **Recent projects（最近使用的项目）** —— 重新打开之前从列表里移除的项目。CodeFly 最多记 50 个被移除的项目，重启后仍在，并且不会列出已在列表中的项目。重新打开只会把目录加回来，不会恢复它原来的会话。
-- **Clone Git repository（克隆 Git 仓库）** —— 粘贴 HTTPS 或 SSH 地址（`git@host:owner/repository.git` 也支持），再选存放位置。CodeFly 会显示完整目标路径、创建一个以仓库名命名的子目录，并在 Git 完成后把项目加进来。已存在的文件夹永远不会被覆盖。私有仓库使用你现有的 Git 凭据或 SSH 配置，所以请先配好身份验证再克隆。
+- **Recent projects（最近使用的项目）** —— 重新打开之前从列表里移除的项目。Codeflai 最多记 50 个被移除的项目，重启后仍在，并且不会列出已在列表中的项目。重新打开只会把目录加回来，不会恢复它原来的会话。
+- **Clone Git repository（克隆 Git 仓库）** —— 粘贴 HTTPS 或 SSH 地址（`git@host:owner/repository.git` 也支持），再选存放位置。Codeflai 会显示完整目标路径、创建一个以仓库名命名的子目录，并在 Git 完成后把项目加进来。已存在的文件夹永远不会被覆盖。私有仓库使用你现有的 Git 凭据或 SSH 配置，所以请先配好身份验证再克隆。
 
 ## 新建会话
 
@@ -116,7 +136,7 @@ CodeFly 每次都最大化启动，取消最大化后恢复为 1180×760 的窗�
 
 看到哪些入口取决于你的平台，以及设置里的 **Session kinds（会话类型）**：
 
-| 会话类型 | CodeFly 查找的 CLI | 可用平台 |
+| 会话类型 | Codeflai 查找的 CLI | 可用平台 |
 | --- | --- | --- |
 | **PowerShell** | — | Windows |
 | **Command Prompt（命令提示符）** | — | Windows |
@@ -153,16 +173,16 @@ Gemini、GitHub Copilot、Cursor、Comate 和 Qwen Code 收在设置的 **More a
 
 ## worktree 会话
 
-在一个「至少有一次提交的 Git 仓库」项目里通过 **(new worktree)** 入口创建会话，CodeFly 会为它建一个独立的 Git worktree 和同名分支，位置是 `<仓库根目录>/.worktrees/worktree-YYMMDD-N`（当天日期，`N` 按仓库、按天从 1 递增）。`.worktrees` 会写进仓库的**本地**排除文件（`.git/info/exclude`），不会写进受版本控制的 `.gitignore`，所以它永远不会变成一条等你提交的变更。
+在一个「至少有一次提交的 Git 仓库」项目里通过 **(new worktree)** 入口创建会话，Codeflai 会为它建一个独立的 Git worktree 和同名分支，位置是 `<仓库根目录>/.worktrees/worktree-YYMMDD-N`（当天日期，`N` 按仓库、按天从 1 递增）。`.worktrees` 会写进仓库的**本地**排除文件（`.git/info/exclude`），不会写进受版本控制的 `.gitignore`，所以它永远不会变成一条等你提交的变更。
 
 通过普通入口创建的是**普通会话**，直接跑在项目目录里。如果项目不是 Git 仓库，或者是个还没有任何提交的仓库，那么即使请求了 worktree 也会回退为普通会话。这两种情况下侧边栏都显示「Ordinary session（普通会话）」而不是 worktree 名称。
 
-**删除 worktree 会话有保护。** CodeFly 会先停掉会话，在 worktree 里执行 `git status`，然后：
+**删除 worktree 会话有保护。** Codeflai 会先停掉会话，在 worktree 里执行 `git status`，然后：
 
-- **只要有未提交内容**（已修改、已暂存或未跟踪），删除会被**阻止**。会话和 worktree 原样保留，CodeFly 会告诉你有多少个文件有变更。请自己提交或放弃这些改动，再删一次。
+- **只要有未提交内容**（已修改、已暂存或未跟踪），删除会被**阻止**。会话和 worktree 原样保留，Codeflai 会告诉你有多少个文件有变更。请自己提交或放弃这些改动，再删一次。
 - **如果 worktree 是干净的**，就移除 worktree 目录（绝不使用 `--force`）和会话记录。
 
-**分支永远不会被删除。**会话和 worktree 消失之后，它做过的一切仍然留在那个分支上。CodeFly 从不强制移除 worktree，也从不删除提交、stash 或你原项目里的任何东西。
+**分支永远不会被删除。**会话和 worktree 消失之后，它做过的一切仍然留在那个分支上。Codeflai 从不强制移除 worktree，也从不删除提交、stash 或你原项目里的任何东西。
 
 ## agent 会话与权限绕过
 
@@ -178,16 +198,16 @@ Gemini、GitHub Copilot、Cursor、Comate 和 Qwen Code 收在设置的 **More a
 | Comate | `comatecli` | 会话环境变量 `ZULU_TERMINAL_RUN_MODE=yolo` |
 | Qwen Code | `qwen` | `--approval-mode=yolo`（见下方说明） |
 
-**这会在整个会话存续期间绕过 agent 自身的权限与沙箱保护。**agent 会在它的目录里读文件、写文件、执行命令，而不再逐次征求你的确认。这是为「快速、低摩擦」的工作流做出的选择，CodeFly 不打算把它藏起来：只要当前会话是正在运行的 agent 会话，它的终端头部就会一直显示 **「Permissions and sandbox bypass enabled（已启用权限与沙箱绕过）」** 警告徽章。
+**这会在整个会话存续期间绕过 agent 自身的权限与沙箱保护。**agent 会在它的目录里读文件、写文件、执行命令，而不再逐次征求你的确认。这是为「快速、低摩擦」的工作流做出的选择，Codeflai 不打算把它藏起来：只要当前会话是正在运行的 agent 会话，它的终端头部就会一直显示 **「Permissions and sandbox bypass enabled（已启用权限与沙箱绕过）」** 警告徽章。
 
-**本版本没有按会话关闭绕过的开关。**如果你不希望 agent 绕过自身保护，就不要在 CodeFly 里启动 agent 会话。想控制影响范围，成本最低的做法是用 **(new worktree)** 入口来跑 agent。
+**本版本没有按会话关闭绕过的开关。**如果你不希望 agent 绕过自身保护，就不要在 Codeflai 里启动 agent 会话。想控制影响范围，成本最低的做法是用 **(new worktree)** 入口来跑 agent。
 
 有两个 CLI 情况特殊，但都偏向安全一侧：
 
-- **Comate** 根本没有绕过参数——它的 TUI 每次启动都会重置运行模式，所以这个请求只能通过环境变量传。该变量只对这一个会话生效，不会设置到 CodeFly 自身进程上。
-- **Qwen Code** 文档里写了 `--approval-mode=yolo`，但并非每个版本都实现了它：0.22.3 会静默忽略该参数，实际审批模式取自 `~/.qwen/settings.json` 或它 TUI 里的 Shift+Tab。CodeFly 仍然坚持传这个参数（代价为零，CLI 一旦支持就立即生效），并且绝不去写你的设置文件——所以在这类版本上，徽章警告的是一个 CLI 实际并未启用的绕过。这是**多警告**，不会是少警告。
+- **Comate** 根本没有绕过参数——它的 TUI 每次启动都会重置运行模式，所以这个请求只能通过环境变量传。该变量只对这一个会话生效，不会设置到 Codeflai 自身进程上。
+- **Qwen Code** 文档里写了 `--approval-mode=yolo`，但并非每个版本都实现了它：0.22.3 会静默忽略该参数，实际审批模式取自 `~/.qwen/settings.json` 或它 TUI 里的 Shift+Tab。Codeflai 仍然坚持传这个参数（代价为零，CLI 一旦支持就立即生效），并且绝不去写你的设置文件——所以在这类版本上，徽章警告的是一个 CLI 实际并未启用的绕过。这是**多警告**，不会是少警告。
 
-CodeFly 用来[给会话取标题](#会话标题)的后台进程不带任何绕过参数，不共享会话的终端，运行在一个中立目录里，而不是你的项目或 worktree。
+Codeflai 用来[给会话取标题](#会话标题)的后台进程不带任何绕过参数，不共享会话的终端，运行在一个中立目录里，而不是你的项目或 worktree。
 
 ## 键盘快捷键
 
@@ -201,7 +221,7 @@ CodeFly 用来[给会话取标题](#会话标题)的后台进程不带任何绕�
 | **Escape** | 新建会话面板 | 关闭它。 |
 | **← / →**、**Home/End**、双击 | 侧边栏分隔线 | 调宽度、跳到边界、复位。 |
 
-Windows 上刻意没有新建会话快捷键：**Ctrl+T** 在 CodeFly 承载的 Shell 和 agent CLI 里本身就是有效按键，所以它会送给当前聚焦的终端。本机 Shell、PowerShell 和命令提示符会话则始终保留终端原有的按键处理方式。
+Windows 上刻意没有新建会话快捷键：**Ctrl+T** 在 Codeflai 承载的 Shell 和 agent CLI 里本身就是有效按键，所以它会送给当前聚焦的终端。本机 Shell、PowerShell 和命令提示符会话则始终保留终端原有的按键处理方式。
 
 ## 快捷提示词
 
@@ -217,7 +237,7 @@ Windows 上刻意没有新建会话快捷键：**Ctrl+T** 在 CodeFly 承载的 
 
 提示词保存在本机，所有项目和会话共用，重启后仍然保留。最多可以保存 100 条，每条最长 16,000 个字符。
 
-有几条限制值得知道：已停止的会话仍然可以管理提示词，但要先恢复会话才能填入。agent 会话支持多行提示词；Shell 会话需要终端支持 bracketed paste 才能填多行，不支持时 CodeFly 会请你改用单行提示词——这样保存的换行就绝不会自己执行成命令。（在没有 bracketed paste 的情况下，缩进制表符也会变成空格。）
+有几条限制值得知道：已停止的会话仍然可以管理提示词，但要先恢复会话才能填入。agent 会话支持多行提示词；Shell 会话需要终端支持 bracketed paste 才能填多行，不支持时 Codeflai 会请你改用单行提示词——这样保存的换行就绝不会自己执行成命令。（在没有 bracketed paste 的情况下，缩进制表符也会变成空格。）
 
 ## 会话标题
 
@@ -230,63 +250,63 @@ Windows 上刻意没有新建会话快捷键：**Ctrl+T** 在 CodeFly 承载的 
 - **New session（新建会话）** —— 就是[上面](#新建会话)说的启动面板。
 - **Open project in VS Code（在 VS Code 中打开项目）** —— 打开项目**最初选定的目录**，绝不会打开某个会话的 worktree。Windows 上通过 `code` 命令和标准安装位置查找 VS Code，macOS 上检查标准应用位置；都找不到时该菜单项禁用并显示安装提示。
 - **Open project folder（打开项目文件夹）** —— 在资源管理器或 Finder 中打开同一个目录，无任何依赖。
-- **Open Git repository（打开 Git 仓库）** —— 当项目位于一个远程地址可访问网页的 Git 仓库里时出现。CodeFly 读取 `origin`（没有 `origin` 时读第一个远程），把 `git@github.com:owner/repo.git` 这类 ssh/scp 形式转成 https 页面，并在默认浏览器中打开。图标随主机变化：GitHub 图标、GitLab 图标（含自托管实例），或普通 Git 图标。没有远程地址、或远程地址是本地目录的仓库不会出现这一项。远程地址在每次启动时重新读取，所以新加的远程会在下次启动 CodeFly 时出现。
+- **Open Git repository（打开 Git 仓库）** —— 当项目位于一个远程地址可访问网页的 Git 仓库里时出现。Codeflai 读取 `origin`（没有 `origin` 时读第一个远程），把 `git@github.com:owner/repo.git` 这类 ssh/scp 形式转成 https 页面，并在默认浏览器中打开。图标随主机变化：GitHub 图标、GitLab 图标（含自托管实例），或普通 Git 图标。没有远程地址、或远程地址是本地目录的仓库不会出现这一项。远程地址在每次启动时重新读取，所以新加的远程会在下次启动 Codeflai 时出现。
 - **Remove from list（从列表移除）** —— 二次确认后忘掉这个项目。它正在运行的会话会停止，全部会话记录一并移除，但**磁盘上什么都不动**：项目目录、它的 worktree 以及那些分支原样保留。以后重新添加这个目录时，会话列表是空的。
 
 ## 窗口置顶
 
-齿轮旁边的图钉按钮让 CodeFly 保持在所有窗口之上——agent 在后台干活、你在别的应用里盯着它时，正需要这个。再点一次取消；按钮的按下状态和被填充的图钉表示当前已置顶。下次启动时这个选择会自动生效。如果窗口管理器拒绝了置顶请求，按钮会如实反映，而不会假装成功。
+齿轮旁边的图钉按钮让 Codeflai 保持在所有窗口之上——agent 在后台干活、你在别的应用里盯着它时，正需要这个。再点一次取消；按钮的按下状态和被填充的图钉表示当前已置顶。下次启动时这个选择会自动生效。如果窗口管理器拒绝了置顶请求，按钮会如实反映，而不会假装成功。
 
 ## 设置
 
 标题栏的齿轮按钮打开设置。
 
-- **Launch at startup（开机自启动）** —— 把 CodeFly 注册为系统登录项。开关显示的是写入**之后**从系统回读的值，所以被操作系统拒绝的修改绝不会被显示成已生效。
+- **Launch at startup（开机自启动）** —— 把 Codeflai 注册为系统登录项。开关显示的是写入**之后**从系统回读的值，所以被操作系统拒绝的修改绝不会被显示成已生效。
 - **Session kinds（会话类型）** —— 每种类型两个开关：是否出现在新建会话菜单里，以及是否额外提供 **(new worktree)** 入口。见[新建会话](#新建会话)。
 - **Show quick prompt bar（显示快捷提示词栏）** —— 见[快捷提示词](#快捷提示词)。
 - **Theme（主题）** —— 深色或浅色。
 - **Language（语言）** —— English 或简体中文。默认是英语，不跟随系统语言。它只覆盖界面文案：工具可用性提示、会话错误信息，以及已经生成好的会话标题，都保持它们产生时的语言。
 - **Version（版本）** —— 显示已安装版本，并可按需 **Check for updates（检查更新）**。见[更新](#更新)。
-- **About CodeFly（关于 CodeFly）** —— 项目仓库、更新日志和下载页面的链接。
+- **About Codeflai（关于 Codeflai）** —— 项目仓库、更新日志和下载页面的链接。
 
 ## 更新
 
-CodeFly 每次启动会在后台检查一次新版本，而且**没有新版本就绝不出声**——检查失败、断网、已是最新，全都静悄悄地过去。确实有新版本时才会弹出对话框。你也可以随时从设置里的 **Check for updates（检查更新）** 进入同一个流程。
+Codeflai 每次启动会在后台检查一次新版本，而且**没有新版本就绝不出声**——检查失败、断网、已是最新，全都静悄悄地过去。确实有新版本时才会弹出对话框。你也可以随时从设置里的 **Check for updates（检查更新）** 进入同一个流程。
 
 **在 Windows 上**，**Update now（立即更新）** 会在应用内下载这个版本的安装包，带进度条和 **Cancel（取消）** 按钮。下载进行中时，**Cancel** 是唯一的退出方式——点背景或按 Escape 都没有反应，避免手一抖丢掉一个快下完的下载。版本检查和下载走的都是浏览器同一套网络栈，因此会遵循你的系统代理：Chrome 里访问 GitHub 快，这里就一样快。
 
-下载完成后 CodeFly 会再确认一次。**Install now（立即安装）** 会关闭应用并运行安装程序——它必须关闭，因为安装程序要替换运行中的应用正占用的文件，不过[你的会话会继续运行](#关闭窗口后会话继续运行)。**Later（稍后）** 只关掉对话框，安装包留在磁盘上；之后再选 **Update now** 就会发现它已经下载好了，直接跳到安装确认。磁盘上只保留这一个安装包：过期的安装包和下载中断留下的碎片文件，会在下一次成功下载时一并清掉。
+下载完成后 Codeflai 会再确认一次。**Install now（立即安装）** 会关闭应用并运行安装程序——它必须关闭，因为安装程序要替换运行中的应用正占用的文件，不过[你的会话会继续运行](#关闭窗口后会话继续运行)。**Later（稍后）** 只关掉对话框，安装包留在磁盘上；之后再选 **Update now** 就会发现它已经下载好了，直接跳到安装确认。磁盘上只保留这一个安装包：过期的安装包和下载中断留下的碎片文件，会在下一次成功下载时一并清掉。
 
-CodeFly 只在操作系统确认安装程序确实已启动之后才退出。安装包被拦截、被隔离或找不到时，应用会保持打开并说明原因，而不是关掉之后什么也没留下。
+Codeflai 只在操作系统确认安装程序确实已启动之后才退出。安装包被拦截、被隔离或找不到时，应用会保持打开并说明原因，而不是关掉之后什么也没留下。
 
 **在 macOS 上**，对话框会打开 Releases 页面，让你下载与自己 Mac 匹配的压缩包；没有应用内更新。macOS 上绝不会下载或执行 Windows 安装程序。
 
 ## 关闭窗口后会话继续运行
 
-CodeFly 的终端并不住在窗口里，而是住在一个后台进程里——应用按需启动它，然后就让它一直跑着。所以**关闭 CodeFly、UI 崩溃、安装更新，都不会打断任何会话，也不会打断在会话里干活的 agent。**重新打开 CodeFly 时它会重新接上，用保存下来的输出（每个会话最近 256 KB）重绘各个终端，并推一下让全屏 agent 界面重画当前画面。
+Codeflai 的终端并不住在窗口里，而是住在一个后台进程里——应用按需启动它，然后就让它一直跑着。所以**关闭 Codeflai、UI 崩溃、安装更新，都不会打断任何会话，也不会打断在会话里干活的 agent。**重新打开 Codeflai 时它会重新接上，用保存下来的输出（每个会话最近 256 KB）重绘各个终端，并推一下让全屏 agent 界面重画当前画面。
 
 这正是就地更新不打断工作的原因：**Install now（立即安装）** 替换应用时，那个后台进程仍持着你的会话，新装好的版本会把它们接过来。偶尔某个版本会改变两者之间的通信方式，这时旧的必须退役，它的会话会用各 agent 自己的恢复参数重新启动，而不是被直接接管。
 
-真正会结束一个会话的情况：它自己退出（退出 agent、在 Shell 里执行 `exit`）、你删除它、把它所属项目从列表移除，或者重启电脑。退出 CodeFly 不在这个名单里。当这个后台进程连续一分钟既没有会话、也没有窗口连接时，它会自行退出。在 Windows 的任务管理器里，它显示为 `codefly-pty-host.exe`。
+真正会结束一个会话的情况：它自己退出（退出 agent、在 Shell 里执行 `exit`）、你删除它、把它所属项目从列表移除，或者重启电脑。退出 Codeflai 不在这个名单里。当这个后台进程连续一分钟既没有会话、也没有窗口连接时，它会自行退出。在 Windows 的任务管理器里，它显示为 `codeflai-pty-host.exe`。
 
-## CodeFly 记住了什么
+## Codeflai 记住了什么
 
 你的项目、会话及其标题、快捷提示词，以及工作区偏好——哪些项目是折叠的、上次哪个会话是活动的、侧边栏宽度、主题、语言、会话类型开关。每次变更都会立刻保存，所以意外退出也不会丢。
 
 **永远不会存储的：**API 密钥、CLI 凭据、终端滚动历史。
 
-这些状态存在 CodeFly 自己的应用数据目录里：
+这些状态存在 Codeflai 自己的应用数据目录里：
 
 | | |
 | --- | --- |
-| Windows | `%APPDATA%\CodeFly` |
-| macOS | `~/Library/Application Support/CodeFly` |
+| Windows | `%APPDATA%\Codeflai` |
+| macOS | `~/Library/Application Support/Codeflai` |
 
 重新打开应用时，原本在运行的会话会被原样接管；而已经自行停止的会话**不会**被悄悄重启——点一下它才会重启。重启 agent 会话时，会按各厂商自己的方式请 CLI 续接上次对话（`claude --continue`、`codex resume --last`、`gemini --resume latest`、`copilot --continue`、`agent --resume`、`qwen --continue`）。这是尽力而为的机制，而 Comate 自身没有恢复功能，所以它会重新开始。Shell 会话一律重新开始。已删除的项目和会话在恢复时被忽略；目录已经不在的会话显示 **Path missing（路径不存在）**。
 
 ## 疑难解答
 
-**某个会话类型是灰的。** 它的 CLI 不在 CodeFly 查找的位置。把鼠标悬停在入口上会显示确切的可执行文件名——记住 Cursor 的是 `agent`，Comate 的是 `comatecli`。Windows 上它必须在 `PATH` 里；macOS 上必须能从登录 Shell 找到（`command -v claude`），因为从 Finder 打开的应用不会继承「终端」的 `PATH`。
+**某个会话类型是灰的。** 它的 CLI 不在 Codeflai 查找的位置。把鼠标悬停在入口上会显示确切的可执行文件名——记住 Cursor 的是 `agent`，Comate 的是 `comatecli`。Windows 上它必须在 `PATH` 里；macOS 上必须能从登录 Shell 找到（`command -v claude`），因为从 Finder 打开的应用不会继承「终端」的 `PATH`。
 
 **某个类型在菜单里完全看不到。** 它在设置的 **Session kinds（会话类型）** 里被关掉了——五种可选 agent CLI 默认就是关的，且收在折叠的 **More agent CLIs（更多 agent CLI）** 分组里。
 
@@ -302,10 +322,10 @@ CodeFly 的终端并不住在窗口里，而是住在一个后台进程里——
 
 ## 火箭彩蛋
 
-点一下 Logo 和 **CodeFly** 字标。一枚火箭会头朝下坠落，转向，缓慢巡航几秒，然后冲出屏幕。多点几次就有多枚。它纯粹是装饰——绝不会拦截你的点击——而且当系统设置为减弱动态效果时会被完全跳过。
+点一下 Logo 和 **Codeflai** 字标。一枚火箭会头朝下坠落，转向，缓慢巡航几秒，然后冲出屏幕。多点几次就有多枚。它纯粹是装饰——绝不会拦截你的点击——而且当系统设置为减弱动态效果时会被完全跳过。
 
 ## 开源协议
 
 本项目使用 [MIT 许可证](LICENSE)（SPDX：`MIT`）。允许自由使用、复制、修改和分发，包括商用与闭源使用；软件副本或实质性部分须保留版权声明及许可证文本，不要求公开源代码。完整条款见 [LICENSE](LICENSE)。第三方依赖仍适用各自原有的许可证条款。
 
-CodeFly 基于 Electron、React、TypeScript、xterm.js 和 node-pty 构建。如需从源码构建，请克隆仓库并阅读 `CLAUDE.md` 与 `package.json` 里的脚本。
+Codeflai 基于 Electron、React、TypeScript、xterm.js 和 node-pty 构建。如需从源码构建，请克隆仓库并阅读 `CLAUDE.md` 与 `package.json` 里的脚本。

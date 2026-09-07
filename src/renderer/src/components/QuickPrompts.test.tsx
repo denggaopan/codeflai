@@ -271,7 +271,7 @@ describe('quick prompt sorting', () => {
     const target = screen.getByRole('button', { name: 'Insert Charlie' })
     expect(source).toHaveAttribute('draggable', 'true')
     const transfer = drag(source, target)
-    expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('application/x-codefly-quick-prompt', 'a')
+    expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('application/x-codeflai-quick-prompt', 'a')
     expect(savedIds()).toEqual(['b', 'c', 'a'])
     fireEvent.click(source)
     expect(onInsert).not.toHaveBeenCalled()

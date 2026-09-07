@@ -131,7 +131,7 @@ beforeEach(async () => {
   window.localStorage.clear()
   useAppStore.getState().reset()
   api = createFakeApi()
-  window.codefly = api
+  window.codeflai = api
   dispose = useAppStore.getState().initialize()
   // getSnapshot resolves on the microtask queue; flush it so appState holds the sessions.
   await vi.advanceTimersByTimeAsync(0)
@@ -540,7 +540,7 @@ describe('useAppStore updater', () => {
     currentVersion: '0.0.0-test',
     latestVersion: '2.0.0',
     releaseUrl: 'https://example.test/release',
-    asset: { fileName: 'CodeFly-Setup-2.0.0-win-x64.exe', size: 1024 }
+    asset: { fileName: 'Codeflai-Setup-2.0.0-win-x64.exe', size: 1024 }
   } as const
 
   // Re-runs initialize() against a check result of the test's choosing; the file-level
@@ -724,7 +724,7 @@ describe('useAppStore window pinning', () => {
     useAppStore.getState().reset()
     window.localStorage.setItem(WINDOW_PINNED_STORAGE_KEY, 'true')
     api = createFakeApi()
-    window.codefly = api
+    window.codeflai = api
 
     dispose = useAppStore.getState().initialize()
     await vi.advanceTimersByTimeAsync(0)

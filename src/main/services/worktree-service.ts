@@ -369,7 +369,7 @@ export class WorktreeService {
     if (!physicalParentInfo.isDirectory() || physicalParentInfo.isSymbolicLink()) {
       throw new Error('Git local exclude physical parent is unsafe')
     }
-    const lockPath = join(physicalCommonDirectory, '.codefly-exclude.lock')
+    const lockPath = join(physicalCommonDirectory, '.codeflai-exclude.lock')
     if (canonicalPath(dirname(lockPath)) !== canonicalPath(physicalCommonDirectory)) {
       throw new Error('Git exclude lock parent is not the physical common directory')
     }
@@ -438,7 +438,7 @@ export class WorktreeService {
     excludeIdentity: { dev: number; ino: number },
     parentIdentity: { dev: number; ino: number }
   ): Promise<void> {
-    const tempPath = join(parent, `.codefly-exclude-${randomUUID()}.tmp`)
+    const tempPath = join(parent, `.codeflai-exclude-${randomUUID()}.tmp`)
     const handle = await this.fileSystem.open(tempPath, 'wx')
     let identity: { dev: number; ino: number } | undefined
     let closeAttempted = false
@@ -854,7 +854,7 @@ export class WorktreeService {
     await this.assertSafeDirectory(parent, 'Worktrees directory')
     const before = await this.fileSystem.lstat(worktreePath)
     if (!before.isDirectory() || before.isSymbolicLink()) throw new Error('Worktree path is unsafe before claim')
-    const quarantine = join(parent, `.codefly-quarantine-${randomUUID()}`)
+    const quarantine = join(parent, `.codeflai-quarantine-${randomUUID()}`)
     await this.fileSystem.rename(worktreePath, quarantine)
     try {
       const claimed = await this.fileSystem.lstat(quarantine)

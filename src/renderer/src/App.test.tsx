@@ -56,10 +56,10 @@ vi.stubGlobal(
   }
 )
 
-// Deliberately NOT annotated with a `CodeFlyApi`-shaped return type: that would widen every
+// Deliberately NOT annotated with a `CodeflaiApi`-shaped return type: that would widen every
 // vi.fn() property down to a plain function type and lose access to mock helpers like
-// mockResolvedValueOnce in the tests below. Structural compatibility with window.codefly
-// (CodeFlyApi) is still checked at each `window.codefly = api` assignment site.
+// mockResolvedValueOnce in the tests below. Structural compatibility with window.codeflai
+// (CodeflaiApi) is still checked at each `window.codeflai = api` assignment site.
 const createFakeApi = (state: AppState, capabilities: CapabilityState, platform: HostPlatform = 'win32') => {
   const stateListeners = new Set<(state: AppState) => void>()
   return {
@@ -204,12 +204,12 @@ beforeEach(() => {
   window.localStorage.clear()
   delete document.documentElement.dataset.theme
   api = createFakeApi(stateWith(), allAvailableCapabilities)
-  window.codefly = api
+  window.codeflai = api
 })
 
 describe('App', () => {
   it('shows a dismissible warning when startup recovered a corrupt state file', async () => {
-    const recoveryWarning = 'CodeFly recovered state from backup. The corrupt state was preserved.'
+    const recoveryWarning = 'Codeflai recovered state from backup. The corrupt state was preserved.'
     api.getSnapshot.mockResolvedValueOnce({
       platform: 'win32',
       state: stateWith(),
@@ -225,7 +225,7 @@ describe('App', () => {
 
   it('loads the snapshot on mount and renders the project and its sessions', async () => {
     api = createFakeApi(stateWith(stoppedPowerShellSession, runningClaudeSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
 
     render(<App />)
 
@@ -264,7 +264,7 @@ describe('App', () => {
     const user = userEvent.setup()
     const otherSession: SessionRecord = { ...stoppedPowerShellSession, id: 'session-other', title: 'Investigate crash' }
     api = createFakeApi(stateWith(stoppedPowerShellSession, otherSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(stoppedPowerShellSession.title)
@@ -294,7 +294,7 @@ describe('App', () => {
       status: 'running'
     }
     api.createSession.mockResolvedValueOnce(created)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -309,7 +309,7 @@ describe('App', () => {
   it('offers a "(new worktree)" entry only for the kinds whose Settings switch is on', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -335,7 +335,7 @@ describe('App', () => {
   it('drops a session kind from the launcher entirely once it is turned off in Settings', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -377,7 +377,7 @@ describe('App', () => {
       branchName: 'worktree-260820-1',
       status: 'running'
     })
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -470,7 +470,7 @@ describe('App', () => {
       status: 'running'
     }
     api.createSession.mockResolvedValueOnce(created)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -496,7 +496,7 @@ describe('App', () => {
       title: 'New Shell session',
       status: 'running'
     })
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
     await screen.findByText(project1.name)
 
@@ -507,7 +507,7 @@ describe('App', () => {
 
   it('leaves Ctrl+T alone on Windows so the focused terminal keeps it', async () => {
     api = createFakeApi(stateWith(), allAvailableCapabilities, 'win32')
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
     await screen.findByText(project1.name)
 
@@ -519,7 +519,7 @@ describe('App', () => {
   it('keeps unavailable session entries disabled with capability details only in hover hints', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(), claudeDisabledCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -546,7 +546,7 @@ describe('App', () => {
     const user = userEvent.setup()
     window.localStorage.setItem(SESSION_KINDS_STORAGE_KEY, JSON.stringify({ cursor: { enabled: true } }))
     api = createFakeApi(stateWith(), cursorDisabledCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project1.name)
@@ -565,7 +565,7 @@ describe('App', () => {
   it('switches to a running session by clicking its row without restoring it', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(runningClaudeSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(runningClaudeSession.title, { selector: 'span.session-title' }))
@@ -579,7 +579,7 @@ describe('App', () => {
     api = createFakeApi(stateWith(stoppedPowerShellSession), allAvailableCapabilities)
     const restarted: SessionRecord = { ...stoppedPowerShellSession, status: 'running' }
     api.restoreSession.mockResolvedValueOnce(restarted)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(stoppedPowerShellSession.title, { selector: 'span.session-title' }))
@@ -590,7 +590,7 @@ describe('App', () => {
   it('opens a confirmation before deleting and never restores the session', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(stoppedPowerShellSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
@@ -607,7 +607,7 @@ describe('App', () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(stoppedPowerShellSession), allAvailableCapabilities)
     api.deleteSession.mockResolvedValueOnce({ status: 'dirty', changedFiles: 3 })
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
@@ -621,7 +621,7 @@ describe('App', () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(stoppedPowerShellSession), allAvailableCapabilities)
     api.deleteSession.mockResolvedValueOnce({ status: 'deleted' })
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
@@ -656,7 +656,7 @@ describe('App', () => {
     const user = userEvent.setup()
     const runningCodex: SessionRecord = { ...runningClaudeSession, id: 'session-codex', kind: 'codex', title: 'Codex refactor' }
     api = createFakeApi(stateWith(runningCodex), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -669,7 +669,7 @@ describe('App', () => {
   it('hides the bypass warning for an active running PowerShell session', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(runningPowerShellSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(runningPowerShellSession.title, { selector: 'span.session-title' }))
@@ -681,7 +681,7 @@ describe('App', () => {
     const user = userEvent.setup()
     const runningCmd: SessionRecord = { ...runningPowerShellSession, id: 'session-cmd-running', kind: 'cmd', title: 'New Command Prompt session' }
     api = createFakeApi(stateWith(runningCmd), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(runningCmd.title, { selector: 'span.session-title' }))
@@ -692,7 +692,7 @@ describe('App', () => {
   it('hides the bypass warning for a stopped Claude session', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(stoppedClaudeSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(stoppedClaudeSession.title, { selector: 'span.session-title' }))
@@ -703,7 +703,7 @@ describe('App', () => {
   it('renders the bypass warning as a compact header badge without a bottom strip', async () => {
     const user = userEvent.setup()
     api = createFakeApi(stateWith(runningClaudeSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await user.click(await screen.findByText(runningClaudeSession.title, { selector: 'span.session-title' }))
@@ -714,7 +714,7 @@ describe('App', () => {
 
   it('renders the title bar with a settings control and no session tabs', async () => {
     api = createFakeApi(stateWith(runningClaudeSession), allAvailableCapabilities)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(runningClaudeSession.title, { selector: 'span.session-title' })
@@ -734,7 +734,7 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: 'Light' }))
     expect(document.documentElement.dataset.theme).toBe('light')
-    expect(window.localStorage.getItem('codefly.theme')).toBe('light')
+    expect(window.localStorage.getItem('codeflai.theme')).toBe('light')
     expect(api.setTheme).toHaveBeenCalledWith('light')
     expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'false')
@@ -776,19 +776,19 @@ describe('App', () => {
     await user.click(pin)
 
     expect(api.setWindowPinned).toHaveBeenLastCalledWith(true)
-    expect(window.localStorage.getItem('codefly.windowPinned')).toBe('true')
+    expect(window.localStorage.getItem('codeflai.windowPinned')).toBe('true')
     const pinned = screen.getByRole('button', { name: 'Stop keeping window on top' })
     expect(pinned).toHaveAttribute('aria-pressed', 'true')
 
     await user.click(pinned)
 
     expect(api.setWindowPinned).toHaveBeenLastCalledWith(false)
-    expect(window.localStorage.getItem('codefly.windowPinned')).toBe('false')
+    expect(window.localStorage.getItem('codeflai.windowPinned')).toBe('false')
     expect(screen.getByRole('button', { name: 'Keep window on top' })).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('replays a persisted pin on startup', async () => {
-    window.localStorage.setItem('codefly.windowPinned', 'true')
+    window.localStorage.setItem('codeflai.windowPinned', 'true')
 
     render(<App />)
 
@@ -797,7 +797,7 @@ describe('App', () => {
   })
 
   it('applies the persisted light theme (DOM, storage, and main process) on startup', async () => {
-    window.localStorage.setItem('codefly.theme', 'light')
+    window.localStorage.setItem('codeflai.theme', 'light')
 
     render(<App />)
 
@@ -836,7 +836,7 @@ describe('App', () => {
       fireEvent.pointerUp(separator, { pointerId: 7 })
       expect(document.body.dataset.sidebarResizing).toBeUndefined()
       expect(separator).not.toHaveAttribute('data-resizing')
-      expect(window.localStorage.getItem('codefly.sidebarWidth')).toBe('260')
+      expect(window.localStorage.getItem('codeflai.sidebarWidth')).toBe('260')
 
       // Moves after the drag ended are ignored: a stray pointermove must not resize anything.
       fireEvent.pointerMove(separator, { pointerId: 7, clientX: 500 })
@@ -888,21 +888,21 @@ describe('App', () => {
       expect(appBody().style.getPropertyValue('--sidebar-width')).toBe('200px')
       await user.keyboard('{End}')
       expect(appBody().style.getPropertyValue('--sidebar-width')).toBe('640px')
-      expect(window.localStorage.getItem('codefly.sidebarWidth')).toBe('640')
+      expect(window.localStorage.getItem('codeflai.sidebarWidth')).toBe('640')
 
       await user.dblClick(separator)
       expect(appBody().style.getPropertyValue('--sidebar-width')).toBe('300px')
-      expect(window.localStorage.getItem('codefly.sidebarWidth')).toBe('300')
+      expect(window.localStorage.getItem('codeflai.sidebarWidth')).toBe('300')
     })
 
     it('restores the persisted width on startup and falls back to the default for garbage', () => {
-      window.localStorage.setItem('codefly.sidebarWidth', '420')
+      window.localStorage.setItem('codeflai.sidebarWidth', '420')
       const first = render(<App />)
       expect(appBody().style.getPropertyValue('--sidebar-width')).toBe('420px')
       first.unmount()
       useAppStore.getState().reset()
 
-      window.localStorage.setItem('codefly.sidebarWidth', 'wide')
+      window.localStorage.setItem('codeflai.sidebarWidth', 'wide')
       render(<App />)
       expect(appBody().style.getPropertyValue('--sidebar-width')).toBe('300px')
     })
@@ -929,7 +929,7 @@ describe('App', () => {
       status: 'running'
     }
     api.createSession.mockResolvedValueOnce(created)
-    window.codefly = api
+    window.codeflai = api
     render(<App />)
 
     await screen.findByText(project2.name)

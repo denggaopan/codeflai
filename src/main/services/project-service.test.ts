@@ -66,7 +66,7 @@ describe('ProjectService', () => {
   })
 
   it('serializes equivalent concurrent registrations to one persisted project', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'codefly-project-service-'))
+    const directory = await mkdtemp(join(tmpdir(), 'codeflai-project-service-'))
     const store = new SessionStore(join(directory, 'state.json'))
     const run = vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 })
     const ids = ['first-id', 'second-id']
@@ -140,7 +140,7 @@ describe('ProjectService', () => {
 
 describe('ProjectService.reopen', () => {
   it('persists history across restarts, revalidates the folder, and keeps its identity when reopening', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'codefly-history-'))
+    const directory = await mkdtemp(join(tmpdir(), 'codeflai-history-'))
     const file = join(directory, 'state.json')
     const recent: ProjectRecord = { id: 'recent', name: 'Old name', path: 'C:\\Projects\\My App', createdAt: '2026-08-26T00:00:00.000Z' }
     try {

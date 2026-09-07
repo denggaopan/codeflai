@@ -26,7 +26,7 @@ import QuickPrompts from './QuickPrompts'
 // driver to read (see attachWebglRenderer). Each pane's host element carries a back-reference
 // to its Terminal so e2e can assert on the rendered screen through xterm's own buffer; nothing
 // in the application itself reads this property.
-export type TerminalHostElement = HTMLDivElement & { codeflyTerminal?: Terminal }
+export type TerminalHostElement = HTMLDivElement & { codeflaiTerminal?: Terminal }
 
 type TerminalEntry = {
   terminal: Terminal
@@ -195,7 +195,7 @@ export default function TerminalWorkspace() {
     if (cols === entry.lastCols && rows === entry.lastRows) return
     entry.lastCols = cols
     entry.lastRows = rows
-    window.codefly.resizeTerminal(sessionId, cols, rows)
+    window.codeflai.resizeTerminal(sessionId, cols, rows)
   }
 
   const ensureEntry = (sessionId: string, kind: SessionRecord['kind'], element: HTMLDivElement): void => {
@@ -222,16 +222,16 @@ export default function TerminalWorkspace() {
     // Straight after the renderer exists, so the very first frame — the agent's startup logo —
     // is already drawn on an aligned grid rather than being corrected on a later resize.
     alignBlockGlyphGrid(terminal, element)
-    ;(element as TerminalHostElement).codeflyTerminal = terminal
+    ;(element as TerminalHostElement).codeflaiTerminal = terminal
 
     const tracker = new FirstInputTracker()
     // Every byte bound for the PTY funnels through here — xterm's own key/paste output and the
     // agent key bindings below alike — so first-input capture always sees the complete stream.
     const forwardInput = (data: string): void => {
       const result = tracker.push(data)
-      window.codefly.writeTerminal(sessionId, result.passthrough)
+      window.codeflai.writeTerminal(sessionId, result.passthrough)
       if (result.submitted !== undefined) {
-        window.codefly.submitFirstInput(sessionId, result.submitted).catch(() => undefined)
+        window.codeflai.submitFirstInput(sessionId, result.submitted).catch(() => undefined)
       }
     }
     const dataDisposable = terminal.onData(forwardInput)
@@ -288,7 +288,7 @@ export default function TerminalWorkspace() {
   const hydrateEntry = async (sessionId: string, entry: TerminalEntry): Promise<void> => {
     let replay: TerminalReplay | undefined
     try {
-      replay = await window.codefly.replayTerminal(sessionId)
+      replay = await window.codeflai.replayTerminal(sessionId)
     } catch {
       // A failed replay must never leave the pane wedged behind an unhydrated gate: the
       // session keeps working, it just starts from an empty screen.
@@ -447,10 +447,10 @@ export default function TerminalWorkspace() {
   // Subscribe to terminal data/exit exactly once and dispatch by session ID; dispose every
   // remaining entry and both subscriptions on unmount.
   useEffect(() => {
-    const disposeData = window.codefly.onTerminalData(({ sessionId, data, sequence }) => {
+    const disposeData = window.codeflai.onTerminalData(({ sessionId, data, sequence }) => {
       writeOrBuffer(sessionId, data, sequence)
     })
-    const disposeExit = window.codefly.onTerminalExit(({ sessionId, exitCode }) => {
+    const disposeExit = window.codeflai.onTerminalExit(({ sessionId, exitCode }) => {
       // The session record's status flips to 'stopped' via the main process's broadcast
       // state (session-coordinator marks it on PTY exit), which drives the header's restart
       // action; here we only append a notice to the owning terminal's own scrollback. The

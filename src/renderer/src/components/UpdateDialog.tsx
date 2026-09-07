@@ -57,7 +57,7 @@ export default function UpdateDialog() {
   if (updater.phase === 'idle') return null
 
   const openDownloadPage = (): void => {
-    void window.codefly.openExternalLink('download').catch(() => undefined)
+    void window.codeflai.openExternalLink('download').catch(() => undefined)
     dismissUpdate()
   }
 

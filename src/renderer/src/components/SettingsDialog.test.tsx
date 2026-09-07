@@ -17,7 +17,7 @@ const links = {
 
 // Only the handful of bridge methods this dialog touches are stubbed; the cast keeps the
 // fake narrow without widening every vi.fn() to a plain function type (which would cost the
-// mock helpers used below). App.test.tsx still type-checks the full CodeFlyApi shape.
+// mock helpers used below). App.test.tsx still type-checks the full CodeflaiApi shape.
 const createFakeApi = () => ({
   getAppInfo: vi.fn(async () => ({ version: '9.9.9', links })),
   getAutoLaunch: vi.fn(async () => false),
@@ -31,7 +31,7 @@ const createFakeApi = () => ({
 type FakeApi = ReturnType<typeof createFakeApi>
 
 const renderDialog = (api: FakeApi = createFakeApi(), onClose: () => void = vi.fn()): FakeApi => {
-  window.codefly = api as unknown as typeof window.codefly
+  window.codeflai = api as unknown as typeof window.codeflai
   render(<SettingsDialog open onClose={onClose} />)
   return api
 }
@@ -41,7 +41,7 @@ const availableWithInstaller: UpdateCheckResult = {
   currentVersion: '9.9.9',
   latestVersion: '10.0.0',
   releaseUrl: 'https://example.test/release',
-  asset: { fileName: 'CodeFly-Setup-10.0.0-win-x64.exe', size: 4096 }
+  asset: { fileName: 'Codeflai-Setup-10.0.0-win-x64.exe', size: 4096 }
 }
 
 describe('SettingsDialog', () => {
@@ -122,7 +122,7 @@ describe('SettingsDialog', () => {
   it('always reopens collapsed, even with an opt-in agent enabled', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    window.codefly = createFakeApi() as unknown as typeof window.codefly
+    window.codeflai = createFakeApi() as unknown as typeof window.codeflai
     const view = render(<SettingsDialog open onClose={onClose} />)
     const disclosureName = { name: 'More agent CLIs (5)' }
 
@@ -152,7 +152,7 @@ describe('SettingsDialog', () => {
     await user.click(screen.getByRole('switch', { name: 'Enable Comate' }))
 
     expect(useAppStore.getState().sessionKindPreferences.comate).toEqual({ enabled: true, worktree: true })
-    expect(JSON.parse(window.localStorage.getItem('codefly.sessionKinds')!).comate).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('codeflai.sessionKinds')!).comate).toEqual({
       enabled: true,
       worktree: true
     })
@@ -181,7 +181,7 @@ describe('SettingsDialog', () => {
     await user.click(screen.getByRole('switch', { name: 'Enable Codex' }))
     expect(useAppStore.getState().sessionKindPreferences.codex).toEqual({ enabled: false, worktree: true })
 
-    expect(JSON.parse(window.localStorage.getItem('codefly.sessionKinds')!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('codeflai.sessionKinds')!)).toEqual({
       shell: { enabled: false, worktree: false },
       powershell: { enabled: true, worktree: false },
       cmd: { enabled: true, worktree: true },
@@ -235,7 +235,7 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: '开机自动启动' })).toBeInTheDocument()
     expect(useAppStore.getState().locale).toBe('zh-CN')
-    expect(window.localStorage.getItem('codefly.locale')).toBe('zh-CN')
+    expect(window.localStorage.getItem('codeflai.locale')).toBe('zh-CN')
 
     await user.click(screen.getByRole('button', { name: 'English' }))
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()

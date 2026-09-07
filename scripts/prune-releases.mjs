@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { readdirSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,8 +6,8 @@ import semver from 'semver'
 const releaseDir = fileURLToPath(new URL('../release/', import.meta.url))
 const KEEP_VERSIONS = 3
 const VERSIONED_FILES = [
-  /^CodeFly-(?:Setup-)?(.+)-(?:win|mac)-(?:x64|arm64|ia32|universal)\.(?:exe|zip|dmg)(?:\.blockmap)?$/i,
-  /^CodeFly(?:-Setup-| Setup )(.+)\.exe(?:\.blockmap)?$/i,
+  /^Codefl(?:ai|y)-(?:Setup-)?(.+)-(?:win|mac)-(?:x64|arm64|ia32|universal)\.(?:exe|zip|dmg)(?:\.blockmap)?$/i,
+  /^Codefl(?:ai|y)(?:-Setup-| Setup )(.+)\.exe(?:\.blockmap)?$/i,
   /^(?:current-release|release-notes|(?:mac-)?validation|tag)-(.+)\.(?:json|md)$/i
 ]
 

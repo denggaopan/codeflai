@@ -9,13 +9,13 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { createRepo } from './create-repo'
 
 /**
- * End-to-end coverage for the CodeFly desktop app, driven through a real Electron window
- * via Playwright. The app is launched with CODEFLY_E2E=1, which (see src/main/index.ts)
+ * End-to-end coverage for the Codeflai desktop app, driven through a real Electron window
+ * via Playwright. The app is launched with CODEFLAI_E2E=1, which (see src/main/index.ts)
  * swaps only the *executable* resolved for Claude/Codex for the fixture at
  * e2e/fixtures/fake-agent.cmd/.cjs, and the project-add directory-picker result for
- * CODEFLY_E2E_PROJECT — every other seam (Git, PowerShell, cmd.exe, the persisted state
+ * CODEFLAI_E2E_PROJECT — every other seam (Git, PowerShell, cmd.exe, the persisted state
  * file, worktree lifecycle) is the real production implementation. Production builds
- * without CODEFLY_E2E never exercise any of this file's env-driven wiring.
+ * without CODEFLAI_E2E never exercise any of this file's env-driven wiring.
  *
  * The 18 tests below run in one serial journey against one fixture repository/project so
  * that worktree sequence numbers, title generation, restart persistence, and deletion all
@@ -69,13 +69,13 @@ const launchApp = async (): Promise<{ app: ElectronApplication; page: Page }> =>
     cwd: projectRoot,
     env: {
       ...process.env,
-      CODEFLY_E2E: '1',
-      CODEFLY_E2E_PROJECT: repoPath,
-      CODEFLY_E2E_AGENT_CMD: fakeAgentCmd,
-      CODEFLY_E2E_ARGV_LOG: terminalArgvLog,
-      CODEFLY_E2E_TITLE_ARGV_LOG: titleArgvLog,
-      CODEFLY_E2E_HOST_PID_LOG: hostPidLog,
-      CODEFLY_PTY_HOST_IDLE_MS: '250'
+      CODEFLAI_E2E: '1',
+      CODEFLAI_E2E_PROJECT: repoPath,
+      CODEFLAI_E2E_AGENT_CMD: fakeAgentCmd,
+      CODEFLAI_E2E_ARGV_LOG: terminalArgvLog,
+      CODEFLAI_E2E_TITLE_ARGV_LOG: titleArgvLog,
+      CODEFLAI_E2E_HOST_PID_LOG: hostPidLog,
+      CODEFLAI_PTY_HOST_IDLE_MS: '250'
     }
   })
   const page = await app.firstWindow()
@@ -132,10 +132,10 @@ const visibleBypassWarnings = () => window.locator('.terminal-header-bypass:visi
 // the DOM: TerminalWorkspace loads the WebGL renderer (so Block Elements — the pixel art
 // agents draw their logos with — join seamlessly instead of showing hairline cracks), and
 // that renderer paints into a canvas, leaving no .xterm-rows text behind. The pane's host
-// element carries a `codeflyTerminal` back-reference for exactly this purpose.
+// element carries a `codeflaiTerminal` back-reference for exactly this purpose.
 const visibleTerminalText = (): Promise<string> =>
   window.locator('.terminal-pane:visible .terminal-instance-host').evaluate((host) => {
-    const terminal = (host as HTMLElement & { codeflyTerminal?: { buffer: { active: { length: number; getLine(i: number): { translateToString(trim: boolean): string } | undefined } } } }).codeflyTerminal
+    const terminal = (host as HTMLElement & { codeflaiTerminal?: { buffer: { active: { length: number; getLine(i: number): { translateToString(trim: boolean): string } | undefined } } } }).codeflaiTerminal
     if (!terminal) return ''
     const buffer = terminal.buffer.active
     const lines: string[] = []
@@ -149,8 +149,8 @@ const expectVisibleTerminalToContain = async (text: string): Promise<void> => {
 
 test.beforeAll(async () => {
   repoPath = createRepo()
-  userDataDir = mkdtempSync(join(tmpdir(), 'codefly-e2e-userdata-'))
-  const logsDir = mkdtempSync(join(tmpdir(), 'codefly-e2e-logs-'))
+  userDataDir = mkdtempSync(join(tmpdir(), 'codeflai-e2e-userdata-'))
+  const logsDir = mkdtempSync(join(tmpdir(), 'codeflai-e2e-logs-'))
   terminalArgvLog = join(logsDir, 'terminal-argv.json')
   titleArgvLog = join(logsDir, 'title-argv.json')
   hostPidLog = join(logsDir, 'pty-host.pid')
@@ -167,8 +167,8 @@ test.afterAll(async () => {
     // still running and waits for its worker forever.
     if (window && !window.isClosed()) {
       await window.evaluate(async () => {
-        const snapshot = await window.codefly.getSnapshot()
-        for (const project of snapshot.state.projects) await window.codefly.removeProject(project.id)
+        const snapshot = await window.codeflai.getSnapshot()
+        for (const project of snapshot.state.projects) await window.codeflai.removeProject(project.id)
       })
     }
   } finally {
@@ -222,12 +222,12 @@ test('pins the window on top from the title bar and unpins it again', async () =
   await pin.click()
   await expect(pinned).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(isAlwaysOnTop).toBe(true)
-  expect(await window.evaluate(() => window.localStorage.getItem('codefly.windowPinned'))).toBe('true')
+  expect(await window.evaluate(() => window.localStorage.getItem('codeflai.windowPinned'))).toBe('true')
 
   await pinned.click()
   await expect(pin).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(isAlwaysOnTop).toBe(false)
-  expect(await window.evaluate(() => window.localStorage.getItem('codefly.windowPinned'))).toBe('false')
+  expect(await window.evaluate(() => window.localStorage.getItem('codeflai.windowPinned'))).toBe('false')
 })
 
 /**
@@ -261,16 +261,16 @@ test('resizes the sidebar by dragging the splitter and restores the default on d
   expect(Math.round(widened.width)).toBe(420)
   expect(Math.round((await workspace.boundingBox())!.x)).toBe(Math.round(widened.x + 420))
   await expect(splitter).toHaveAttribute('aria-valuenow', '420')
-  expect(await window.evaluate(() => window.localStorage.getItem('codefly.sidebarWidth'))).toBe('420')
+  expect(await window.evaluate(() => window.localStorage.getItem('codeflai.sidebarWidth'))).toBe('420')
 
   await splitter.dblclick()
   expect(Math.round((await sidebar.boundingBox())!.width)).toBe(300)
-  expect(await window.evaluate(() => window.localStorage.getItem('codefly.sidebarWidth'))).toBe('300')
+  expect(await window.evaluate(() => window.localStorage.getItem('codeflai.sidebarWidth'))).toBe('300')
 })
 
 /**
  * The startup switch, update check, and About links all read through the main process. Under
- * CODEFLY_E2E their seams are test doubles (in-memory login item, an offline 404 for the
+ * CODEFLAI_E2E their seams are test doubles (in-memory login item, an offline 404 for the
  * GitHub release endpoint, a no-op openExternal — see buildE2EAppInfoService), so the real
  * IPC, schema validation, and result mapping still run while nothing touches the registry or
  * the network. The language switch must be returned to English before this test ends: the
@@ -308,17 +308,17 @@ test('exposes the startup toggle, version check, About links, and language switc
   // About rows print their label and a chain glyph; the URL only ever appears as the tooltip.
   await expect(dialog.getByRole('button', { name: 'Project repository' })).toHaveAttribute(
     'title',
-    'https://github.com/denggaopan/codefly'
+    'https://github.com/denggaopan/codeflai'
   )
   await expect(dialog.getByRole('button', { name: 'Changelog' })).toHaveAttribute(
     'title',
-    'https://github.com/denggaopan/codefly/releases'
+    'https://github.com/denggaopan/codeflai/releases'
   )
   await expect(dialog.getByRole('button', { name: 'Downloads' })).toHaveAttribute(
     'title',
-    'https://github.com/denggaopan/codefly/releases/latest'
+    'https://github.com/denggaopan/codeflai/releases/latest'
   )
-  await expect(dialog.getByText('https://github.com/denggaopan/codefly', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByText('https://github.com/denggaopan/codeflai', { exact: true })).toHaveCount(0)
 
   await dialog.getByRole('button', { name: '简体中文' }).click()
   await expect(window.getByRole('dialog', { name: '设置' })).toBeVisible()
@@ -373,7 +373,7 @@ test('offers local folders, recent projects and a Git clone form in Add Project'
   await window.getByRole('button', { name: 'Choose project directory' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(window.locator('[data-project-row]')).toHaveCount(1)
-  const snapshot = await window.evaluate(() => window.codefly.getSnapshot())
+  const snapshot = await window.evaluate(() => window.codeflai.getSnapshot())
   const project = snapshot.state.projects[0]!
   const menu = await openProjectOptions()
   await menu.getByRole('menuitem', { name: 'Remove from list' }).click()
@@ -384,7 +384,7 @@ test('offers local folders, recent projects and a Git clone form in Add Project'
   await dialog.getByRole('button', { name: `${project.name} ${project.path}` }).click()
   await expect(dialog).toHaveCount(0)
   await expect(window.locator('[data-project-row]')).toHaveCount(1)
-  const reopened = await window.evaluate(() => window.codefly.getSnapshot())
+  const reopened = await window.evaluate(() => window.codeflai.getSnapshot())
   expect(reopened.state.projects[0]!.id).toBe(project.id)
   expect(reopened.state.recentProjects).toEqual([])
 })
@@ -402,7 +402,7 @@ test('adds the fixture project and creates a Claude session as the first worktre
   const claudeRow = sessionRowByKind('claude')
   await expect(claudeRow).toHaveCount(1, { timeout: 20_000 })
   await expect(claudeRow.locator('.session-secondary')).toHaveText(/^worktree-\d{6}-1$/)
-  await expectVisibleTerminalToContain('CODEFLY_E2E_FAKE_AGENT_READY')
+  await expectVisibleTerminalToContain('CODEFLAI_E2E_FAKE_AGENT_READY')
 })
 
 // Agents draw their startup logos as pixel art out of Block Elements (U+2588 and the quadrant
@@ -431,7 +431,7 @@ test('renders the terminal through the WebGL renderer so Block Elements have no 
   // real device pixel ratio. See src/renderer/src/terminal/block-glyph-alignment.ts.
   const deviceCellWidth = await pane.locator('.terminal-instance-host').evaluate((host) => {
     const canvas = host.querySelector('.xterm-screen canvas')
-    const terminal = (host as HTMLElement & { codeflyTerminal?: { cols: number } }).codeflyTerminal
+    const terminal = (host as HTMLElement & { codeflaiTerminal?: { cols: number } }).codeflaiTerminal
     if (!(canvas instanceof HTMLCanvasElement) || !terminal) return Number.NaN
     return canvas.width / terminal.cols
   })
@@ -459,8 +459,8 @@ test('marks the running Claude session Done once its output has gone quiet', asy
 test('keeps the terminal workflow usable at the 900 by 600 minimum window size', async () => {
   const { wasMaximized, size } = await electronApp.evaluate(({ BrowserWindow }) => {
     const mainWindow = BrowserWindow.getAllWindows()[0]
-    if (!mainWindow) throw new Error('CodeFly main window is missing')
-    // CodeFly opens maximized (see createMainWindow), and a maximized window ignores
+    if (!mainWindow) throw new Error('Codeflai main window is missing')
+    // Codeflai opens maximized (see createMainWindow), and a maximized window ignores
     // setSize — so the resize below has to un-maximize first. Asserted rather than merely
     // done, since this is the first test to touch the window frame and no earlier test
     // changes it.
@@ -625,7 +625,7 @@ test('submitting the first input replaces the title and never leaks a bypass fla
 
   const terminalHost = window.locator('.terminal-pane:visible .terminal-instance-host')
   await terminalHost.click()
-  await window.keyboard.type('hello codefly')
+  await window.keyboard.type('hello codeflai')
   await window.keyboard.press('Enter')
 
   await expect
@@ -645,11 +645,11 @@ test('Ctrl+V pastes the clipboard text into the Claude session instead of sendin
   // native paste event feeds xterm's paste path (see terminal-key-bindings.ts). The fake agent
   // echoes its stdin, so the text can only appear on screen if the clipboard reached the PTY.
   const previousClipboard = await electronApp.evaluate(({ clipboard }) => clipboard.readText())
-  await electronApp.evaluate(({ clipboard }) => clipboard.writeText('CODEFLY_PASTE_CHECK'))
+  await electronApp.evaluate(({ clipboard }) => clipboard.writeText('CODEFLAI_PASTE_CHECK'))
   try {
     await window.locator('.terminal-pane:visible .terminal-instance-host').click()
     await window.keyboard.press('Control+V')
-    await expectVisibleTerminalToContain('CODEFLY_PASTE_CHECK')
+    await expectVisibleTerminalToContain('CODEFLAI_PASTE_CHECK')
   } finally {
     await electronApp.evaluate(({ clipboard }, text) => clipboard.writeText(text), previousClipboard)
   }
@@ -685,8 +685,8 @@ test('creates PowerShell and Command Prompt sessions with the bypass warning abs
   // Regression guard: a freshly created session's terminal must own keyboard focus, so
   // typing works immediately WITHOUT clicking into the terminal first. (No Enter pressed:
   // the guarded behavior is keystroke echo, not command execution or first-input titling.)
-  await window.keyboard.type('CODEFLY_FOCUS_CHECK')
-  await expectVisibleTerminalToContain('CODEFLY_FOCUS_CHECK')
+  await window.keyboard.type('CODEFLAI_FOCUS_CHECK')
+  await expectVisibleTerminalToContain('CODEFLAI_FOCUS_CHECK')
 
   // Regression guard: the terminal's rendered screen must sit at the TOP of its host and stay
   // inside it. Without xterm.css, the viewport layer participates in normal flow and pushes
@@ -917,8 +917,8 @@ test('blocks deleting a dirty worktree, then deletes cleanly and retains the bra
 
 /**
  * The in-app update journey, driven against a second Electron instance with its own
- * user-data directory. CODEFLY_E2E_RELEASE (see src/main/index.ts) supplies one published
- * release offline and CODEFLY_E2E_INSTALL_LOG records the installer that would have been
+ * user-data directory. CODEFLAI_E2E_RELEASE (see src/main/index.ts) supplies one published
+ * release offline and CODEFLAI_E2E_INSTALL_LOG records the installer that would have been
  * executed — those two seams, plus the process spawn, are the only substitutions: the SemVer
  * comparison, the asset picker, the GitHub host allowlist, the streamed write, the size check
  * and the `.part` rename are all the real production code, writing into a real directory.
@@ -927,18 +927,18 @@ test('blocks deleting a dirty worktree, then deletes cleanly and retains the bra
  * update dialog on the shared window would block every other test in the journey.
  */
 test('prompts on startup, downloads the installer in-app, and launches it on demand', async () => {
-  const updaterUserDataDir = mkdtempSync(join(tmpdir(), 'codefly-e2e-update-'))
+  const updaterUserDataDir = mkdtempSync(join(tmpdir(), 'codeflai-e2e-update-'))
   const installLog = join(updaterUserDataDir, 'install-launch.log')
-  const installerName = 'CodeFly-Setup-99.0.0-win-x64.exe'
+  const installerName = 'Codeflai-Setup-99.0.0-win-x64.exe'
   const installerBytes = 512 * 1024
   const release = {
     tag_name: 'v99.0.0',
-    html_url: 'https://github.com/denggaopan/codefly/releases/tag/v99.0.0',
+    html_url: 'https://github.com/denggaopan/codeflai/releases/tag/v99.0.0',
     assets: [
       {
         name: installerName,
         size: installerBytes,
-        browser_download_url: `https://github.com/denggaopan/codefly/releases/download/v99.0.0/${installerName}`
+        browser_download_url: `https://github.com/denggaopan/codeflai/releases/download/v99.0.0/${installerName}`
       }
     ]
   }
@@ -948,12 +948,12 @@ test('prompts on startup, downloads the installer in-app, and launches it on dem
     cwd: projectRoot,
     env: {
       ...process.env,
-      CODEFLY_E2E: '1',
-      CODEFLY_E2E_PROJECT: repoPath,
-      CODEFLY_E2E_AGENT_CMD: fakeAgentCmd,
-      CODEFLY_E2E_RELEASE: JSON.stringify(release),
-      CODEFLY_E2E_INSTALL_LOG: installLog,
-      CODEFLY_PTY_HOST_IDLE_MS: '250'
+      CODEFLAI_E2E: '1',
+      CODEFLAI_E2E_PROJECT: repoPath,
+      CODEFLAI_E2E_AGENT_CMD: fakeAgentCmd,
+      CODEFLAI_E2E_RELEASE: JSON.stringify(release),
+      CODEFLAI_E2E_INSTALL_LOG: installLog,
+      CODEFLAI_PTY_HOST_IDLE_MS: '250'
     }
   })
 

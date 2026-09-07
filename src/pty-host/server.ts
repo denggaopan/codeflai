@@ -47,7 +47,7 @@ type RegistryPort = Pick<
 export type PtyHostServerOptions = {
   endpoint: string
   registry: RegistryPort
-  /** The CodeFly build that started this host, reported in `welcome`. */
+  /** The Codeflai build that started this host, reported in `welcome`. */
   appVersion: string
   platform: NodeJS.Platform
   log: (message: string) => void
@@ -105,7 +105,7 @@ const defaultRemoveFile = async (path: string): Promise<void> => {
  * The NDJSON server the UI talks to. Two rules shape everything below:
  *
  * 1. A disconnect is a detach, never a shutdown. Closing the window, reloading the renderer
- *    and quitting CodeFly all look identical here — the client socket goes away and every
+ *    and quitting Codeflai all look identical here — the client socket goes away and every
  *    PTY keeps running until someone asks for it to be killed.
  * 2. Requests are handled concurrently, not queued. A `spawn` can spend seconds inside the
  *    CLI locator (macOS asks a login shell, with a five second budget), and head-of-line

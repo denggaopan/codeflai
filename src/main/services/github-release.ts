@@ -8,13 +8,13 @@ import { z } from 'zod'
  * release offers — the check advertises exactly the file the download will fetch.
  */
 
-export const LATEST_RELEASE_URL = 'https://api.github.com/repos/denggaopan/codefly/releases/latest'
+export const LATEST_RELEASE_URL = 'https://api.github.com/repos/denggaopan/codeflai/releases/latest'
 
 // GitHub rejects unauthenticated API calls without a User-Agent, and pins the response
 // shape to the documented v3 schema via the Accept header.
 export const REQUEST_HEADERS: Readonly<Record<string, string>> = {
   Accept: 'application/vnd.github+json',
-  'User-Agent': 'CodeFly'
+  'User-Agent': 'Codeflai'
 }
 
 // The asset endpoint answers with the binary itself, not JSON, so it asks for the raw bytes.
@@ -24,13 +24,13 @@ export const REQUEST_HEADERS: Readonly<Record<string, string>> = {
 export const DOWNLOAD_HEADERS: Readonly<Record<string, string>> = {
   Accept: 'application/octet-stream',
   'Accept-Encoding': 'identity',
-  'User-Agent': 'CodeFly'
+  'User-Agent': 'Codeflai'
 }
 
 export const REQUEST_TIMEOUT_MS = 10_000
 
 // Release assets live on github.com, which redirects to this CDN host. Anything else means
-// the API answer was tampered with somewhere, and CodeFly is about to run the file it
+// the API answer was tampered with somewhere, and Codeflai is about to run the file it
 // downloads, so a foreign host disqualifies the download rather than merely warning.
 const TRUSTED_DOWNLOAD_HOSTS: readonly string[] = ['github.com', 'objects.githubusercontent.com']
 
@@ -47,7 +47,7 @@ const INSTALLER_NAME_HINT = 'setup'
 
 // Only the fields the update flow reads. Every asset field is optional so a GitHub payload
 // change can never fail the parse, and the array itself falls back to "no assets" rather
-// than failing the whole release parse — a release CodeFly cannot download an installer
+// than failing the whole release parse — a release Codeflai cannot download an installer
 // from is still a release it must be able to report a version for.
 const releaseAssetSchema = z.object({
   name: z.string().optional(),
@@ -64,7 +64,7 @@ export const latestReleaseSchema = z.object({
 export type ReleaseAsset = z.infer<typeof releaseAssetSchema>
 export type LatestRelease = z.infer<typeof latestReleaseSchema>
 
-/** A published asset that CodeFly is willing to download and run, with its resolved URL. */
+/** A published asset that Codeflai is willing to download and run, with its resolved URL. */
 export type WindowsInstaller = { fileName: string; size: number; downloadUrl: string }
 
 const safeFileName = (name: string | undefined): string | undefined => {

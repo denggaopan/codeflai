@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { Dialog } from 'electron'
@@ -14,17 +14,20 @@ import {
   type SessionRecord,
   type ToolAvailability
 } from '../shared/contracts'
-import type { TerminalReplay } from '../shared/pty-protocol'
+import { legacyPtyHostEndpoint, type TerminalReplay } from '../shared/pty-protocol'
 import { cliLocator, type CliLocator } from './infrastructure/cli-locator'
 import { registerIpc } from './ipc/register-ipc'
 import { createBeforeQuitHandler } from './shutdown-controller'
 import { AppInfoService } from './services/app-info-service'
+import { completeLegacyHostMigration, isLegacyUiRunning, prepareBrandMigration, type BrandMigrationResult } from './services/brand-migration'
 import { ExternalAppService } from './services/external-app-service'
 import { ProjectService } from './services/project-service'
+import { migrateWindowsLoginItem } from './services/login-item-migration'
 import { PtyHostClient } from './services/pty-host-client'
 import { PtyHostLauncher } from './services/pty-host-launcher'
 import { PtyHostRuntime } from './services/pty-host-runtime'
-import { SessionCoordinator, type SessionTerminal } from './services/session-coordinator'
+import { SessionCoordinator } from './services/session-coordinator'
+import { attachSessions, type TerminalImplementation } from './services/session-attachment'
 import { SessionStore } from './services/session-store'
 import { TerminalService, type TerminalEventMap } from './services/terminal-service'
 import {
@@ -60,7 +63,7 @@ type TerminalLocator = Pick<CliLocator, 'resolveShell' | 'resolvePowerShell' | '
 
 const parsedPlatform = hostPlatformSchema.safeParse(process.platform)
 if (!parsedPlatform.success) {
-  throw new Error(`Unsupported platform: ${process.platform}. CodeFly supports Windows and macOS only.`)
+  throw new Error(`Unsupported platform: ${process.platform}. Codeflai supports Windows and macOS only.`)
 }
 const runtimePlatform: HostPlatform = parsedPlatform.data
 
@@ -110,7 +113,7 @@ const buildGetSnapshot = (
 
 /**
  * ---------------------------------------------------------------------------------------
- * End-to-end test composition (CODEFLY_E2E=1 only)
+ * End-to-end test composition (CODEFLAI_E2E=1 only)
  * ---------------------------------------------------------------------------------------
  * Every switch below is read ONLY here, in the composition root, and wired through the
  * existing constructor/dependency-injection seams already exposed by TerminalService,
@@ -119,12 +122,12 @@ const buildGetSnapshot = (
  * (`--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox`) are never
  * touched here — only the resolved *executable* changes for the agent kinds in E2E mode, exactly
  * as production TerminalService/TitleService launch adapters would apply their fixed argv to
- * whatever executable the locator resolves. When CODEFLY_E2E is unset (every production
+ * whatever executable the locator resolves. When CODEFLAI_E2E is unset (every production
  * build), none of this file's E2E helpers are invoked and behavior is byte-for-byte identical
  * to the code path that existed before this test-mode composition was added.
  */
 
-const isE2E = process.env.CODEFLY_E2E === '1'
+const isE2E = process.env.CODEFLAI_E2E === '1'
 
 const buildE2ETerminalLocator = (agentCommand: string): TerminalLocator => ({
   resolveShell: () => cliLocator.resolveShell(),
@@ -141,7 +144,7 @@ const buildE2ETitleAdapters = (
   const processSpawner: TitleProcessSpawner = (file, args, options) =>
     spawn(file, [...args], {
       ...options,
-      env: titleArgvLogPath ? { ...process.env, CODEFLY_E2E_ARGV_LOG: titleArgvLogPath } : process.env
+      env: titleArgvLogPath ? { ...process.env, CODEFLAI_E2E_ARGV_LOG: titleArgvLogPath } : process.env
     }) as unknown as SpawnedTitleProcess
 
   return {
@@ -168,7 +171,7 @@ const buildE2EExternalAppService = (platform: HostPlatform): ExternalAppService 
 
 /**
  * An offline stand-in for one published GitHub release, supplied by the E2E suite as JSON in
- * CODEFLY_E2E_RELEASE. Without it the release endpoint answers 404 — what that endpoint
+ * CODEFLAI_E2E_RELEASE. Without it the release endpoint answers 404 — what that endpoint
  * really returns for this repository today — and the suite exercises the "no release" path.
  * With it, the whole update journey runs against the real services: the real SemVer
  * comparison, the real asset picker and host allowlist, and a real streamed write into the
@@ -182,7 +185,7 @@ type E2EReleaseFixture = {
 }
 
 const readE2EReleaseFixture = (): E2EReleaseFixture | undefined => {
-  const raw = process.env.CODEFLY_E2E_RELEASE
+  const raw = process.env.CODEFLAI_E2E_RELEASE
   if (!raw) return undefined
 
   const release = JSON.parse(raw) as { assets?: ReadonlyArray<{ browser_download_url?: string; size?: number }> }
@@ -193,7 +196,7 @@ const readE2EReleaseFixture = (): E2EReleaseFixture | undefined => {
     release,
     installerUrl: asset.browser_download_url,
     installerBytes: asset.size ?? 0,
-    installLog: process.env.CODEFLY_E2E_INSTALL_LOG
+    installLog: process.env.CODEFLAI_E2E_INSTALL_LOG
   }
 }
 
@@ -313,18 +316,6 @@ const buildE2EDialog = (projectPath: string | undefined): Dialog =>
   }) as unknown as Dialog
 
 /**
- * Everything the coordinator and the IPC layer need from a terminal implementation. Two
- * satisfy it: `PtyHostClient`, a proxy to the resident host that keeps PTYs across UI
- * restarts, and `TerminalService`, which owns them in this process and loses them with it.
- */
-type TerminalImplementation = SessionTerminal & {
-  write(sessionId: string, data: string): void
-  resize(sessionId: string, cols: number, rows: number): void
-  isRunning(sessionId: string): boolean
-  replay?(sessionId: string): Promise<TerminalReplay>
-}
-
-/**
  * Forwards every call to whichever implementation this launch settles on.
  *
  * The coordinator and the IPC handlers must be wired before the pty-host connection attempt
@@ -413,67 +404,68 @@ class DeferredTerminal implements TerminalImplementation {
  * and to assert the keepalive at all. Nothing in the application reads this.
  */
 const recordE2EHostPid = (hostPid: number): void => {
-  const logPath = process.env.CODEFLY_E2E_HOST_PID_LOG
+  const logPath = process.env.CODEFLAI_E2E_HOST_PID_LOG
   if (logPath === undefined) return
   try {
     writeFileSync(logPath, String(hostPid), 'utf8')
   } catch (error) {
-    console.error('CodeFly: failed to record the pty-host pid for the E2E suite.', error)
+    console.error('Codeflai: failed to record the pty-host pid for the E2E suite.', error)
   }
 }
 
-/**
- * Picks the terminal implementation for this launch and squares the persisted session list
- * with the PTYs that actually exist. Never rejects: every outcome here has to leave a usable
- * app, so a failure downgrades what sessions can do rather than what the app can do.
- */
-const attachSessions = async (options: {
-  terminal: DeferredTerminal
-  coordinator: SessionCoordinator
-  client: PtyHostClient
-  fallback: TerminalImplementation
-}): Promise<void> => {
-  const { terminal, coordinator, client, fallback } = options
+const customUserData = app.commandLine.getSwitchValue('user-data-dir')
+const userDataPath = customUserData ? resolve(customUserData) : join(app.getPath('appData'), 'Codeflai')
+app.setName('Codeflai')
+if (runtimePlatform === 'win32') app.setAppUserModelId('com.codeflai.desktop')
+app.setPath('userData', userDataPath)
+app.setPath('sessionData', userDataPath)
 
-  let liveSessionIds: ReadonlySet<string> = new Set()
-  let autoResume = true
-
-  const attachment = await client.connect()
-  if (attachment.status === 'connected') {
-    terminal.bind(client)
-    recordE2EHostPid(attachment.hostPid)
-    liveSessionIds = new Set(attachment.sessions.map((session) => session.sessionId))
-  } else {
-    // No host to talk to, so this window owns its PTYs and they end with it. The app stays
-    // fully usable; only the keepalive is gone.
-    console.error(
-      `CodeFly: running without a pty-host (${attachment.status}): ${attachment.message} Sessions will not outlive this window.`
-    )
-    terminal.bind(fallback)
-    // `unavailable` means no host exists, so nothing is running and resuming is safe.
-    // `incompatible` means one IS running, holding PTYs this build could not adopt and could
-    // not retire. Resuming then would start a SECOND agent process per session against the
-    // same worktree, which is worse than leaving them stopped for the user to restart by hand.
-    autoResume = attachment.status === 'unavailable'
+let brandMigration: BrandMigrationResult = {}
+try {
+  const testLegacyPath = isE2E ? process.env.CODEFLAI_E2E_LEGACY_USER_DATA : undefined
+  if (!customUserData || testLegacyPath) {
+    const knownLegacyPaths = ['CodeFly', 'codefly'].map((name) => join(app.getPath('appData'), name))
+    const preferredLegacy = join(app.getPath('appData'), app.isPackaged ? 'CodeFly' : 'codefly')
+    const legacyUserDataPath = testLegacyPath ?? (existsSync(preferredLegacy) ? preferredLegacy : knownLegacyPaths.find(existsSync) ?? preferredLegacy)
+    const legacyWasPackaged = testLegacyPath
+      ? process.env.CODEFLAI_E2E_LEGACY_PACKAGED === '1'
+      : basename(legacyUserDataPath) === 'CodeFly'
+    brandMigration = prepareBrandMigration({
+      userDataPath,
+      legacyUserDataPath,
+      legacyHostUserDataPath: legacyWasPackaged ? legacyUserDataPath : `${legacyUserDataPath}::dev`,
+      allowedLegacyPaths: testLegacyPath ? [testLegacyPath] : knownLegacyPaths,
+      isLegacyAppRunning: testLegacyPath ? () => false : () => isLegacyUiRunning(runtimePlatform)
+    })
   }
-
-  await coordinator.reconcile(liveSessionIds, { autoResume })
+} catch (error) {
+  dialog.showErrorBox('Codeflai migration could not finish', error instanceof Error ? error.message : String(error))
+  app.exit(1)
 }
 
 app.whenReady().then(() => {
+  try {
+    migrateWindowsLoginItem({
+      platform: runtimePlatform, isPackaged: app.isPackaged,
+      executablePath: process.execPath, customProfile: Boolean(customUserData) || isE2E, loginItems: app
+    })
+  } catch (error) {
+    // Leave the legacy startup entry in place so migration can retry next launch.
+    console.error('Codeflai could not migrate launch-at-login settings.', error)
+  }
   const statePath = join(app.getPath('userData'), 'state.json')
   const store = new SessionStore(statePath)
   const projectService = new ProjectService(store, undefined, undefined, undefined, undefined, runtimePlatform)
   const worktreeService = new WorktreeService()
 
-  const e2eAgentCommand = isE2E ? process.env.CODEFLY_E2E_AGENT_CMD : undefined
+  const e2eAgentCommand = isE2E ? process.env.CODEFLAI_E2E_AGENT_CMD : undefined
 
   const agentLocator: AgentLocator = e2eAgentCommand ? buildE2ETerminalLocator(e2eAgentCommand) : cliLocator
   const terminalService = e2eAgentCommand
     ? new TerminalService(buildE2ETerminalLocator(e2eAgentCommand), undefined, undefined, runtimePlatform)
     : new TerminalService(cliLocator, undefined, undefined, runtimePlatform)
   const titleService = e2eAgentCommand
-    ? new TitleService(buildE2ETitleAdapters(e2eAgentCommand, process.env.CODEFLY_E2E_TITLE_ARGV_LOG, runtimePlatform))
+    ? new TitleService(buildE2ETitleAdapters(e2eAgentCommand, process.env.CODEFLAI_E2E_TITLE_ARGV_LOG, runtimePlatform))
     : new TitleService()
   const externalAppService = isE2E
     ? buildE2EExternalAppService(runtimePlatform)
@@ -484,9 +476,7 @@ app.whenReady().then(() => {
   const updaterService = isE2E
     ? buildE2EUpdaterService(e2eReleaseFixture, runtimePlatform)
     : new UpdaterService(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
-  const dialogForIpc = isE2E ? buildE2EDialog(process.env.CODEFLY_E2E_PROJECT) : dialog
-
-  const userDataPath = app.getPath('userData')
+  const dialogForIpc = isE2E ? buildE2EDialog(process.env.CODEFLAI_E2E_PROJECT) : dialog
 
   /**
    * The resident pty-host: it holds every PTY, so closing this window, reloading the renderer,
@@ -495,7 +485,7 @@ app.whenReady().then(() => {
    * The endpoint is derived from the userData path, which keeps a second Windows account and
    * the E2E suite's own --user-data-dir on hosts of their own. A dev run is separated from an
    * installed build explicitly, even though both use the same userData: their `out/` builds
-   * differ, and a `npm run dev` window adopting the sessions of the installed CodeFly (or the
+   * differ, and a `npm run dev` window adopting the sessions of the installed Codeflai (or the
    * reverse) would run this build's UI against the other build's host.
    */
   const ptyHostRuntime = new PtyHostRuntime({
@@ -509,14 +499,19 @@ app.whenReady().then(() => {
   const ptyHostLauncher = new PtyHostLauncher(
     app.isPackaged ? userDataPath : `${userDataPath}::dev`,
     app.getVersion(),
-    async () => ({ ...(await ptyHostRuntime.resolve()), logPath: join(userDataPath, 'pty-host.log') })
+    async () => ({ ...(await ptyHostRuntime.resolve()), logPath: join(userDataPath, 'pty-host.log') }),
+    undefined, undefined, runtimePlatform, undefined, undefined, undefined, undefined,
+    brandMigration.legacyHostUserDataPath
+      ? [legacyPtyHostEndpoint(brandMigration.legacyHostUserDataPath, runtimePlatform)]
+      : [],
+    () => completeLegacyHostMigration(userDataPath)
   )
   const ptyHostClient = new PtyHostClient(ptyHostLauncher)
   ptyHostClient.onDisconnected(() => {
     // Deliberately not turned into 'stopped' status or a reconnect: a dropped socket says
     // nothing about whether the PTYs behind it died, and guessing either way is worse than
-    // waiting. Restarting CodeFly reconciles against whatever is really there.
-    console.error('CodeFly: the pty-host connection dropped. Restart CodeFly to reattach or resume its sessions.')
+    // waiting. Restarting Codeflai reconciles against whatever is really there.
+    console.error('Codeflai: the pty-host connection dropped. Restart Codeflai to reattach or resume its sessions.')
   })
 
   const terminal = new DeferredTerminal()
@@ -525,11 +520,11 @@ app.whenReady().then(() => {
     terminal,
     coordinator,
     client: ptyHostClient,
-    fallback: terminalService
+    fallback: terminalService,
+    onHostAttached: recordE2EHostPid
   }).catch((error: unknown) => {
-    // attachSessions is written not to reject; if it somehow does, the snapshot must still be
-    // served or the window would sit empty forever.
-    console.error('CodeFly: failed to reconcile sessions at startup.', error)
+    dialog.showErrorBox('Codeflai could not reconnect your terminals', error instanceof Error ? error.message : String(error))
+    app.exit(1)
   })
 
   const window = createMainWindow(runtimePlatform)

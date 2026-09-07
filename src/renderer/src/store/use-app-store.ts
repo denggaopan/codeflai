@@ -21,6 +21,7 @@ import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { defaultSessionKindPreferences } from '../session-kind-options'
 import { QUICK_PROMPTS_STORAGE_KEY, quickPromptsSchema, readStoredQuickPrompts, type QuickPrompt } from '../quick-prompts'
+import { readMigratedStorage } from '../storage-migration'
 
 export type Notice = {
   message: string
@@ -124,12 +125,12 @@ const defaultCapabilities = (): CapabilityState => ({
 const errorMessage = (error: unknown, locale: Locale): string =>
   error instanceof Error ? error.message : translate(locale, 'notice.genericError')
 
-export const THEME_STORAGE_KEY = 'codefly.theme'
-export const LOCALE_STORAGE_KEY = 'codefly.locale'
-export const SESSION_KINDS_STORAGE_KEY = 'codefly.sessionKinds'
-export const SIDEBAR_WIDTH_STORAGE_KEY = 'codefly.sidebarWidth'
-export const WINDOW_PINNED_STORAGE_KEY = 'codefly.windowPinned'
-export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codefly.showQuickPrompts'
+export const THEME_STORAGE_KEY = 'codeflai.theme'
+export const LOCALE_STORAGE_KEY = 'codeflai.locale'
+export const SESSION_KINDS_STORAGE_KEY = 'codeflai.sessionKinds'
+export const SIDEBAR_WIDTH_STORAGE_KEY = 'codeflai.sidebarWidth'
+export const WINDOW_PINNED_STORAGE_KEY = 'codeflai.windowPinned'
+export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -137,7 +138,7 @@ export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codefly.showQuickPrompts'
 // launch) falls back to dark, the app's original and default look.
 const readStoredTheme = (): ThemePreference => {
   try {
-    return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark'
+    return readMigratedStorage(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark'
   } catch {
     return 'dark'
   }
@@ -153,7 +154,7 @@ const applyThemeEffects = (theme: ThemePreference): void => {
   } catch {
     // localStorage unavailable: the preference just won't survive a restart.
   }
-  window.codefly.setTheme(theme).catch(() => undefined)
+  window.codeflai.setTheme(theme).catch(() => undefined)
 }
 
 // The UI language is renderer-owned (localStorage) for the same reasons as the theme: it is
@@ -162,7 +163,7 @@ const applyThemeEffects = (theme: ThemePreference): void => {
 // keeps startup copy deterministic regardless of the host OS language.
 const readStoredLocale = (): Locale => {
   try {
-    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+    const stored = readMigratedStorage(LOCALE_STORAGE_KEY)
     return isLocale(stored) ? stored : DEFAULT_LOCALE
   } catch {
     return DEFAULT_LOCALE
@@ -185,7 +186,7 @@ const applyLocaleEffects = (locale: Locale): void => {
 // first launch with no stored key — means unpinned, the ordinary window behaviour.
 const readStoredWindowPinned = (): boolean => {
   try {
-    return window.localStorage.getItem(WINDOW_PINNED_STORAGE_KEY) === 'true'
+    return readMigratedStorage(WINDOW_PINNED_STORAGE_KEY) === 'true'
   } catch {
     return false
   }
@@ -193,17 +194,7 @@ const readStoredWindowPinned = (): boolean => {
 
 const readStoredShowQuickPrompts = (): boolean => {
   try {
-    let stored = window.localStorage.getItem(SHOW_QUICK_PROMPTS_STORAGE_KEY)
-    if (stored === null) {
-      stored = window.localStorage.getItem('codefly.showQuickPhrases')
-      if (stored !== null) {
-        try {
-          window.localStorage.setItem(SHOW_QUICK_PROMPTS_STORAGE_KEY, String(stored === 'true'))
-        } catch {
-          // Keep the saved preference for this window even if migration cannot be persisted.
-        }
-      }
-    }
+    const stored = readMigratedStorage(SHOW_QUICK_PROMPTS_STORAGE_KEY, ['codefly.showQuickPhrases', 'codeflai.showQuickPhrases'])
     return stored === 'true'
   } catch {
     return false
@@ -219,7 +210,7 @@ const applyWindowPinnedEffects = (pinned: boolean): Promise<boolean> => {
   } catch {
     // localStorage unavailable: the preference just won't survive a restart.
   }
-  return window.codefly.setWindowPinned(pinned).catch(() => pinned)
+  return window.codeflai.setWindowPinned(pinned).catch(() => pinned)
 }
 
 // The per-kind launcher preferences are renderer-owned (localStorage) for the same reasons as
@@ -240,7 +231,7 @@ const mergeStoredSessionKinds = (stored: unknown, platform: HostPlatform): Sessi
 
 const readStoredSessionKindPreferences = (platform: HostPlatform): SessionKindPreferences => {
   try {
-    const stored = window.localStorage.getItem(SESSION_KINDS_STORAGE_KEY)
+    const stored = readMigratedStorage(SESSION_KINDS_STORAGE_KEY)
     if (stored === null) return defaultSessionKindPreferences(platform)
     return mergeStoredSessionKinds(JSON.parse(stored), platform)
   } catch {
@@ -261,7 +252,7 @@ const persistSessionKindPreferences = (preferences: SessionKindPreferences): voi
 // on a wide monitor cannot swallow the workspace on a narrower one.
 const readStoredSidebarWidth = (): number => {
   try {
-    return parseStoredSidebarWidth(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), window.innerWidth)
+    return parseStoredSidebarWidth(readMigratedStorage(SIDEBAR_WIDTH_STORAGE_KEY), window.innerWidth)
   } catch {
     return DEFAULT_SIDEBAR_WIDTH
   }
@@ -316,7 +307,7 @@ const upsertSession = (state: AppState, session: SessionRecord): AppState => {
 }
 
 /**
- * Renderer-side application state. Actions call window.codefly and merge the returned
+ * Renderer-side application state. Actions call window.codeflai and merge the returned
  * record into appState immediately (an optimistic-but-authoritative update, since the
  * record IS what the main process just persisted); onStateChanged additionally replaces
  * appState wholesale whenever the main process broadcasts it, which is the durable source
@@ -386,7 +377,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
       const persistWorkspace = (): void => {
         const { activeProjectId, activeSessionId, collapsedProjectIds } = get()
-        void window.codefly.saveWorkspace({ activeProjectId, activeSessionId, collapsedProjectIds }).catch((error: unknown) => {
+        void window.codeflai.saveWorkspace({ activeProjectId, activeSessionId, collapsedProjectIds }).catch((error: unknown) => {
           if (!disposed) set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
       }
@@ -420,7 +411,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // always-on-top flag converges with the renderer preference.
       void applyWindowPinnedEffects(storedPinned)
 
-      window.codefly
+      window.codeflai
         .getSnapshot()
         .then((snapshot) => {
           if (disposed) return
@@ -444,14 +435,14 @@ export const useAppStore = create<AppStore>()((set, get) => {
           set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
 
-      const disposeState = window.codefly.onStateChanged((state) => {
+      const disposeState = window.codeflai.onStateChanged((state) => {
         latestBroadcast = state
         set((current) => ({ appState: state, ...(snapshotLoaded ? reconcileWorkspace(current, state) : {}) }))
       })
-      const disposeData = window.codefly.onTerminalData(({ sessionId }) => {
+      const disposeData = window.codeflai.onTerminalData(({ sessionId }) => {
         noteAgentOutput(sessionId)
       })
-      const disposeExit = window.codefly.onTerminalExit(({ sessionId }) => {
+      const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
         unmarkIdle(sessionId)
       })
       // Merged only while a download is actually in progress, so an event arriving after a
@@ -460,7 +451,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // one: the main process re-resolves the release when the download starts, so a release
       // published between the check and the click legitimately reports a newer version, and
       // dropping those frames would freeze the progress bar at 0 for the whole transfer.
-      const disposeUpdateProgress = window.codefly.onUpdateProgress((progress) => {
+      const disposeUpdateProgress = window.codeflai.onUpdateProgress((progress) => {
         set((state) =>
           state.updater.phase === 'downloading'
             ? {
@@ -520,7 +511,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     // leave the updater idle and silent — unlike Settings' explicit check, nobody asked.
     checkForUpdatesInBackground: async () => {
       try {
-        const result = await window.codefly.checkForUpdates()
+        const result = await window.codeflai.checkForUpdates()
         if (result.status !== 'available') return
         set({ updater: { phase: 'available', version: result.latestVersion, downloadable: result.asset !== undefined } })
       } catch {
@@ -542,7 +533,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
       set({ updater: { phase: 'downloading', version, receivedBytes: 0, totalBytes: 0 } })
       try {
-        const result = await window.codefly.downloadUpdate()
+        const result = await window.codeflai.downloadUpdate()
         if (result.status === 'ready') {
           set({ updater: { phase: 'ready', version: result.version } })
         } else if (result.status === 'cancelled') {
@@ -559,7 +550,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     // only asks; setting a phase here would race that answer.
     cancelUpdateDownload: async () => {
       try {
-        await window.codefly.cancelUpdateDownload()
+        await window.codeflai.cancelUpdateDownload()
       } catch {
         // The download simply keeps going, and its own result still lands.
       }
@@ -577,7 +568,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
       set({ updater: { phase: 'installing', version } })
       try {
-        const result = await window.codefly.installUpdate()
+        const result = await window.codeflai.installUpdate()
         // `launched` means the app is already quitting: staying on `installing` avoids a
         // flash of some other state during teardown.
         if (result.status === 'error') set({ updater: { phase: 'error', version, message: result.message } })
@@ -651,10 +642,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     addProject: async (source) => {
       const project = !source
-        ? await window.codefly.addProject()
+        ? await window.codeflai.addProject()
         : 'recentProjectId' in source
-          ? await window.codefly.reopenProject(source.recentProjectId)
-          : await window.codefly.cloneProject(source)
+          ? await window.codeflai.reopenProject(source.recentProjectId)
+          : await window.codeflai.cloneProject(source)
       if (!project) return false
       set((state) => ({
         appState: upsertProject(state.appState, project),
@@ -668,7 +659,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     reorderProjects: async (orderedProjectIds) => {
       try {
-        const projects = await window.codefly.reorderProjects(orderedProjectIds)
+        const projects = await window.codeflai.reorderProjects(orderedProjectIds)
         set((state) => ({ appState: { ...state.appState, projects } }))
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
@@ -677,7 +668,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     openProjectInVSCode: async (projectId) => {
       try {
-        await window.codefly.openProjectInVSCode(projectId)
+        await window.codeflai.openProjectInVSCode(projectId)
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
@@ -685,7 +676,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     openProjectFolder: async (projectId) => {
       try {
-        await window.codefly.openProjectFolder(projectId)
+        await window.codeflai.openProjectFolder(projectId)
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
@@ -693,7 +684,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     openProjectRepository: async (projectId) => {
       try {
-        await window.codefly.openProjectRepository(projectId)
+        await window.codeflai.openProjectRepository(projectId)
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
@@ -701,7 +692,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     removeProject: async (projectId) => {
       try {
-        await window.codefly.removeProject(projectId)
+        await window.codeflai.removeProject(projectId)
         // The main process has already broadcast the state without this project; this only
         // moves the selection off the records that vanished (and is a no-op for the state).
         set((state) => {
@@ -728,7 +719,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     createSession: async (projectId, kind, worktree) => {
       try {
-        const session = await window.codefly.createSession(projectId, kind, worktree)
+        const session = await window.codeflai.createSession(projectId, kind, worktree)
         set((state) => ({
           appState: upsertSession(state.appState, session),
           activeProjectId: session.projectId,
@@ -757,7 +748,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     restoreSession: async (sessionId) => {
       try {
-        const session = await window.codefly.restoreSession(sessionId)
+        const session = await window.codeflai.restoreSession(sessionId)
         set((state) => ({
           appState: upsertSession(state.appState, session),
           activeProjectId: session.projectId,
@@ -770,7 +761,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     deleteSession: async (sessionId) => {
       try {
-        const result = await window.codefly.deleteSession(sessionId)
+        const result = await window.codeflai.deleteSession(sessionId)
 
         if (result.status === 'deleted') {
           unmarkIdle(sessionId)

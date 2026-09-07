@@ -20,7 +20,7 @@ import { IPC } from '../shared/ipc'
 import type { ExternalLinkTarget } from '../shared/links'
 import type { TerminalDataEvent, TerminalReplay } from '../shared/pty-protocol'
 
-export type CodeFlyApi = {
+export type CodeflaiApi = {
   getSnapshot(): Promise<AppSnapshot>
   saveWorkspace(workspace: WorkspaceState): Promise<void>
   addProject(): Promise<ProjectRecord | null>
@@ -67,7 +67,7 @@ export type CodeFlyApi = {
 // Every method here is a thin bridge over ipcRenderer: no Node APIs, filesystem paths,
 // or business logic are exposed to the renderer. All request validation happens in the
 // main process (see src/main/ipc/register-ipc.ts) against the schemas in shared/contracts.ts.
-const api: CodeFlyApi = {
+const api: CodeflaiApi = {
   getSnapshot: () => ipcRenderer.invoke(IPC.snapshotGet),
   saveWorkspace: (workspace) => ipcRenderer.invoke(IPC.workspaceSave, workspace),
   addProject: () => ipcRenderer.invoke(IPC.projectAdd),
@@ -132,4 +132,4 @@ const api: CodeFlyApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('codefly', api)
+contextBridge.exposeInMainWorld('codeflai', api)
