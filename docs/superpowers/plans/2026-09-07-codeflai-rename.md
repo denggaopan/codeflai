@@ -18,8 +18,8 @@
 - [x] Add NSIS migration include and behavioral packaging checks. Use the new app ID and GUID; discover/uninstall the old identity with app data retained. Preserve launch-at-login settings and document macOS replacement behavior.
 - [x] Extend `scripts/prune-releases.test.mjs` to include both branding generations. Update current README migration instructions and branding metadata.
 - [x] Run `npm run typecheck`, `npm test`, `npx vitest run scripts/prune-releases.test.mjs scripts/installer-migration.test.mjs`, and `npm run test:e2e`. Add real Electron migration coverage using temporary profiles and the old build where available.
-- [ ] Review the complete change, fix findings, commit implementation and independently bump the version to `0.20.0`.
-- [ ] Build `npm run package:win` and `npm run package:mac`; inspect package names and metadata. Rename the GitHub repository, update the remote, and verify redirects before publishing the new release.
+- [x] Review the complete change, fix findings, commit implementation and independently bump the version to `0.20.0`.
+- [x] Build `npm run package:win` and `npm run package:mac`; inspect package names and metadata. Rename the GitHub repository, update the remote, and verify redirects before publishing the new release.
 
 ## Acceptance checks
 
@@ -36,3 +36,14 @@ and macOS execution limits must be stated separately from automated test results
 - 27 Electron E2E tests passed, including released CodeFly host continuity, profile copying and retirement of old host discovery.
 - Independent profile/host and installer/login reviews found no remaining issues after fixes.
 - Actual macOS execution and elevated HKLM/UAC installer transitions remain manual checks.
+
+## Packaging and repository verification
+
+- Windows x64 NSIS installer and macOS x64/arm64 application archives built at `0.20.0`.
+- 5 additional packaged Windows E2E tests passed, covering profile migration, released CodeFly host continuity and workspace recovery.
+- All packaged manifests use `codeflai`, version `0.20.0` and the new GitHub repository; Windows update metadata points to `denggaopan/codeflai`.
+- macOS bundle IDs/names/versions, Mach-O architectures, ZIP integrity and 14 preserved symlinks per archive were verified.
+- SHA-256 checksums were verified for all three distributable artifacts before upload.
+- The repository was renamed to `denggaopan/codeflai`; the old API URL redirects correctly and remote `main` matches the pushed implementation.
+- Existing user profiles and the running installed CodeFly application were not modified; migration tests used isolated temporary profiles.
+- Builds remain unsigned. Actual macOS execution and elevated Windows installation transitions are not covered by these checks.
