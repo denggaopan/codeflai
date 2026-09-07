@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type MouseEvent } from 'react'
 
 import logoUrl from '../assets/logo.svg'
 import { useTranslation } from '../i18n/use-translation'
+import { recordRocketClick } from '../rocket-click-streak'
 import type { Point } from '../rocket-flight'
 import { useAppStore } from '../store/use-app-store'
 import RocketFlight from './RocketFlight'
@@ -10,6 +11,7 @@ import SettingsDialog from './SettingsDialog'
 interface RocketLaunch {
   id: number
   origin: Point
+  grand: boolean
 }
 
 /**
@@ -24,13 +26,20 @@ export default function TitleBar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
+  const recentClicks = useRef<number[]>([])
 
   // The brand button is the easter egg's launch pad: every click drops another rocket from
-  // wherever the logo currently sits, so several can be in the air at once.
+  // wherever the logo currently sits. Each completed 100-click streak upgrades that launch.
   const launchRocket = (event: MouseEvent<HTMLButtonElement>) => {
     const box = event.currentTarget.getBoundingClientRect()
     const id = nextLaunchId.current++
-    setLaunches((current) => [...current, { id, origin: { x: box.left + box.width / 2, y: box.bottom } }])
+    const streak = recordRocketClick(recentClicks.current, performance.now())
+    recentClicks.current = streak.clicks
+    setLaunches((current) => [...current, {
+      id,
+      origin: { x: box.left + box.width / 2, y: box.bottom },
+      grand: streak.grand
+    }])
   }
 
   const endLaunch = useCallback((id: number) => {
@@ -102,7 +111,7 @@ export default function TitleBar() {
       </div>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {launches.map((launch) => (
-        <RocketFlight key={launch.id} origin={launch.origin} onDone={() => endLaunch(launch.id)} />
+        <RocketFlight key={launch.id} origin={launch.origin} grand={launch.grand} onDone={() => endLaunch(launch.id)} />
       ))}
     </header>
   )

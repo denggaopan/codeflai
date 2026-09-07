@@ -537,6 +537,11 @@ for a few seconds, and dashes off the screen. Click again for more of them. It i
 decorative — it cannot intercept a click — and it is skipped entirely if your system asks for
 reduced motion.
 
+Click 100 times within any rolling 60 seconds to upgrade the hundredth rocket: it is twice
+as wide and tall, drops nose-first, then follows a slow Qian Xuesen-style skip-glide with
+diminishing arcs until it leaves the window. Its nose follows the curve, and it stays slow
+through the exit. The count resets after each grand rocket.
+
 ## License
 
 Codeflai is licensed under the [MIT License](LICENSE). You may use, copy, modify, and

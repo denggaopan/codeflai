@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -84,6 +84,7 @@ describe('TitleBar', () => {
 
   afterEach(() => {
     Element.prototype.animate = originalAnimate
+    vi.restoreAllMocks()
   })
 
   it('keeps a draggable strip next to the no-drag action buttons', () => {
@@ -157,6 +158,38 @@ describe('TitleBar', () => {
     await clickBrand()
 
     expect(rockets()).toHaveLength(3)
+  })
+
+  it('upgrades the hundredth click to one double-size slow skip-gliding rocket', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1000)
+    render(<TitleBar />)
+    const brand = screen.getByRole('button', { name: 'Codeflai — launch a rocket' })
+    for (let index = 0; index < 99; index++) fireEvent.click(brand)
+    expect(document.querySelectorAll('.rocket-flight-grand')).toHaveLength(0)
+    fireEvent.click(brand)
+    expect(rockets()).toHaveLength(100)
+    const grand = document.querySelector('.rocket-flight-grand')
+    expect(grand).not.toBeNull()
+    expect(grand!.querySelector('svg')).toHaveAttribute('width', '64')
+    expect(grand!.querySelector('svg')).toHaveAttribute('height', '88')
+    expect(Number(flights[99].options.duration)).toBeGreaterThan(12_000)
+    expect(flights[99].keyframes.length).toBeGreaterThan(20)
+    fireEvent.click(brand)
+    expect(document.querySelectorAll('.rocket-flight-grand')).toHaveLength(1)
+    expect(flights[100].keyframes).toHaveLength(5)
+    act(() => flights[99].animation.emit('finish'))
+    expect(document.querySelectorAll('.rocket-flight-grand')).toHaveLength(0)
+  })
+
+  it('expires old logo clicks before deciding whether to launch a grand rocket', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0)
+    render(<TitleBar />)
+    const brand = screen.getByRole('button', { name: 'Codeflai — launch a rocket' })
+    for (let index = 0; index < 99; index++) fireEvent.click(brand)
+    now.mockReturnValue(60_001)
+    fireEvent.click(brand)
+    expect(document.querySelectorAll('.rocket-flight-grand')).toHaveLength(0)
+    expect(flights[99].keyframes).toHaveLength(5)
   })
 
   it('cleans the rocket up once its flight finishes', async () => {

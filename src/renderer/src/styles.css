@@ -315,6 +315,13 @@ html[data-platform='darwin'] .title-bar {
   display: block;
 }
 
+.rocket-flight-grand .rocket-flight-body {
+  width: 64px;
+  height: 88px;
+  margin-top: -44px;
+  margin-left: -32px;
+}
+
 .rocket-flight-flame {
   transform-origin: 16px 34px;
   animation: rocket-flame-flicker 140ms steps(2, end) infinite alternate;
