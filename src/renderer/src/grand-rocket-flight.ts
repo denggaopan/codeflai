@@ -1,19 +1,22 @@
 import { MAX_DROP_DISTANCE, type Point, type RocketKeyframe, type Viewport } from './rocket-flight'
 
 const ROCKET_MARGIN = 64
-const DROP_MS = 1200
-const TURN_MS = 650
-const GLIDE_PIXELS_PER_SECOND = 80
+const EXIT_MARGIN = 220
+const DROP_MS = 480
+const TURN_MS = 140
+const GLIDE_PIXELS_PER_SECOND = 1200
+const MIN_GLIDE_MS = 1100
+const MAX_GLIDE_MS = 1800
 const GLIDE_SAMPLES = 240
 
-/** A decorative Qian Xuesen-style skip glide: diminishing arcs, with no final dash. */
+/** A fast decorative Qian Xuesen-style skip glide with diminishing arcs. */
 export function planGrandRocketFlight({ viewport, origin }: { viewport: Viewport; origin: Point }): {
   keyframes: RocketKeyframe[]
   totalMs: number
 } {
   const drop = Math.max(0, Math.min(MAX_DROP_DISTANCE, viewport.height - origin.y - ROCKET_MARGIN))
   const amplitude = Math.max(0, Math.min(220, origin.y + drop - ROCKET_MARGIN))
-  const distance = Math.max(ROCKET_MARGIN, viewport.width - origin.x + ROCKET_MARGIN)
+  const distance = Math.max(EXIT_MARGIN, viewport.width - origin.x + EXIT_MARGIN)
   const frequency = 2.5 * Math.PI
   const decay = 0.65
   const glide: { point: Point; heading: number; travelled: number }[] = []
@@ -33,8 +36,8 @@ export function planGrandRocketFlight({ viewport, origin }: { viewport: Viewport
     glide.push({ point, heading, travelled })
   }
 
-  // Arc-length timing keeps every skip and the off-screen exit at the same slow speed.
-  const glideMs = travelled / GLIDE_PIXELS_PER_SECOND * 1000
+  // Arc-length timing preserves the fast sweep; cap its duration on ultrawide displays.
+  const glideMs = Math.min(MAX_GLIDE_MS, Math.max(MIN_GLIDE_MS, travelled / GLIDE_PIXELS_PER_SECOND * 1000))
   const totalMs = DROP_MS + TURN_MS + glideMs
   const transform = ({ x, y }: Point, heading: number): string =>
     `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(${heading.toFixed(2)}deg)`

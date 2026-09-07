@@ -16,7 +16,7 @@ describe('planGrandRocketFlight', () => {
     { width: 1440, height: 900 },
     { width: 800, height: 600 },
     { width: 3840, height: 2160 }
-  ])('drops, skip-glides slowly and fully exits a $width x $height window', (viewport) => {
+  ])('drops, skip-glides rapidly and fully exits a $width x $height window', (viewport) => {
     const flight = planGrandRocketFlight({ viewport, origin })
     const frames = flight.keyframes.map((frame) => ({ ...decode(frame.transform), offset: frame.offset }))
     expect(frames[0]).toMatchObject({ x: 0, y: 0, heading: 180, offset: 0 })
@@ -37,8 +37,7 @@ describe('planGrandRocketFlight', () => {
       expect(origin.y + to.y).toBeGreaterThanOrEqual(64)
       expect(origin.y + to.y).toBeLessThanOrEqual(viewport.height - 64)
       const speed = Math.hypot(to.x - from.x, to.y - from.y) / ((to.offset - from.offset) * flight.totalMs / 1000)
-      expect(speed).toBeGreaterThan(60)
-      expect(speed).toBeLessThan(100)
+      expect(speed).toBeGreaterThan(900)
       const direction = Math.sign(to.y - from.y)
       if (direction && previousDirection && direction !== previousDirection) turns.push(from.y)
       if (direction) previousDirection = direction
@@ -47,9 +46,10 @@ describe('planGrandRocketFlight', () => {
     // Each skip has a lower crest as the glide settles.
     expect(turns[2]).toBeGreaterThan(turns[0])
     const exit = glide[glide.length - 1]
-    expect(origin.x + exit.x).toBeGreaterThanOrEqual(viewport.width + 64)
+    expect(origin.x + exit.x).toBeGreaterThanOrEqual(viewport.width + 220)
     expect(exit.offset).toBe(1)
-    expect(flight.totalMs).toBeGreaterThan(12_000)
+    expect(flight.totalMs).toBeGreaterThan(1000)
+    expect(flight.totalMs).toBeLessThanOrEqual(2500)
   })
 
   it('keeps the nose tangent to the curved glide', () => {

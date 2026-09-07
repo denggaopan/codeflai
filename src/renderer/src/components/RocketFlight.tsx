@@ -7,7 +7,7 @@ import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
 /**
  * One rocket, launched from the title bar's brand button: it falls nose-first, swings round
  * to a random rightwards course, cruises slowly for three seconds and then dashes off-screen.
- * A grand rocket is twice the size and follows a slow skip-glide all the way out instead.
+ * A grand rocket is twice the size and blasts along a fast skip-glide with a bright exhaust.
  * The geometry (and the promise that the nose always points along the course) lives in
  * `rocket-flight.ts`; this component only measures the launch point and drives the animation.
  *
@@ -64,6 +64,7 @@ export default function RocketFlight({ origin, grand = false, onDone }: { origin
   return createPortal(
     <div className={`rocket-flight${grand ? ' rocket-flight-grand' : ''}`} style={anchorStyle} aria-hidden="true">
       <div className="rocket-flight-body" ref={bodyRef}>
+        {grand && <span className="rocket-flight-exhaust" />}
         <svg className="rocket-flight-art" viewBox="0 0 32 44" width={grand ? 64 : 32} height={grand ? 88 : 44} fill="none">
           <defs>
             <linearGradient id={`${artId}-hull`} x1="8" y1="4" x2="26" y2="40" gradientUnits="userSpaceOnUse">
