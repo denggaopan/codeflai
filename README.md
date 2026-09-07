@@ -2,166 +2,247 @@
 
 English | [简体中文](README.zh-CN.md)
 
-CodeFly is a Windows and macOS desktop application for running local shell and coding-agent
-sessions against local projects. Windows provides PowerShell and Command Prompt; macOS
-provides the user's login Shell. Claude Code and Codex are offered by default, with Gemini,
-GitHub Copilot, Cursor, Comate, and Qwen Code available behind a switch (see
-[Session kinds and the New session menu](#session-kinds-and-the-new-session-menu)). It is a
-focused terminal workspace, not an embedded code editor: a session can run in the project
-directory or in its own isolated Git worktree and same-named branch, and every agent runs
-through its locally installed, already-authenticated CLI. CodeFly never collects, stores, or
-reads API keys or CLI credentials.
+CodeFly is a Windows and macOS desktop app that keeps every terminal and every AI coding
+agent you run against your local projects in one window. Pick a project, pick a session
+kind, and CodeFly starts it — PowerShell or Command Prompt on Windows, your login Shell on
+macOS, and up to seven coding-agent CLIs including Claude Code and Codex.
 
-Built with Electron, React, TypeScript, xterm.js, and node-pty.
+It is a terminal workspace, not a code editor. Each session runs either directly in your
+project directory or in its own isolated Git worktree and same-named branch, so an agent can
+work without touching what you have open elsewhere. Every agent runs through the CLI you
+already installed and signed in to: **CodeFly never collects, stores, or reads API keys or
+CLI credentials.**
 
-## Prerequisites
+> **Before you start an agent session, read
+> [Agent sessions and the permission bypass](#agent-sessions-and-the-permission-bypass).**
+> Agent sessions deliberately run with the vendor's permission and sandbox checks switched
+> off, and this release has no switch to turn that back on.
 
-- Windows 10/11 x64, or an Intel/Apple Silicon Mac using the matching internal-test bundle.
-- [Node.js](https://nodejs.org/) 22.12.0 or later, with npm.
-- [Git](https://git-scm.com/downloads) on `PATH` (Windows) or available to the macOS login
-  shell. Required for isolated
-  worktree sessions (see [Git and worktree sessions](#git-and-worktree-sessions) below);
-  CodeFly still runs without it, but every session then falls back to an ordinary,
-  non-isolated session in the project's own directory. Sessions created from a plain launcher
-  entry run there by design and need no Git.
-- Optional, to actually use an agent launcher entry: that agent's CLI installed and signed
-  in — the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) (`claude`) and/or
-  the [Codex CLI](https://github.com/openai/codex) (`codex`) for the two offered by default,
-  and `gemini`, `copilot`, `agent`, `comatecli`, or `qwen` for the opt-in kinds.
-  CodeFly detects them on `PATH` on Windows and through the login shell on macOS; a missing or
-  unauthenticated CLI leaves its launcher entry visible but disabled, with an installation
-  hint on hover. Finder-launched macOS apps do not inherit Terminal's `PATH`, so ensure
-  `command -v claude` (or whichever CLI you use) succeeds from a login shell.
-- Optional: [Visual Studio Code](https://code.visualstudio.com/) (or its `code` command on
-  `PATH`) to use “Open project in VS Code” from a project's options menu.
+**[Download the latest release](https://github.com/denggaopan/codefly/releases/latest)**
 
-## Getting started
+---
 
-```bash
-npm install
-npm run dev
-```
+## Contents
 
-`npm run dev` starts the app in development mode with hot reload (via `electron-vite`).
+- [Install](#install)
+- [Your first session](#your-first-session)
+- [The window](#the-window)
+- [Adding projects](#adding-projects)
+- [Starting a session](#starting-a-session)
+- [Worktree sessions](#worktree-sessions)
+- [Agent sessions and the permission bypass](#agent-sessions-and-the-permission-bypass)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Quick prompts](#quick-prompts)
+- [Session titles](#session-titles)
+- [The project options menu](#the-project-options-menu)
+- [Keeping the window on top](#keeping-the-window-on-top)
+- [Settings](#settings)
+- [Updates](#updates)
+- [Sessions keep running after you close the window](#sessions-keep-running-after-you-close-the-window)
+- [What CodeFly remembers](#what-codefly-remembers)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-## Scripts
+## Install
 
-| Script                 | Purpose                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `npm run dev`           | Run the app in development mode with hot reload.                                                            |
-| `npm run build`         | Type-check, then build the main, preload, and renderer bundles into `out/`.                                 |
-| `npm run typecheck`     | Type-check the main/preload/shared sources and the renderer sources (two separate `tsc` project references). |
-| `npm test`               | Run the Vitest unit/component/integration suite (`src/**/*.test.ts(x)`).                                    |
-| `npm run test:watch`     | Run the Vitest suite in watch mode.                                                                          |
-| `npm run test:e2e`       | Build the app, then run the Playwright Electron end-to-end suite (`e2e/codefly.spec.ts`).                    |
-| `npm run package:win`    | Build the app, then produce a Windows x64 NSIS installer under `release/` via `electron-builder`.            |
-| `npm run package:mac`    | Build the app, then produce unsigned macOS x64 and arm64 app bundles (`.zip`) under `release/` by running `electron-builder` in a Linux container (needs Docker). |
+### What you need
+
+| | |
+| --- | --- |
+| **Windows** | Windows 10 or 11, x64. |
+| **macOS** | An Intel or Apple Silicon Mac, using the archive that matches it. |
+| **Git** *(recommended)* | Needed for worktree sessions and for cloning a repository from inside CodeFly. Without Git the app still works, but every session runs in the project's own directory. |
+| **An agent CLI** *(per agent you want to use)* | Install and sign in to the CLI first — CodeFly launches it, it does not replace it. See the table in [Starting a session](#starting-a-session). |
+| **VS Code** *(optional)* | For **Open project in VS Code** in the project options menu. |
+
+### Windows
+
+Download `CodeFly-Setup-<version>-win-x64.exe` from the
+[Releases page](https://github.com/denggaopan/codefly/releases/latest) and run it. The
+installer is not code-signed, so SmartScreen may warn once — choose **More info** →
+**Run anyway**. Afterwards CodeFly updates itself from inside the app (see
+[Updates](#updates)).
+
+### macOS
+
+The macOS builds are unsigned and un-notarized internal-test bundles, so they need two
+commands before their first launch.
+
+1. Download the archive that matches your Mac: `CodeFly-<version>-mac-arm64.zip` for Apple
+   Silicon, `CodeFly-<version>-mac-x64.zip` for Intel.
+2. Extract it, then in Terminal, from the folder holding `CodeFly.app`:
+
+   ```bash
+   xattr -cr CodeFly.app
+   codesign --force --deep --sign - CodeFly.app
+   ```
+
+3. Move `CodeFly.app` to `/Applications` if you like, then open it from Finder. If
+   Gatekeeper still blocks it, allow it under **System Settings → Privacy & Security →
+   Open Anyway**.
+
+That ad-hoc signature applies only to your copy; it is not Developer ID signing.
+
+**One macOS gotcha worth knowing up front:** an app launched from Finder does not inherit
+Terminal's `PATH`. CodeFly therefore looks for agent CLIs through your login shell and in
+the usual Homebrew and `~/.local/bin` locations. If a CLI you have installed shows up
+disabled, check that `command -v claude` (or whichever CLI) succeeds in a *login* shell.
+
+## Your first session
+
+1. **Add a project.** Click **Add Project** at the bottom of the sidebar and choose a folder
+   on this computer — or clone a repository straight into place.
+2. **Open the project's ⋯ menu** and choose **New session**.
+3. **Pick a kind.** **PowerShell** or **Shell** gives you a plain terminal in the project
+   directory. **Claude** or **Codex** starts that agent. An entry marked **(new worktree)**
+   gives the session its own Git worktree and branch instead.
+4. **Type.** The terminal is the real CLI — everything you would type in a terminal works
+   here. Your first message also becomes the session's title.
+
+Sessions stack up in the sidebar under their project, and the coloured dot in front of each
+one tells you what it is doing. Closing the window does **not** stop them.
+
+## The window
+
+**Title bar** — the logo and **CodeFly** wordmark (click it for the
+[rocket](#the-rocket)), the pin button that
+[keeps the window above everything else](#keeping-the-window-on-top), and the gear that
+opens [Settings](#settings).
+
+**Sidebar** — a **Search sessions** box at the top, your projects below it, and
+**Add Project** at the bottom. A project name toggles just that project's session list;
+switching sessions never re-folds anything. Searching temporarily reveals matching sessions
+across every project, and clearing the search puts each project's fold state back. Each
+project row has a ⋯ button for its [options menu](#the-project-options-menu), and each
+session row has a delete button.
+
+**Terminal** — the active session's header (its title, its status, a **Restart session**
+action when it is not running, and the bypass warning while an agent runs), the terminal
+itself, and the optional [quick prompts](#quick-prompts) bar underneath. With nothing
+selected it reads *"Select or start a session to see its terminal here."*
+
+Drag the seam between the sidebar and the terminal to resize it. It also takes the keyboard:
+focus it, then **←/→** nudge, **Home/End** jump to the limits, and a double-click restores
+the default width. The sidebar stays between 200 and 640 pixels and never squeezes the
+terminal below 360.
+
+### Session status dots
+
+| Dot | Means |
+| --- | --- |
+| **Running** | The terminal or agent is live. |
+| **Done** | An agent session that has produced no output for three seconds — it finished what it was doing and is waiting for you. Shell sessions never show this: they idle at their prompt constantly. |
+| **Starting…** | The session is being created. |
+| **Click to restore** | The session stopped (you stopped it, or the CLI exited). Click the row to restart it in the same directory — for agents, asking the CLI to continue the previous conversation. |
+| **Path missing** | The session's directory is no longer there. |
+| **Error** | Something went wrong; the row shows what. |
+
+CodeFly opens maximized every time and restores a 1180×760 window when you un-maximize it.
 
 ## Adding projects
 
-Use the **Add Project** button at the bottom of the sidebar to choose a local project
-directory, reopen a recent project, or clone a Git repository. Recent projects contains up
-to 50 projects removed from the list, survives app restarts, and excludes projects already
-in the list. Reopening adds the folder back; removed sessions are not restored.
+**Add Project** offers three ways in:
 
-To clone, enter an HTTPS or SSH repository address and choose a target directory. CodeFly
-shows the full destination, creates a new subdirectory named after the repository, and adds
-the project after Git finishes. Existing destination folders are never overwritten. Private
-repositories use your existing Git credentials or SSH configuration; configure authentication
-before cloning. History starts being retained with this version; previously removed records
-cannot be recovered automatically.
+- **Local folder** — pick any project directory on this computer.
+- **Recent projects** — reopen something you removed from the list earlier. CodeFly keeps up
+  to 50 removed projects, across restarts, and hides ones already in your list. Reopening
+  brings the folder back but not its old sessions.
+- **Clone Git repository** — paste an HTTPS or SSH address (`git@host:owner/repository.git`
+  works) and choose where to put it. CodeFly shows the full destination, creates a
+  subdirectory named after the repository, and adds the project once Git finishes. An
+  existing folder is never overwritten. Private repositories use your existing Git
+  credentials or SSH configuration, so set that up before cloning.
 
-## Session kinds and the New session menu
+## Starting a session
 
-Projects start expanded and each project name toggles only its own session list. Switching
-sessions does not change these collapse states, and project rows have no current-project
-highlight. Searching temporarily reveals matching sessions; clearing the search restores
-each project's collapse state.
+Open **New session** from a project's ⋯ menu. Click outside the launcher, press **Escape**,
+or use its close button to dismiss it.
 
-Open **New session** from a project's options menu. Click outside the launcher, press Escape,
-or use its close button to dismiss it. Installation hints for unavailable entries appear on
-hover, including their worktree variants.
+Which entries you see depends on your platform and on **Session kinds** in Settings:
 
-Each session kind shown for the host platform has two switches under **Session kinds** in
-Settings. Windows shows PowerShell, Command Prompt, Claude, and Codex; macOS shows Shell,
-Claude, and Codex.
+| Session kind | The CLI CodeFly looks for | Available on |
+| --- | --- | --- |
+| **PowerShell** | — | Windows |
+| **Command Prompt** | — | Windows |
+| **Shell** | your login shell | macOS |
+| **Claude** | `claude` | both |
+| **Codex** | `codex` | both |
+| **Gemini** | `gemini` | both, off by default |
+| **GitHub Copilot** | `copilot` | both, off by default |
+| **Cursor** | `agent` | both, off by default |
+| **Comate** | `comatecli` | both, off by default |
+| **Qwen Code** | `qwen` | both, off by default |
 
-- **Enabled** decides whether the kind appears in the New session menu at all. Turning it off
-  removes its entries; existing sessions of that kind are untouched. This is different from a
-  missing CLI, which leaves the entry listed but disabled with a lookup hint.
-- **New worktree** adds a *second* entry for that kind — e.g. both **Claude** and
-  **Claude (new worktree)**. The plain entry runs the session in the project's own directory;
-  the worktree entry gives it an isolated Git worktree and branch.
+Note the last two executable names: Cursor's CLI is `agent` and Comate's is `comatecli`, not
+the product name. That is also what the installation hints say, so the hint always names the
+thing you actually need on `PATH`.
 
-Defaults: every platform-visible kind above is enabled, **New worktree** is off for native
-shells (a quick terminal should not create a branch) and on for the agents (isolation is what
-they want). Both switches are renderer-owned preferences stored in `localStorage`, like the
-theme and language; the worktree choice itself is sent explicitly with each create request, so
-the main process never infers it from a stored setting.
+**A greyed-out entry means the CLI is missing, not that the kind is off.** Hover it for the
+lookup hint. A kind you switched off in Settings does not appear in the menu at all; if you
+switch every kind off, the launcher says so.
 
-### More agent CLIs
+### Project directory or its own worktree
 
-Five further agent CLIs are supported on both platforms and collapsed behind **More agent
-CLIs** in the same section: **Gemini** (`gemini`), **GitHub Copilot** (`copilot`),
-**Cursor** (`agent`), **Comate** (`comatecli`), and **Qwen Code** (`qwen`). They ship
-**switched off**, so a default install offers the same New session menu it always did.
+Kinds with **New worktree** enabled get *two* entries — **Claude** and
+**Claude (new worktree)**, for example:
 
-Turn one on and it behaves exactly like Claude or Codex: it appears in the New session menu,
-gets both a plain and a **(new worktree)** entry (its **New worktree** switch defaults on),
-carries its own permission bypass, shows the bypass warning while running, and accepts
-Shift+Enter for a newline and Ctrl/Cmd+V for paste. A missing CLI leaves the entry listed but
-disabled with an installation hint, naming the executable CodeFly actually looks for — note
-that Cursor's is `agent` and Comate's is `comatecli`, not the product name.
+- the plain entry runs the session **in the project's own directory**, like opening a
+  terminal there;
+- the **(new worktree)** entry gives the session **its own Git worktree and a same-named
+  branch**, so an agent can work without disturbing your checkout.
 
-The group always opens collapsed, whether or not any of the five is enabled: Settings leads
-with the established kinds, and an enabled one is a single caret click away.
+Out of the box the native shells offer only the plain entry (a quick terminal should not
+create a branch) and the agents offer both.
 
-Two differences from Claude and Codex, both deliberate:
+### The five opt-in agent CLIs
 
-- **No AI-generated session titles.** These CLIs' non-interactive output formats are not
-  verified here, and a title process must never run with a permission bypass, so their titles
-  come from the local first-input normalizer instead.
-- **Comate has no resume.** Restoring a stopped session reopens its CLI in the same directory;
-  `comatecli` 1.0.8 has no resume flag, so a restored Comate session starts a fresh
-  conversation rather than continuing the previous one.
+Gemini, GitHub Copilot, Cursor, Comate, and Qwen Code sit behind **More agent CLIs** in
+Settings and **ship switched off**, so a fresh install shows the same New session menu it
+always did. The group also opens collapsed every time, whether or not you have enabled one —
+Settings leads with the established kinds and an enabled one is a single caret click away.
 
-## Git and worktree sessions
+Switch one on and it behaves like Claude or Codex: it appears in the menu with both a plain
+and a **(new worktree)** entry, carries its own permission bypass, shows the bypass warning
+while running, and takes Shift+Enter and Ctrl/Cmd+V. Two differences are deliberate:
 
-When you create a session from a **(new worktree)** entry in a project that is a Git
-repository with at least one commit, CodeFly creates an isolated Git worktree and a
-same-named branch for that session, under `<repository-root>/.worktrees/<worktree-name>`.
-Worktree names follow the pattern `worktree-YYMMDD-N` (local date, `N` starting at 1 and
-incrementing per repository per day). The `.worktrees` directory is added to the repository's
-*local* Git exclude file (`.git/info/exclude`), never to the tracked `.gitignore`, so this
-never shows up as a change for you to commit.
+- **No AI-generated session titles.** Their non-interactive output formats are not verified
+  here, and a title process must never run with a permission bypass, so their titles come
+  from your first message instead.
+- **Comate cannot resume.** Restoring a stopped Comate session reopens its CLI in the same
+  directory, but `comatecli` 1.0.8 has no resume flag, so it starts a fresh conversation
+  rather than continuing the old one.
 
-A session created from a plain entry is an **ordinary session**: it runs directly in the
-project's own directory. A requested worktree also falls back to an ordinary session when the
-selected project is **not** a Git repository, or is a Git repository with no commits yet (no
-resolvable `HEAD`). Either way the sidebar shows "Ordinary session" instead of a worktree
-name.
+## Worktree sessions
 
-Deleting a session with a worktree:
+Create a session from a **(new worktree)** entry in a project that is a Git repository with
+at least one commit, and CodeFly makes an isolated Git worktree plus a same-named branch for
+it, at `<repository-root>/.worktrees/worktree-YYMMDD-N` (today's date, `N` counting up per
+repository per day). `.worktrees` goes into the repository's *local* exclude file
+(`.git/info/exclude`), never the tracked `.gitignore`, so it never shows up as a change for
+you to commit.
 
-1. Stops its terminal/agent process and cancels any in-flight title generation.
-2. Runs `git status` inside the worktree.
-3. **If the worktree is dirty** (any changed, staged, or untracked files), the delete is
-   **blocked** — CodeFly keeps the session and the worktree exactly as they are, and shows
-   the number of changed files. Commit or discard the changes yourself (outside CodeFly),
-   then delete again.
-4. **If the worktree is clean**, CodeFly removes the worktree directory (without `--force`)
-   and the session record.
-5. **The branch is never deleted.** The same-named branch that was created for the session
-   remains in the repository after the session (and its worktree) are gone, so your work is
-   always recoverable from that branch.
+A session started from a plain entry is an **ordinary session** — it runs in the project
+directory. A requested worktree also falls back to an ordinary session when the project is
+not a Git repository, or is one with no commits yet. Either way the sidebar says
+"Ordinary session" instead of a worktree name.
 
-CodeFly never force-removes a worktree and never deletes commits, stashes, or the original
-project's files.
+**Deleting a worktree session is protected.** CodeFly stops the session, runs `git status`
+inside the worktree, and then:
 
-## Interactive agent sessions
+- **if anything is uncommitted** — modified, staged, or untracked — the delete is
+  **blocked**. The session and worktree stay exactly as they are and CodeFly tells you how
+  many files changed. Commit or discard them yourself, then delete again.
+- **if the worktree is clean**, it removes the worktree directory (never with `--force`) and
+  the session record.
 
-Every interactive agent session launches its CLI with that vendor's own fixed permission
-bypass, and nothing else:
+**The branch is never deleted.** Whatever the session did stays reachable on its branch
+after the session and worktree are gone. CodeFly never force-removes a worktree and never
+deletes commits, stashes, or anything in your original project.
+
+## Agent sessions and the permission bypass
+
+Every interactive agent session launches its CLI with that vendor's own permission bypass,
+and nothing else:
 
 | Session kind | Executable | Bypass carried on every interactive session |
 | --- | --- | --- |
@@ -171,437 +252,259 @@ bypass, and nothing else:
 | GitHub Copilot | `copilot` | `--allow-all-tools` |
 | Cursor | `agent` | `--force` |
 | Comate | `comatecli` | `ZULU_TERMINAL_RUN_MODE=yolo` in the session's environment |
-| Qwen Code | `qwen` | `--approval-mode=yolo` (see the note below) |
+| Qwen Code | `qwen` | `--approval-mode=yolo` (see below) |
 
-Comate is the one CLI with no bypass flag: its TUI resets its run mode to
-`ZULU_TERMINAL_RUN_MODE || "manual"` on every launch, so the request has to travel as
-environment. It is set only for that interactive PTY, never for CodeFly's own process.
+**This bypasses the agent's own permission and sandbox protections for the whole life of the
+session.** The agent reads, writes, and runs commands in its directory without asking you to
+confirm each action. That is a deliberate choice for a fast, low-friction workflow, and
+CodeFly keeps it visible rather than hidden: while the active session is a running agent, a
+**"Permissions and sandbox bypass enabled"** badge sits in its terminal header the entire
+time.
 
-Qwen Code is a partial exception in the other direction: `--approval-mode=yolo` is the flag
-its documentation describes, but not every build implements it — 0.22.3 ignores it without
-erroring, taking its approval mode from `~/.qwen/settings.json` or from Shift+Tab in the TUI
-instead. CodeFly keeps sending the flag (it costs nothing and starts working as soon as the
-CLI supports it) and does not write anyone's settings file, so on such a build the badge
-warns about a bypass the CLI has not actually applied — an over-warning, never the reverse.
+**There is no per-session switch to turn the bypass off in this release.** If you do not
+want an agent running with its protections bypassed, do not start an agent session in
+CodeFly. Starting agents in a **(new worktree)** session is the cheapest way to limit what
+they can disturb.
 
-**These bypass the agent's own permission and sandbox protections for the lifetime of that
-session.** The agent can read, write, and execute commands in its worktree without
-per-action confirmation. This is a deliberate design choice for a fast, low-friction terminal
-workflow, and CodeFly keeps it continuously visible rather than hidden: whenever the active
-session is a running agent session, a compact "Permissions and sandbox bypass enabled"
-warning badge is shown in that session's terminal header for as long as the session is
-running. There is no per-session setting to turn the bypass off in this release — if you
-don't want an agent running with its protections bypassed, don't start an agent session in
-CodeFly.
+Two CLIs deviate, both in the safe direction:
 
-The background, non-interactive process CodeFly uses to generate a session's title (see
-below) never receives either bypass flag, does not share the interactive session's PTY, and
-runs in a neutral directory, not your project or worktree.
+- **Comate** has no bypass flag at all — its TUI resets its run mode on every launch, so the
+  request has to travel as an environment variable. It is set only for that one session,
+  never for CodeFly's own process.
+- **Qwen Code** documents `--approval-mode=yolo`, but not every build implements it: 0.22.3
+  ignores it silently and takes its approval mode from `~/.qwen/settings.json` or Shift+Tab
+  in its TUI instead. CodeFly keeps sending the flag (it costs nothing and starts working
+  the moment the CLI supports it) and never writes your settings file — so on such a build
+  the badge warns about a bypass the CLI has not actually applied. An over-warning, never
+  the reverse.
 
-### Keyboard: paste and multi-line input
+The background process CodeFly uses to [name a session](#session-titles) never gets either
+bypass, does not share the session's terminal, and runs in a neutral directory rather than
+your project or worktree.
 
-In every agent session **Ctrl+V** on Windows or **Cmd+V** on macOS pastes clipboard text
-into the CLI prompt, and **Shift+Enter** inserts a newline while **Enter** sends the message.
-CodeFly hands the platform paste shortcut back to the browser so xterm's paste path (including
-bracketed paste) feeds the PTY. It sends Shift+Enter as `ESC CR`, the Meta/Alt+Enter-compatible
-sequence these CLIs accept. Native Shell, PowerShell, and Command Prompt sessions keep xterm's
-normal key handling.
+## Keyboard shortcuts
 
-### Quick prompts
+| Shortcut | Where | Does |
+| --- | --- | --- |
+| **Ctrl+V** / **Cmd+V** | agent sessions | Paste clipboard text into the CLI prompt. |
+| **Shift+Enter** | agent sessions | Insert a newline (**Enter** sends the message). |
+| **Ctrl+Shift+P** / **Cmd+Shift+P** | the workspace | Search [quick prompts](#quick-prompts). |
+| **↑ / ↓**, **Enter**, **Esc** | quick prompt search | Choose, insert, back to the terminal. |
+| **Cmd+T** | macOS only | New ordinary Shell session in the current project. |
+| **Escape** | the New session launcher | Close it. |
+| **← / →**, **Home/End**, double-click | the sidebar seam | Resize, jump to a limit, reset. |
 
-Enable **Show quick prompt bar** in Settings to use quick prompts. It is off by default;
-the choice is saved across restarts. Turning it off hides the bar and disables its search
-shortcut while keeping your saved prompts.
+Windows has no new-session accelerator on purpose: **Ctrl+T** is a live key inside the
+shells and agent CLIs CodeFly hosts, so it goes to the focused terminal instead. Native
+Shell, PowerShell, and Command Prompt sessions keep the terminal's normal key handling
+throughout.
 
-The **Quick prompts** bar below the terminal shows only prompts you have starred.
-Click a prompt to insert it at the terminal's current cursor, then press **Enter** when ready
-to send. The **+** button opens a content editor; no name is needed. New prompts are unstarred
-by default. Use the star toggle in the editor or management list to show a prompt in the bar.
-Buttons preview the content, and additional starred prompts are available through **+N** when
-space runs out. The bar stays on one line without a horizontal scrollbar. Saving returns to
-the bar without inserting the prompt.
+## Quick prompts
 
-Click **Quick prompts**, or press **Ctrl+Shift+P** on Windows / **Cmd+Shift+P** on macOS while
-in the workspace, to search. Use **Up/Down** to choose a result, **Enter** to insert it, and
-**Escape** to return to the terminal. Search includes both starred and unstarred prompts.
-The management button opens starring, editing and deletion controls
-in a section below the terminal, keeping the terminal visible above it. Closing an editor or
-switching sessions retains its draft until it is saved or cancelled; use **+** to resume it.
+Save the prompts and commands you type over and over, then insert them with one click.
+Switch **Show quick prompt bar** on in Settings to use them — it is off by default and the
+choice sticks across restarts. Switching it back off hides the bar and its search shortcut
+but keeps everything you saved.
 
-Prompts are shared across all projects and sessions on this computer and survive restarts.
-Existing saved content and the bar visibility preference migrate automatically; older prompts
-remain unstarred until you choose to star them.
-Stopped sessions still allow managing prompts; restore the session before inserting one.
-Agent sessions support multiline prompts. In shell sessions, multiline insertion requires
-bracketed paste support; otherwise CodeFly asks you to use a single-line prompt so a saved
-newline cannot execute a command. Without bracketed paste, indentation tabs become spaces.
+**The bar** under the terminal shows only prompts you have **starred**. Click one to insert
+it at the terminal's cursor, then press **Enter** when you are ready to send — inserting
+never sends for you. Buttons preview the content, extra starred prompts hide behind **+N**
+when space runs out, and the bar always stays on one line.
+
+**Adding one:** the **+** button opens a content editor — no name needed. New prompts start
+unstarred; use the star toggle in the editor or in the management list to put one in the bar.
+Saving returns you to the bar without inserting it. If you close the editor or switch
+sessions mid-edit, the draft is still there when you press **+** again.
+
+**Finding one:** click **Quick prompts** or press **Ctrl+Shift+P** / **Cmd+Shift+P** in the
+workspace. Search covers starred *and* unstarred prompts; **↑/↓** choose, **Enter** inserts,
+**Esc** returns to the terminal. The management button opens starring, editing, and deletion
+in a panel below the terminal, keeping the terminal visible above it.
+
+Prompts are shared by every project and session on this computer and survive restarts. You
+can save up to 100, each up to 16,000 characters.
+
+A few limits worth knowing: a stopped session still lets you manage prompts, but you have to
+restore it before inserting one. Agent sessions take multi-line prompts; shell sessions need
+bracketed-paste support for those, and without it CodeFly asks you for a single-line prompt
+instead — so a saved newline can never run a command by itself. (Without bracketed paste,
+indentation tabs also become spaces.)
 
 ## Session titles
 
-The title shown for a session starts as a placeholder (e.g. "New Claude session") and
-updates once, based on the first text you submit in its terminal. Claude and Codex sessions
-try an AI-generated title first (via a separate, non-interactive CLI invocation with a
-15-second timeout); every other kind — the native shells and the five opt-in agent CLIs — and
-any failed/timed-out AI attempt, fall back to a local normalization of your input, and finally
-to plain truncation.
-Title generation never delays your terminal input.
+A session starts with a placeholder like "New Claude session" and renames itself **once**,
+from the first text you submit in its terminal. Claude and Codex sessions try an
+AI-generated title first, through a separate non-interactive call with a 15-second timeout.
+Every other kind — the native shells and the five opt-in agents — and any AI attempt that
+fails or times out fall back to a tidied-up version of your own words, and finally to plain
+truncation. None of this ever delays your typing.
 
-## Visual Studio Code and project folders
+## The project options menu
 
-A project's options menu contains its Visual Studio Code and folder actions. Both always
-open the project's **original, user-selected directory** — never a session's worktree — and
-never change which session is active or expand/collapse the row. Visual Studio Code is
-discovered via the `code` command and standard install locations on Windows, or the standard
-Visual Studio Code application locations on macOS; if none is found, the menu item is disabled
-with an install hint. The folder action opens the directory in the platform file manager via
-Electron's `shell.openPath` and has no such dependency.
+The ⋯ button on a project row opens it. Nothing in here changes which session is active or
+folds the row.
 
-## Git repository and removing a project
+- **New session** — the launcher described [above](#starting-a-session).
+- **Open project in VS Code** — opens the project's **original folder**, never a session's
+  worktree. CodeFly finds VS Code via the `code` command and the standard install locations
+  on Windows, or the standard application locations on macOS; with none found the item is
+  disabled with an install hint.
+- **Open project folder** — the same directory in Explorer or Finder. No dependencies.
+- **Open Git repository** — appears when the project sits in a Git repository whose remote
+  has a web address. CodeFly reads `origin` (or the first remote when there is no `origin`),
+  turns ssh/scp forms like `git@github.com:owner/repo.git` into their https page, and opens
+  it in your default browser. The icon follows the host: the GitHub mark, the GitLab mark
+  (self-hosted instances included), or a plain Git mark. Repositories with no remote, or a
+  remote that is a local directory, get no entry. Remotes are re-read at every launch, so
+  adding one shows up next time you start CodeFly.
+- **Remove from list** — forgets the project after a confirmation. Its running sessions stop
+  and all of its session records go with it, but **nothing on disk is touched**: the project
+  directory, its worktrees, and their branches stay exactly as they are. Add the folder
+  again later and you start with an empty session list.
 
-When the project directory is inside a Git repository that has a remote with a web address,
-the options menu also offers **Open Git repository**. CodeFly reads the `origin` remote (or
-the first remote when there is no `origin`), turns ssh/scp-style URLs such as
-`git@github.com:owner/repo.git` into their https page, and opens it in your default browser.
-The entry's icon follows the host: the GitHub mark for hosts containing `github`, the GitLab
-mark for hosts containing `gitlab` (self-hosted instances included), and a plain Git mark
-otherwise. Repositories without a remote, or whose remote is a local directory, get no entry.
-Remotes are re-read every time the app starts, so adding or changing a remote is picked up on
-the next launch. Only the project id ever crosses from the UI to the main process — the URL
-that reaches the browser is always the one CodeFly derived itself, and it must be http(s).
+## Keeping the window on top
 
-**Remove from list** forgets a project after a confirmation. Any running sessions of that
-project are stopped and all of its session records are removed together with it; nothing on
-disk is touched — the project directory, its worktrees and their branches stay exactly as
-they are. Re-adding the directory later starts with an empty session list.
-
-## Pinning the window on top
-
-The pin button next to the gear keeps CodeFly above every other window, which is what you want
-while an agent works in the background and you follow it from another app. Click it again to
-release; the pressed state and the pin filled with its normal icon colour show that the
-window is on top.
-
-The renderer owns the preference (`localStorage`, like the theme and language — it never enters
-the state file) and the main process owns the effect: all that crosses IPC is the boolean, and
-the button then renders the always-on-top flag read back off the window rather than the one it
-asked for, so a window manager that refuses the request cannot leave the button lying. The
-preference is replayed on the next launch.
-
-## Title bar rocket
-
-Clicking the logo and **CodeFly** wordmark launches a rocket: it falls nose-first a random
-distance (never more than 500px, and never past the bottom of the window), swings round to a
-random rightwards heading, cruises slowly for three seconds, then dashes off the screen. The
-nose always points along the course — position and heading are one `transform` inside a single
-animation, and all the geometry lives in `src/renderer/src/rocket-flight.ts` as pure functions
-with the random source injected, which is what lets the tests pin that promise.
-
-Purely decorative: the rocket is portalled to `document.body`, sits above every dialog and is
-pointer-transparent, so it can never intercept a click. Clicks stack, so several rockets can
-be in the air at once, and the flight is skipped entirely when the viewer asks for
-`prefers-reduced-motion: reduce`. The brand is now a button, so it has to be
-`-webkit-app-region: no-drag`; the strip between it and the action buttons is what keeps the
-window draggable.
+The pin button next to the gear keeps CodeFly above every other window — which is what you
+want while an agent works and you watch it from another app. Click it again to release; the
+pressed state and the filled pin show that it is on top. The choice comes back the next time
+you launch. If your window manager refuses the request, the button reflects that instead of
+pretending it worked.
 
 ## Settings
 
-The title bar's gear button opens the settings dialog.
+The gear in the title bar opens Settings.
 
-- **Launch at startup** registers (or removes) CodeFly as a platform login item. The switch
-  shows the value read back from the system *after* the write, so a change the OS refuses is
-  never displayed as if it had taken effect.
-- **Session kinds** holds two switches per kind — whether the kind is offered in the New
-  session menu at all, and whether it also offers a **(new worktree)** entry. See
-  [Session kinds and the New session menu](#session-kinds-and-the-new-session-menu).
-- **Appearance** switches between the dark and light token sets.
-- **Language** switches the interface between English and 简体中文. Like the theme, the
-  preference is renderer-owned (`localStorage`) and never enters the persisted state file. It
-  defaults to English rather than following the OS language, which keeps first launch — and
-  the test suites, which assert English copy — deterministic. It covers static interface copy
-  only: main-process text (tool-availability hints, session errors) and already-persisted
-  session titles stay in the language they were produced in.
-- **Version** shows the installed version and, on demand, queries GitHub's latest-release
-  API. Windows can download and launch a published `.exe` in-app; macOS links to the Releases
-  page for the matching architecture. See [Updates](#updates) below.
-- **About CodeFly** links to the project repository, the changelog (the releases page), and
-  the downloads page. The renderer can only ask for one of those three *named targets* — the
-  main process resolves each to a URL from `src/shared/links.ts` before handing it to
-  `shell.openExternal`, so the renderer can never make the app open an arbitrary address.
+- **Launch at startup** — registers CodeFly as a login item. The switch shows the value read
+  back from the system *after* writing it, so a change the OS refuses is never displayed as
+  if it took effect.
+- **Session kinds** — two switches per kind: whether it appears in the New session menu at
+  all, and whether it also offers a **(new worktree)** entry. See
+  [Starting a session](#starting-a-session).
+- **Show quick prompt bar** — see [Quick prompts](#quick-prompts).
+- **Theme** — dark or light.
+- **Language** — English or 简体中文. It defaults to English rather than following your OS
+  language. It covers the interface only: tool-availability hints, session errors, and
+  session titles that were already generated stay in the language they were produced in.
+- **Version** — the installed version, plus **Check for updates** on demand. See
+  [Updates](#updates).
+- **About CodeFly** — links to the project repository, the changelog, and the downloads page.
 
 ## Updates
 
-CodeFly checks GitHub's latest-release API once in the background on startup. It stays
-silent unless a newer version exists — a failed or offline check, an up-to-date install, and
-a repository with no releases all produce no interruption at all. When there *is* a newer
-version, a dialog appears. Windows offers **Update now** when the release includes a Windows
-installer. macOS offers the Releases page so the user can download the matching x64 or arm64
-archive manually.
+CodeFly checks for a new release once in the background at startup, and **stays quiet unless
+there is one** — a failed check, no network, an up-to-date install, all pass without
+interrupting you. When a newer version exists, a dialog appears. You can also start the same
+flow any time from **Check for updates** in Settings.
 
-On Windows, **Update now** downloads that release's installer inside the app, with a progress
-bar and a **Cancel** button, into an `updates` folder under Electron's `userData` directory.
-While bytes are moving, **Cancel** is the only way out — clicking the backdrop or pressing
-Escape does nothing, so a stray click cannot throw away a download that is nearly finished.
-Both the release check and the download go through Chromium's network stack (Electron's
-`net.fetch`), so they honour the system proxy exactly as a browser does — on a machine that
-reaches GitHub through a proxy, the installer arrives in CodeFly as fast as it does in Chrome.
+**On Windows**, **Update now** downloads that release's installer inside the app, with a
+progress bar and a **Cancel** button. While bytes are moving, **Cancel** is the only way
+out — clicking the backdrop or pressing Escape does nothing, so a stray click cannot throw
+away a download that is nearly finished. The check and the download both go through the same
+network stack a browser uses, so they honour your system proxy: if GitHub is fast in Chrome,
+it is fast here.
 
-When the download finishes CodeFly asks again: **Install now** quits the app and launches the
-installer (it has to quit — the installer replaces files the running app holds open; your
-sessions keep running, see [Sessions that outlive the window](#sessions-that-outlive-the-window)),
-while
-**Later** simply closes the dialog and leaves the downloaded installer on disk, so choosing
-**Update now** again later finds it already there and skips straight to the install prompt.
-Only that one installer is kept: every superseded installer and every `.part` file orphaned
-by a crash mid-download is swept away as soon as a new download lands. The same flow is
-reachable on demand from **Check for updates** in Settings.
+When the download finishes CodeFly asks again. **Install now** closes the app and runs the
+installer — it has to close, because the installer replaces files the running app holds open,
+but [your sessions keep running](#sessions-keep-running-after-you-close-the-window).
+**Later** just closes the dialog and leaves the installer on disk, so choosing **Update now**
+again later finds it already downloaded and goes straight to the install prompt. Only that
+one installer is kept; superseded ones and partial files from an interrupted download are
+swept away with the next successful download.
 
-CodeFly only quits once the operating system confirms the installer process actually started.
-A blocked, quarantined, or missing installer leaves the app open with an explanation rather
-than closing it and leaving nothing behind.
+CodeFly only quits once the operating system confirms the installer actually started. A
+blocked, quarantined, or missing installer leaves the app open with an explanation instead of
+closing it and leaving you with nothing.
 
-The renderer never names what gets downloaded or executed: the download, cancel, and install
-IPC commands take no arguments, and the main process re-resolves the release asset itself and
-refuses any download URL that is not an HTTPS GitHub release address. A non-Windows host, or
-a release without a `.exe` asset, offers only the download page and never an in-app download.
+**On macOS**, the dialog opens the Releases page so you can download the archive that matches
+your Mac; there is no in-app update. macOS never downloads or runs a Windows installer.
 
-## Sessions that outlive the window
+## Sessions keep running after you close the window
 
-CodeFly's PTYs do not live in the window. They live in a resident **pty-host** process that the
-app starts on demand and then leaves running: closing CodeFly, reloading its renderer, a UI
-crash, and installing an update all leave every session — and every agent CLI working inside
-one — exactly where it was. Reopening CodeFly attaches to that host, repaints each terminal
-from the output it kept (the newest 256 KB per session), and pushes one resize so a
-full-screen agent TUI redraws its current screen.
+CodeFly's terminals do not live in the window. They live in a background process that the app
+starts when needed and then leaves running, so **closing CodeFly, a UI crash, and installing
+an update all leave every session — and every agent working inside one — exactly where it
+was.** Reopen CodeFly and it reattaches, repaints each terminal from the output it kept (the
+most recent 256 KB per session), and nudges full-screen agent interfaces into redrawing.
 
-This is what makes an in-place update non-disruptive. **Install now** replaces the application
-while the host goes on holding the PTYs, and the freshly installed build attaches to the
-sessions the previous build started. The host that survives an update is, by design, still the
-*older* build; the two negotiate a protocol version on connect, and only a release that changes
-that protocol has to retire the old host — in which case its sessions are restarted with each
-agent's own resume flag rather than being adopted.
+This is what makes updating non-disruptive: **Install now** replaces the application while
+that process goes on holding your sessions, and the freshly installed build picks them up.
+Occasionally a release changes how the two talk to each other; then the old one has to retire
+and its sessions are restarted with each agent's own resume flag instead of being adopted.
 
-On Windows the host cannot run from the installation directory, and that is not a detail: the
-installer NSIS generates kills every process whose image path starts with the install directory
-(regardless of executable name), and an upgrade renames every file in that directory away —
-one failure there aborts the whole upgrade. So on a packaged Windows build everything the host
-needs is staged under `pty-host/<version>/` in Electron's `userData` directory, and the
-executable is named `codefly-pty-host.exe` — that is the process to look for in Task Manager.
-The 244 MB Electron binary is hard-linked rather than copied wherever the filesystem allows it,
-so staging normally costs no disk space and no time; installing to a different volume falls
-back to a real copy. macOS needs none of this: replacing an `.app` there leaves the running
-process on its original inode.
+What actually ends a session: it exiting on its own (quitting the agent, `exit` in a shell),
+you deleting it, removing its project from the list, or restarting the machine. Quitting
+CodeFly is not on that list. The background process shuts itself down once it has held no
+sessions and had no window connected for a minute. On Windows it shows up in Task Manager as
+`codefly-pty-host.exe`.
 
-What actually ends a session, then: the session exiting on its own (quitting the agent, `exit`
-in a shell), deleting it, removing its project from the list, retiring the host on a protocol
-change, or restarting the machine. Quitting CodeFly is not on that list. The host itself exits
-once it has held no sessions and had no window connected for a minute.
+## What CodeFly remembers
 
-## Persistence
+Your projects, your sessions and their titles, quick prompts, and workspace preferences —
+which projects were folded, which session was active, the sidebar width, theme, language,
+session kinds. Saved on every change, so an unexpected exit does not lose them.
 
-Project groups keep their individual collapsed or expanded state across restarts, and
-CodeFly automatically opens the session that was active in the previous window, even if
-its project is collapsed. These workspace preferences are saved atomically in `state.json`
-on each change, without relying on a close event, so they also survive an unexpected UI exit.
-Search only expands matching groups temporarily. Deleted projects and sessions are ignored
-on restore; a selected session that has stopped is displayed without restarting it.
+**Not stored, ever:** API keys, CLI credentials, or terminal scrollback.
 
-Projects and session metadata (not terminal scrollback, not PTY handles, not credentials)
-are stored in a versioned JSON file under Electron's `userData` directory. A session recorded
-as `running` states an intention, not a fact: on startup CodeFly asks the pty-host which PTYs
-it is really holding and reconciles the two lists. Sessions the host still has are adopted
-untouched; sessions it no longer has are restarted in their original directory, and one the
-host has but the state file does not is killed rather than left running unattended. A session
-recorded as `stopped` — it exited on its own — is never restarted behind your back; click it
-to restart the same terminal or agent type. Restarting an agent session asks its CLI to
-reattach the previous conversation, in whatever way that vendor spells it: `claude --continue`,
-`codex resume --last`, `gemini --resume latest`, `copilot --continue`,
-`agent --resume`, `qwen --continue`. This is best-effort, and `comatecli` has no
-resume of its own, so a restored Comate session starts a fresh conversation. Shell sessions
-restart fresh.
+The state lives in CodeFly's own application-data folder:
 
-The sidebar width is a renderer-owned preference (`localStorage`, like the theme and language)
-and never enters the state file. Drag the seam between the sidebar and the terminal to resize
-it; the handle is also keyboard-operable (focus it, then ArrowLeft/ArrowRight nudge, Home/End
-jump to the bounds) and a double-click restores the default 300px. The width is clamped between
-200px and 640px and can never leave the terminal workspace less than 360px, even when the window
-is later made narrower.
+| | |
+| --- | --- |
+| Windows | `%APPDATA%\CodeFly` |
+| macOS | `~/Library/Application Support/CodeFly` |
 
-The window itself is not remembered: CodeFly opens maximized every time, since a terminal beside
-a project sidebar wants the whole screen. Un-maximizing restores the 1180×760 windowed size.
+When you reopen the app, sessions that were running are picked back up where they are; ones
+that had stopped on their own are **not** restarted behind your back — click one to restart
+it. Restarting an agent session asks its CLI to continue the previous conversation, however
+that vendor spells it (`claude --continue`, `codex resume --last`, `gemini --resume latest`,
+`copilot --continue`, `agent --resume`, `qwen --continue`). It is best-effort, and Comate has
+no resume of its own, so it starts fresh. Shell sessions always start fresh. Deleted projects
+and sessions are ignored on restore, and a session whose directory has gone shows
+**Path missing**.
 
-## Testing
+## Troubleshooting
 
-```bash
-npm test          # Vitest: unit, component, and Git-integration tests
-npm run test:e2e   # Playwright: full Electron end-to-end journeys
-```
+**A session kind is greyed out.** Its CLI is not where CodeFly looks. Hover the entry for the
+exact executable name — remember Cursor's is `agent` and Comate's is `comatecli`. On Windows
+it must be on `PATH`; on macOS it must be findable from a login shell (`command -v claude`),
+because an app opened from Finder does not inherit Terminal's `PATH`.
 
-The end-to-end suite (`e2e/codefly.spec.ts`) drives a real Electron window through adding a
-project, creating Claude/Codex/PowerShell/Command-Prompt sessions, verifying the exact
-bypass argv Claude and Codex receive (and that title-generation processes never receive
-either flag), the persistent bypass warning, worktree sequence numbering, the per-kind
-Session kinds switches (a kind switched off leaves the New session menu, a worktree switch
-adds its second entry, the opt-in agent CLIs stay collapsed and off until enabled, and all of
-it survives a restart), restart persistence, VS Code/Explorer
-options-menu actions, dirty-worktree delete protection followed by a clean delete that
-retains the branch, and the whole update journey (startup prompt, **Later**, the Settings
-hand-off, a real streamed download, and the installer launch).
+**A kind is missing from the menu entirely.** It is switched off under **Session kinds** in
+Settings — and the five opt-in agent CLIs are off by default, inside the collapsed **More
+agent CLIs** group.
 
-It runs with `CODEFLY_E2E=1`, which (only in `src/main/index.ts`, the app's composition
-root — no domain service branches on this) substitutes a small fixture executable
-(`e2e/fixtures/fake-agent.cjs`) for the real `claude`/`codex` CLIs and a fixed directory for
-the "Add Project" picker. The update test additionally supplies one published release offline
-(`CODEFLY_E2E_RELEASE`) and records the installer that would have been executed
-(`CODEFLY_E2E_INSTALL_LOG`) — the version comparison, asset picking, GitHub host allowlist,
-streamed write, size check and rename are all real, writing into the suite's own user-data
-directory. The fixture only replaces which *executable* is launched; the
-bypass argument each session type receives is still produced by the same fixed, real
-launch-adapter code path used in production. Every other seam — Git, PowerShell, `cmd.exe`,
-the persisted state file, and the full worktree lifecycle — is the real, production
-implementation. Without `CODEFLY_E2E` set (every production build and every packaged
-install), none of this test-mode wiring is active.
+**"Worktree has N changed files."** That is the delete guard: commit or discard the changes
+in that worktree, then delete the session again. Nothing was removed.
 
-## Packaging
+**A worktree session says "Ordinary session".** The project is not a Git repository, or it
+has no commits yet. The session is running fine — just in the project directory.
 
-After either `npm run package:win` or `npm run package:mac` succeeds, `release/` keeps
-only the three newest versions, ordered by semantic version. Older installers,
-macOS archives, blockmaps, release notes and versioned release/validation records
-are removed together. Unpacked apps, caches, `latest*.yml` and unrelated files are
-left in place. To apply the same cleanup without building, run `npm run release:prune`.
+**A restored agent session starts a fresh conversation.** Resume is best-effort and depends
+on the CLI. Comate has none at all.
 
-### Windows
+**macOS says the app is damaged or blocked.** Run the two commands in
+[Install → macOS](#macos) before the first launch, and if Gatekeeper still objects use
+**System Settings → Privacy & Security → Open Anyway**.
 
-```bash
-npm run package:win
-```
+**A session vanished after a restart.** Deleting a session, or removing its project from the
+list, removes the record — but never anything on disk. Any work an agent did in a worktree is
+still on that worktree's branch.
 
-Produces an unsigned Windows x64 NSIS installer under `release/`. Packaging does not require
-code-signing credentials.
+## The rocket
 
-### macOS (from Windows or Linux, via Docker)
-
-```bash
-npm run package:mac
-```
-
-Produces `release/CodeFly-<version>-mac-x64.zip` and `release/CodeFly-<version>-mac-arm64.zip`,
-each holding an unsigned `CodeFly.app`. electron-builder refuses to build macOS targets on a
-Windows host, so `scripts/package-mac.mjs` builds `out/` on the host and then runs
-electron-builder inside a small Linux container (`scripts/mac-builder.Dockerfile`:
-`node:24-bookworm-slim` plus Info-ZIP) with the repository bind-mounted.
-
-- Docker Desktop (or any Docker daemon) must be running. The image is built on first use and
-  cached. Electron's darwin builds and electron-builder's icon toolset are downloaded once into
-  `%LOCALAPPDATA%\codefly-mac-builder\cache` (`~/.cache/codefly-mac-builder` elsewhere).
-- `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` from the host shell are forwarded into the
-  container; a loopback proxy address is rewritten to `host.docker.internal`.
-- The host's `node_modules` is reused as is: node-pty ships darwin prebuilds, so nothing is
-  compiled. `mac.files` in `electron-builder.yml` drops node-pty's Windows binaries from the
-  bundle.
-- The container asks electron-builder for `dir` only and compresses the bundle itself with
-  `zip -y`, because the 7-Zip electron-builder uses for zip off macOS dereferences the symlinks
-  inside `Electron Framework.framework`. `dmg` needs `hdiutil`, so it is only produced by
-  `npx electron-builder --mac` on a Mac — that is what `mac.target` in `electron-builder.yml`
-  describes.
-- `electron-builder.mac-cross.yml` is the overlay the container uses: it clears `electronDist`
-  so the darwin Electron is downloaded instead of the host's Windows copy being reused.
-
-The bundles are for internal testing and are neither signed nor notarized. Download the
-archive that matches the Mac (`mac-arm64.zip` for Apple Silicon, `mac-x64.zip` for Intel),
-extract it, and prepare the app before the first launch:
-
-```bash
-xattr -cr CodeFly.app
-codesign --force --deep --sign - CodeFly.app
-```
-
-The ad-hoc signature is local to that copy and is not a substitute for Developer ID signing
-or notarization. Move `CodeFly.app` to `/Applications` if desired, then open it from Finder.
-If Gatekeeper still intervenes, use **Open Anyway** under System Settings > Privacy &
-Security. Do not redistribute this internal build as a normal public macOS release.
-
-At runtime, macOS shows Shell, Claude, and Codex. CLI lookup runs through the user's login
-shell and then checks common Homebrew/local install locations, so Finder launch works without
-inheriting Terminal's `PATH`. PowerShell and Command Prompt remain Windows-only.
-
-### Manual smoke checklist (authenticated CLIs, packaged builds)
-
-The automated suites use test doubles for the agent CLIs and do not require live credentials.
-Before handing off a build, test with real, logged-in `claude` and `codex` CLIs.
-
-The five opt-in agent CLIs ship switched off, so they are not part of the required pass. When
-one is enabled for a smoke test, verify the two things the automated suites cannot: that the
-CLI actually starts under its bypass (Comate's arrives as `ZULU_TERMINAL_RUN_MODE=yolo`, not
-as argv), and that restoring a stopped session reattaches the previous conversation — except
-for Comate, which has no resume and is expected to start fresh.
-
-#### Windows x64
-
-- Create ordinary and worktree PowerShell, Command Prompt, Claude, and Codex sessions; verify
-  their working directories, input/output, restore, and deletion behavior.
-- Verify Visual Studio Code and project-folder actions, project paths containing spaces and
-  non-ASCII characters, and the Launch at startup toggle.
-- Pin the window on top, confirm it stays above another app's window, restart CodeFly and
-  confirm it comes back pinned, then unpin it.
-- Verify **Ctrl+V**, agent **Shift+Enter**, and the Windows in-app download/cancel/install
-  update flow. Windows has no new-session accelerator: confirm `Ctrl+T` reaches the focused
-  terminal instead of creating a PowerShell session.
-- Verify session keepalive against a real installed build, which is the one thing the
-  automated suite cannot rehearse (it runs unpackaged, so nothing is staged and no installer
-  runs). Start a Claude session, give it a long task, then:
-  1. Quit CodeFly. `codefly-pty-host.exe` must still be in Task Manager and the agent must
-     still be working (its output keeps arriving in the host log under `userData`).
-  2. Reopen CodeFly. The session must come back **running**, not stopped, with its screen
-     repainted — check that the agent's current view is legible, not a half-drawn frame, since
-     the repaint depends on one resize reaching the TUI.
-  3. Install an update over it (**Update now** → **Install now**) with that session running.
-     The installer must not report a running application, must not fail, and the newly
-     installed build must attach to the same session rather than restarting it. Confirm
-     `userData/pty-host/` then holds a directory per version and that the superseded one
-     disappears after the old host exits.
-  4. Type into an adopted session and confirm the keystrokes reach the agent.
-- Check the pixel logo in the Claude and Codex startup banners for hairline seams, then repeat
-  the check at a different display scale (100% and 150% put the cell grid on different widths).
-  Two things keep the artwork solid, and a crack is the visible symptom of either failing: the
-  WebGL renderer, which a machine with no WebGL2 context falls back from *silently*, and a cell
-  grid held to an even number of device pixels — xterm composes U+259B (the logo's head) from
-  two rectangles that meet at half the cell width, so an odd width splits that join across a
-  pixel and lets the background leak through.
-
-#### macOS x64 and arm64 (two separate required runs)
-
-Run the entire list once on a real Intel Mac with `mac-x64.zip` and once on a real Apple
-Silicon Mac with `mac-arm64.zip`; a Rosetta-only run does not cover both architectures.
-
-- Extract the archive, clear quarantine, apply the ad-hoc signature, move the app to
-  `/Applications`, and launch it from Finder rather than Terminal.
-- Add projects whose paths contain spaces and non-ASCII characters. Verify paths remain
-  correctly cased and are not rewritten with Windows separators.
-- Create Shell, Claude, and Codex from both their ordinary and **(new worktree)** entries.
-  Verify the ordinary sessions use the project directory and worktree sessions use their
-  assigned worktree and branch.
-- Enter commands/prompts, close and reopen CodeFly, restore each stopped session, then delete
-  both ordinary and clean worktree sessions. Confirm dirty-worktree protection still applies.
-- Verify a failed title-generation process still produces a usable local fallback title.
-- Check the pixel logo in the Claude and Codex startup banners for hairline seams (see the
-  Windows list above for the two things a seam can mean).
-- Verify **Open in Visual Studio Code**, **Open project folder** (Finder), and **Open Git
-  repository** without changing the active session.
-- Toggle **Launch at startup**, reopen Settings to confirm the system value, log out/in if the
-  test machine permits, then turn the setting back off.
-- Check for an available update and confirm macOS offers the Releases page only: it must not
-  download or execute a Windows installer.
-- Pin the window on top, confirm it stays above another app's window, restart CodeFly and
-  confirm it comes back pinned, then unpin it.
-- Verify **Cmd+V** pastes into Claude and Codex, **Shift+Enter** inserts a newline without
-  submitting, and `Cmd+T` creates an ordinary Shell session.
-- Switch between English and Simplified Chinese and confirm the choice survives a restart.
+Click the logo and the **CodeFly** wordmark. A rocket drops nose-first, swings round, cruises
+for a few seconds, and dashes off the screen. Click again for more of them. It is purely
+decorative — it cannot intercept a click — and it is skipped entirely if your system asks for
+reduced motion.
 
 ## License
 
-CodeFly is licensed under the [MIT License](LICENSE).
-You may use, copy, modify, and distribute it for any purpose, including commercial
-and closed-source use. Copies or substantial portions of the software must retain
-the copyright notice and license text; you do not have to disclose source code.
+CodeFly is licensed under the [MIT License](LICENSE). You may use, copy, modify, and
+distribute it for any purpose, including commercial and closed-source use. Copies or
+substantial portions of the software must retain the copyright notice and license text; you
+do not have to disclose source code.
 
 Third-party dependencies remain subject to their own licenses.
+
+CodeFly is built with Electron, React, TypeScript, xterm.js, and node-pty. If you want to
+build it from source, clone the repository and read `CLAUDE.md` and the scripts in
+`package.json`.
