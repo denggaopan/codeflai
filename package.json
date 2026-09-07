@@ -1,6 +1,6 @@
 {
   "name": "codeflai",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "description": "A Windows and macOS workspace for local terminal and AI coding sessions",
   "author": "Codeflai Contributors",
