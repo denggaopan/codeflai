@@ -475,21 +475,148 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .project-sidebar-header {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .session-search {
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
   padding: 6px 10px;
   background: var(--color-panel);
   color: var(--color-text);
   font-size: 0.85rem;
+}
+
+.session-status-filter {
+  display: flex;
+  flex: 0 0 24px;
+  width: 24px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.session-status-filter:hover {
+  color: var(--color-text);
+}
+
+.session-status-filter:focus-visible {
+  outline: 2px solid var(--color-text-muted);
+  outline-offset: 2px;
+}
+
+.session-filter-control {
+  flex: 0 0 24px;
+}
+
+.session-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  left: 12px;
+  z-index: 30;
+  max-width: 280px;
+  margin-left: auto;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel-elevated);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 0.8rem;
+}
+
+.session-filter-heading,
+.session-filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-filter-heading {
+  margin-bottom: 12px;
+}
+
+.session-filter-heading button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  padding: 0 4px;
+}
+
+.session-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-text-muted);
+}
+
+.session-filter-field select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 6px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.session-filter-actions {
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.session-filter-actions button {
+  flex: 1;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.session-filter-actions button:hover {
+  background: var(--color-panel-elevated);
+}
+
+.session-filter-popover :focus-visible {
+  outline: 2px solid var(--color-text-muted);
+  outline-offset: 2px;
+}
+
+.session-filter-empty {
+  padding: 12px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.session-filter-empty p {
+  margin: 0 0 8px;
+}
+
+.session-filter-empty button {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font: inherit;
 }
 
 .sidebar-notice {

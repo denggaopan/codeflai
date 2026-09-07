@@ -2,8 +2,6 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Previously **CodeFly**. The project and desktop app are now named **Codeflai**.
-
 **Codeflai is a desktop app that manages the terminals and AI coding agent sessions of your
 local projects in one window.**
 
@@ -29,7 +27,6 @@ CLI credentials.**
 ## Contents
 
 - [Install](#install)
-- [Upgrading from CodeFly](#upgrading-from-codefly)
 - [Your first session](#your-first-session)
 - [The window](#the-window)
 - [Adding projects](#adding-projects)
@@ -93,36 +90,6 @@ Terminal's `PATH`. Codeflai therefore looks for agent CLIs through your login sh
 the usual Homebrew and `~/.local/bin` locations. If a CLI you have installed shows up
 disabled, check that `command -v claude` (or whichever CLI) succeeds in a *login* shell.
 
-## Upgrading from CodeFly
-
-Close the old CodeFly window before starting Codeflai. Your terminal background process
-can stay running: Codeflai reconnects to it and retains its output until that host exits.
-New background processes use the Codeflai name.
-
-On Windows, run the Codeflai installer. It removes the previous CodeFly installation
-while keeping application data, creates the new shortcuts and uses the new application
-identity. Launch-at-login is migrated on the first normal launch. If Windows refuses a
-startup-setting change, the app retains the old entry and retries next time.
-
-On macOS, install `Codeflai.app` using the steps above, close CodeFly and move the old
-`CodeFly.app` to the Trash after Codeflai opens successfully. If CodeFly was in Login
-Items, remove that entry in System Settings and enable **Launch at startup** in Codeflai.
-
-On its first launch, Codeflai copies projects, sessions, workspace state and preferences
-from the old application-data directory into the new one:
-
-| Platform | Old directory (retained as a backup) | New directory |
-| --- | --- | --- |
-| Windows | `%APPDATA%\CodeFly` | `%APPDATA%\Codeflai` |
-| macOS | `~/Library/Application Support/CodeFly` | `~/Library/Application Support/Codeflai` |
-
-An existing Codeflai profile is never overwritten. Copy failures stop startup with an
-error, leaving the original data intact so the migration can be retried. Themes,
-language, sidebar width, pinned-window preferences, session kinds and quick prompts
-are imported into the new preference keys. Custom `--user-data-dir` profiles are not
-automatically imported. Keep the old directory until you have checked the new app;
-changes made in Codeflai are not synchronized back to CodeFly.
-
 ## Your first session
 
 1. **Add a project.** Click **Add Project** at the bottom of the sidebar and choose a folder
@@ -151,6 +118,17 @@ across every project, and clearing the search puts each project's fold state bac
 project row has a ⋯ button for its [options menu](#the-project-options-menu), and each
 session row has a delete button.
 
+Click the small gray filter icon beside the search box to open the filter form. Choose
+**All statuses**, **Running**, **Done**, **Stopped**, **Starting…**, **Path missing**, or
+**Error** in **Session status**, then click **Apply filters**. **Reset filters** resets the
+form; closing it without applying discards those edits. Status and title
+search work together, and matching sessions update as their status changes. Filters
+temporarily unfold projects without changing their saved fold state or your active
+terminal. **Clear filters** resets both controls when there are no matches. Status
+filtering resets to **All statuses** when the window is reopened or reloaded. The icon
+is borderless and changes from outline to filled when a status filter is applied; hover
+over it to see the current filter.
+
 **Terminal** — the active session's header (its title, its status, a **Restart session**
 action when it is not running, and the bypass warning while an agent runs), the terminal
 itself, and the optional [quick prompts](#quick-prompts) bar underneath. With nothing
@@ -165,12 +143,15 @@ terminal below 360.
 
 | Dot | Means |
 | --- | --- |
-| **Running** | The terminal or agent is live. |
-| **Done** | An agent session that has produced no output for three seconds — it finished what it was doing and is waiting for you. Shell sessions never show this: they idle at their prompt constantly. |
+| **Running** | The terminal or agent is live, including while its background agents are still working. |
+| **Done** | A Claude or Codex session with no reported ongoing work and no output for three seconds. Background-agent activity keeps it Running until all reported work finishes or stops, including after reopening the window. Shell sessions never show Done. |
 | **Starting…** | The session is being created. |
 | **Click to restore** | The session stopped (you stopped it, or the CLI exited). Click the row to restart it in the same directory — for agents, asking the CLI to continue the previous conversation. |
 | **Path missing** | The session's directory is no longer there. |
 | **Error** | Something went wrong; the row shows what. |
+
+Background activity detection recognizes Claude and Codex task-status output. Older
+CLI versions or settings without these signals use the three-second quiet-window fallback.
 
 Codeflai opens maximized every time and restores a 1180×760 window when you un-maximize it.
 

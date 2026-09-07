@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 
 import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
+import { AgentActivityTracker } from '../../../shared/agent-activity'
+import type { TerminalDataEvent } from '../../../shared/pty-protocol'
 import type {
   AppState,
   CapabilityState,
@@ -54,7 +56,7 @@ export type AppStore = {
   launcherOpen: boolean
   searchQuery: string
   notice: Notice | null
-  /** Running agent sessions whose PTY output has been quiet for AGENT_IDLE_MS. */
+  /** Quiet agent sessions with no reported foreground or background work. */
   idleAgentSessionIds: Record<string, true>
   theme: ThemePreference
   locale: Locale
@@ -268,15 +270,16 @@ const persistSidebarWidth = (width: number): void => {
 
 /**
  * How long a running agent session's PTY output must stay quiet before the session
- * counts as Done. Agent TUIs repaint continuously (spinners, streamed tokens) while they
- * work, so a quiet PTY is the reliable "finished, waiting for input" signal; 3s is long
- * enough to bridge repaint gaps and short enough to feel immediate in the sidebar.
+ * counts as Done when the CLI has not reported ongoing foreground/background work.
+ * Explicit activity survives silence; older CLIs retain the quiet-window fallback.
  */
 export const AGENT_IDLE_MS = 3_000
 
 // Pending quiet-window timers per session, module-level because they are bookkeeping for
 // the store's idleAgentSessionIds, not renderable state themselves.
 const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const agentActivities = new Map<string, AgentActivityTracker>()
+let activityEpoch = 0
 
 const clearIdleTimer = (sessionId: string): void => {
   const timer = idleTimers.get(sessionId)
@@ -288,6 +291,8 @@ const clearIdleTimer = (sessionId: string): void => {
 const clearAllIdleTimers = (): void => {
   for (const timer of idleTimers.values()) clearTimeout(timer)
   idleTimers.clear()
+  agentActivities.clear()
+  activityEpoch += 1
 }
 
 const upsertProject = (state: AppState, project: ProjectRecord): AppState => {
@@ -325,18 +330,33 @@ export const useAppStore = create<AppStore>()((set, get) => {
     })
   }
 
+  const forgetAgentActivity = (sessionId: string): void => {
+    agentActivities.delete(sessionId)
+    unmarkIdle(sessionId)
+  }
+
   // Any PTY output from an agent session restarts its quiet window; the session is marked
   // idle (Done) only when that window elapses with no further output. Shells and unknown
   // session ids (data can arrive before the snapshot loads) are ignored entirely.
-  const noteAgentOutput = (sessionId: string): void => {
+  const noteAgentOutput = (sessionId: string, data: string, replay = false): void => {
     const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
-    if (!session || (session.kind !== 'claude' && session.kind !== 'codex')) return
+    if (!session || session.status !== 'running' || (session.kind !== 'claude' && session.kind !== 'codex')) return
 
+    let activity = agentActivities.get(sessionId)
+    if (!activity) {
+      activity = new AgentActivityTracker(session.kind)
+      agentActivities.set(sessionId, activity)
+    }
+    if (replay) activity.writeReplay(data)
+    else activity.write(data)
     unmarkIdle(sessionId)
+    if (activity.running === true) return
     idleTimers.set(
       sessionId,
       setTimeout(() => {
         idleTimers.delete(sessionId)
+        if (agentActivities.get(sessionId) !== activity || activity.running === true ||
+          !get().appState.sessions.some((candidate) => candidate.id === sessionId && candidate.status === 'running')) return
         set((state) => ({ idleAgentSessionIds: { ...state.idleAgentSessionIds, [sessionId]: true } }))
       }, AGENT_IDLE_MS)
     )
@@ -369,6 +389,22 @@ export const useAppStore = create<AppStore>()((set, get) => {
       let hydratingWorkspace = false
       let workspaceChanged = false
       let latestBroadcast: AppState | undefined
+      const pendingActivity = new Map<string, TerminalDataEvent[]>()
+      const hydrateActivity = (sessionId: string): void => {
+        const pending = pendingActivity.get(sessionId) ?? []
+        pendingActivity.set(sessionId, pending)
+        const epoch = activityEpoch
+        void window.codeflai.replayTerminal(sessionId).catch(() => undefined).then((replay) => {
+          if (disposed || pendingActivity.get(sessionId) !== pending) return
+          pendingActivity.delete(sessionId)
+          if (activityEpoch !== epoch) return
+          if (replay?.data) noteAgentOutput(sessionId, replay.data, true)
+          for (const event of pending) {
+            if (replay && event.sequence !== undefined && event.sequence <= replay.throughSequence) continue
+            noteAgentOutput(sessionId, event.data)
+          }
+        })
+      }
       set({
         sidebarWidth: readStoredSidebarWidth(),
         quickPrompts: readStoredQuickPrompts(),
@@ -428,22 +464,49 @@ export const useAppStore = create<AppStore>()((set, get) => {
           }))
           hydratingWorkspace = false
           snapshotLoaded = true
+          for (const sessionId of pendingActivity.keys()) {
+            if (!appState.sessions.some((session) => session.id === sessionId && session.status === 'running' &&
+              (session.kind === 'claude' || session.kind === 'codex'))) pendingActivity.delete(sessionId)
+          }
+          for (const session of appState.sessions) {
+            if (session.status === 'running' && (session.kind === 'claude' || session.kind === 'codex')) hydrateActivity(session.id)
+          }
           persistWorkspace()
         })
         .catch((error: unknown) => {
           if (disposed) return
+          snapshotLoaded = true
+          pendingActivity.clear()
           set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
 
       const disposeState = window.codeflai.onStateChanged((state) => {
         latestBroadcast = state
+        const previousSessions = get().appState.sessions
         set((current) => ({ appState: state, ...(snapshotLoaded ? reconcileWorkspace(current, state) : {}) }))
+        for (const previous of previousSessions) {
+          if (!state.sessions.some((session) => session.id === previous.id && session.status === 'running')) {
+            pendingActivity.delete(previous.id)
+            forgetAgentActivity(previous.id)
+          }
+        }
+        if (snapshotLoaded) for (const session of state.sessions) {
+          if (session.status === 'running' && (session.kind === 'claude' || session.kind === 'codex') &&
+            !previousSessions.some((previous) => previous.id === session.id && previous.status === 'running')) hydrateActivity(session.id)
+        }
       })
-      const disposeData = window.codeflai.onTerminalData(({ sessionId }) => {
-        noteAgentOutput(sessionId)
+      const disposeData = window.codeflai.onTerminalData((event) => {
+        if (!snapshotLoaded || pendingActivity.has(event.sessionId)) {
+          const pending = pendingActivity.get(event.sessionId) ?? []
+          pending.push(event)
+          pendingActivity.set(event.sessionId, pending)
+          return
+        }
+        noteAgentOutput(event.sessionId, event.data)
       })
       const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
-        unmarkIdle(sessionId)
+        pendingActivity.delete(sessionId)
+        forgetAgentActivity(sessionId)
       })
       // Merged only while a download is actually in progress, so an event arriving after a
       // cancel, a failure, or a completion cannot drag the dialog back into the downloading
@@ -478,6 +541,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         disposeExit()
         disposeUpdateProgress()
         clearAllIdleTimers()
+        pendingActivity.clear()
+        set({ idleAgentSessionIds: {} })
       }
     },
 
@@ -693,6 +758,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
     removeProject: async (projectId) => {
       try {
         await window.codeflai.removeProject(projectId)
+        for (const session of get().appState.sessions) {
+          if (session.projectId === projectId) forgetAgentActivity(session.id)
+        }
         // The main process has already broadcast the state without this project; this only
         // moves the selection off the records that vanished (and is a no-op for the state).
         set((state) => {
@@ -764,7 +832,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         const result = await window.codeflai.deleteSession(sessionId)
 
         if (result.status === 'deleted') {
-          unmarkIdle(sessionId)
+          forgetAgentActivity(sessionId)
           set((state) => ({
             appState: { ...state.appState, sessions: state.appState.sessions.filter((session) => session.id !== sessionId) },
             activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId

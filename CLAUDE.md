@@ -75,6 +75,7 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 ### 渲染进程（src/renderer/）
 
 - `store/use-app-store.ts`（zustand）：action 调 `window.codeflai` 并把返回记录立即合入 appState（返回值就是主进程刚持久化的内容）；`onStateChanged` 广播则整体替换 appState，作为最终事实来源。跨 `ipcRenderer.invoke` 的 rejection 会被 Electron 抹掉子类信息，**只能读 `error.message`，不能按错误类型分支**。
+- 会话状态筛选由搜索框旁的小型灰色图标打开 `SessionFilters` 表单弹窗，应用时提交草稿，关闭时放弃编辑。按 `isAgentDone` 与运行记录的组合结果筛选，与标题搜索取交集；只临时展开项目，不改变已保存的折叠状态或活动终端。筛选条件仅保留在当前窗口。后台活动由 `shared/agent-activity.ts` 解析 Claude/Codex 的状态输出；`PtyRegistry` 保存活动快照，并通过不可见 OSC 随现有 data/replay 传递，不改变 host 协议版本。store 恢复时按 replay 的 `throughSequence` 去重并接续实时事件，有后台活动时不进入三秒静默 Done 状态。
 - 项目折叠状态和活动项目/会话通过 `workspace:save` 在每次变更时写入 `SessionStore` 的 `workspace` 字段，启动 snapshot 到达后统一恢复；不能只用 localStorage 或关闭事件保存，强杀 Chromium 会丢失尚未刷盘的数据。搜索临时展开不修改保存状态，恢复活动会话不强制展开所属项目，也不自动重启已停止的会话。
 - `terminal/first-input-tracker.ts`：从 PTY 输入流中剥离 ANSI 转义序列、捕获首行提交文本（用于标题生成），之后纯透传。
 - `terminal/terminal-key-bindings.ts`：纯函数 `resolveTerminalKey(kind, event)`，由 `TerminalWorkspace` 经 `terminal.attachCustomKeyEventHandler` 接入（该 handler 对 keydown/keypress/keyup 都会被调用，返回 false 即让 xterm 跳过该事件）。只对 agent 会话（claude/codex）生效，shell 会话一律返回 `xterm`、行为不变。两条改写：**Ctrl+V / Cmd+V** 返回 `browser`，让浏览器默认 paste 事件走 xterm 自己的 paste 监听（含 bracketed paste）；**Shift+Enter** keydown 返回 `send` `AGENT_NEWLINE_SEQUENCE`（ESC CR，即终端对 Alt/Meta+Enter 的编码），keypress/keyup 返回 `browser` 防止 xterm 再发裸 CR。所有送往 PTY 的字节（含这里发出的）都经 `TerminalWorkspace` 的 `forwardInput` 过 FirstInputTracker，ESC CR 不会被当成首行提交。

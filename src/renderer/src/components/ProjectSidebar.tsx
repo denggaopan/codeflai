@@ -14,6 +14,7 @@ import { useAppStore } from '../store/use-app-store'
 import ConfirmDialog from './ConfirmDialog'
 import AddProjectDialog from './AddProjectDialog'
 import SessionLauncher from './SessionLauncher'
+import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
 
 const PROJECT_OPTIONS_GAP = 6
 
@@ -98,7 +99,7 @@ function SessionRow({ session, active, onActivate, onRequestDelete }: SessionRow
 }
 
 /**
- * Left navigation: session search, project groups with their sessions, and a round
+ * Left navigation: session search and status filter, project groups, and a round
  * Add Project action docked at the bottom-left.
  * Each project label and options trigger are sibling buttons, with menu and launcher sibling
  * popovers. Every stopPropagation() call is defensive rather than load-bearing: it keeps a
@@ -115,6 +116,7 @@ export default function ProjectSidebar() {
   const collapsedProjectIds = useAppStore((state) => state.collapsedProjectIds)
   const toggleProjectCollapsed = useAppStore((state) => state.toggleProjectCollapsed)
   const searchQuery = useAppStore((state) => state.searchQuery)
+  const idleAgentSessionIds = useAppStore((state) => state.idleAgentSessionIds)
   const notice = useAppStore((state) => state.notice)
   const setSearchQuery = useAppStore((state) => state.setSearchQuery)
   const setActiveProject = useAppStore((state) => state.setActiveProject)
@@ -134,6 +136,7 @@ export default function ProjectSidebar() {
   const closeLauncher = useAppStore((state) => state.closeLauncher)
 
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
+  const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
   const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
   const [openOptionsProjectId, setOpenOptionsProjectId] = useState<string | null>(null)
@@ -142,6 +145,7 @@ export default function ProjectSidebar() {
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const optionsMenuRef = useRef<HTMLDivElement | null>(null)
   const projectGroupsRef = useRef<HTMLDivElement | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   const closeProjectOptions = (restoreFocus = false): void => {
     if (restoreFocus) optionsTriggerRef.current?.focus()
@@ -149,7 +153,7 @@ export default function ProjectSidebar() {
   }
 
   // Project drag-reordering: the whole project row is the drag handle unless the pointer began
-  // in the options trigger, menu, or launcher. Dragging is disabled while a search filter is
+  // in the options trigger, menu, or launcher. Dragging is disabled while a session filter is
   // active — the filtered view hides rows, so a drop position would be ambiguous.
   const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ projectId: string; position: 'before' | 'after' } | null>(null)
@@ -361,7 +365,12 @@ export default function ProjectSidebar() {
     : undefined
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
-  const dragEnabled = normalizedQuery === ''
+  const filtering = normalizedQuery !== '' || statusFilter !== 'all'
+  const dragEnabled = !filtering
+  const filteredSessions = appState.sessions.filter((session) => {
+    const status = isAgentDone(session, idleAgentSessionIds[session.id] === true) ? 'done' : session.status
+    return (statusFilter === 'all' || status === statusFilter) && session.title.toLowerCase().includes(normalizedQuery)
+  })
 
   const clearDragState = (): void => {
     dragOriginIsExemptRef.current = false
@@ -464,6 +473,7 @@ export default function ProjectSidebar() {
     <aside className="project-sidebar">
       <div className="project-sidebar-header">
         <input
+          ref={searchInputRef}
           type="search"
           className="session-search"
           aria-label={t('sidebar.searchSessions')}
@@ -471,6 +481,7 @@ export default function ProjectSidebar() {
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
         />
+        <SessionFilters value={statusFilter} onChange={setStatusFilter} />
       </div>
 
       {notice && (
@@ -483,13 +494,18 @@ export default function ProjectSidebar() {
       )}
 
       <div className="project-groups" ref={projectGroupsRef}>
+        {filtering && filteredSessions.length === 0 && (
+          <div className="session-filter-empty">
+            <p role="status">{t('sidebar.noMatchingSessions')}</p>
+            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); searchInputRef.current?.focus() }}>
+              {t('sidebar.clearFilters')}
+            </button>
+          </div>
+        )}
         {appState.projects.map((project) => {
-          // Search reveals matches without changing each project's saved collapse state.
-          const expanded = !collapsedProjectIds.includes(project.id) || normalizedQuery !== ''
-          const sessions = appState.sessions.filter((session) => session.projectId === project.id)
-          const visibleSessions = normalizedQuery
-            ? sessions.filter((session) => session.title.toLowerCase().includes(normalizedQuery))
-            : sessions
+          // Filters reveal matches without changing each project's saved collapse state.
+          const expanded = !collapsedProjectIds.includes(project.id) || filtering
+          const visibleSessions = filteredSessions.filter((session) => session.projectId === project.id)
 
           return (
             <section key={project.id} className="project-group">

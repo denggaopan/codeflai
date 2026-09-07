@@ -101,6 +101,43 @@ afterEach(() => {
 })
 
 describe('PtyRegistry spawning', () => {
+  it('preserves background activity beyond the replay tail without changing visible output', async () => {
+    const { registry, factory, events } = buildHarness()
+    await registry.spawn('s1', 'codex', 'C:\\Projects', false, 80, 24)
+    const terminal = pty(factory)
+    const started = '\u2022 Started `/root/one`\r\n'
+    terminal.emitData(started)
+    expect(events.at(-1)).toMatchObject({ data: `${started}\u001b]777;codeflai-activity;1\u0007` })
+    terminal.emitData('output\n'.repeat(REPLAY_BUFFER_CHARS))
+    const replay = registry.replay('s1')
+    expect(replay.data).not.toContain('Started')
+    expect(replay.data).toMatch(/^\u001b\]777;codeflai-activity;1\u0007/)
+    expect(replay.throughSequence).toBe(2)
+    terminal.emitData('\u2022 Completed `/root/one`\r\n')
+    expect(events.at(-1)).toMatchObject({ data: '\u2022 Completed `/root/one`\r\n\u001b]777;codeflai-activity;0\u0007' })
+    expect(registry.replay('s1').data).toMatch(/^\u001b\]777;codeflai-activity;0\u0007/)
+  })
+
+  it('never inserts an activity snapshot halfway through an ANSI control sequence', async () => {
+    const { registry, factory, events } = buildHarness()
+    await registry.spawn('s1', 'codex', 'C:\\Projects', false, 80, 24)
+    const first = '\u2022 Started `/root/one`\r\n\u001b['
+    pty(factory).emitData(first)
+    expect(events.at(-1)).toMatchObject({ data: '\u2022 Started `/root/one`\r\n\u001b]777;codeflai-activity;1\u0007\u001b[' })
+    expect(registry.replay('s1').data).toBe(`\u001b]777;codeflai-activity;1\u0007${first}`)
+    pty(factory).emitData('0m')
+    expect(events.at(-1)).toMatchObject({ data: '0m' })
+  })
+
+  it('discards background tracking when a PTY exits and the same session id is restored', async () => {
+    const { registry, factory } = buildHarness()
+    await registry.spawn('s1', 'claude', 'C:\\Projects', false, 80, 24)
+    pty(factory).emitData('Waiting for 2 background agents to finish\n')
+    pty(factory).emitExit(0)
+    await registry.spawn('s1', 'claude', 'C:\\Projects', true, 80, 24)
+    expect(registry.replay('s1').data).toBe('')
+  })
+
   it('spawns with the resolved launch spec, the requested geometry and the merged environment', async () => {
     const harness = buildHarness({
       launch: { file: 'C:\\npm\\comatecli.exe', args: [], env: { ZULU_TERMINAL_RUN_MODE: 'yolo' } },

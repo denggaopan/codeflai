@@ -339,6 +339,166 @@ describe('ProjectSidebar', () => {
     expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
   })
 
+  describe('session status filter', () => {
+    const chooseStatus = async (user: ReturnType<typeof userEvent.setup>, status: string) => {
+      await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), status)
+      await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+    }
+    const sessions: SessionRecord[] = [
+      { ...runningWorktreeSession, id: 'busy', title: 'Busy agent' },
+      { ...runningWorktreeSession, id: 'done', title: 'Done agent' },
+      { ...stoppedSession, id: 'shell', title: 'Running shell', status: 'running' },
+      ...(['stopped', 'creating', 'missing', 'error'] as const).map((status) => ({
+        ...stoppedSession, id: status, title: `${status} session`, status
+      }))
+    ]
+
+    const setup = () => {
+      seedStore({ version: 1, projects: [project1], sessions })
+      useAppStore.setState({ idleAgentSessionIds: { done: true, shell: true, stopped: true } })
+      return render(<ProjectSidebar />)
+    }
+
+    it('defaults to all and filters by the displayed status, including idle agents but not idle shells', async () => {
+      const user = userEvent.setup()
+      const { container } = setup()
+      const filter = screen.getByRole('button', { name: 'Filter sessions' })
+      expect(filter).toHaveAttribute('aria-expanded', 'false')
+      expect(filter.closest('.session-status-filter')).toHaveAttribute('title', 'Session status: All statuses')
+      expect(filter.closest('.session-status-filter')).not.toHaveAttribute('data-active')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(7)
+
+      for (const [status, titles] of [
+        ['running', ['Busy agent', 'Running shell']],
+        ['done', ['Done agent']],
+        ['stopped', ['stopped session']],
+        ['creating', ['creating session']],
+        ['missing', ['missing session']],
+        ['error', ['error session']]
+      ] as const) {
+        await chooseStatus(user, status)
+        expect(filter.closest('.session-status-filter')).toHaveAttribute('data-active', 'true')
+        expect(Array.from(container.querySelectorAll('.session-title'), (node) => node.textContent)).toEqual(titles)
+      }
+
+      await chooseStatus(user, 'all')
+      expect(filter.closest('.session-status-filter')).not.toHaveAttribute('data-active')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(7)
+    })
+
+    it('combines status with title search and clears both from the empty state', async () => {
+      const user = userEvent.setup()
+      setup()
+      const filter = screen.getByRole('button', { name: 'Filter sessions' })
+      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
+      await chooseStatus(user, 'running')
+      await user.type(search, '  SHELL ')
+      expect(screen.getByText('Running shell')).toBeInTheDocument()
+      expect(screen.queryByText('Busy agent')).not.toBeInTheDocument()
+
+      await chooseStatus(user, 'done')
+      expect(screen.getByRole('status')).toHaveTextContent('No matching sessions')
+      expect(screen.getByRole('button', { name: projectOptionsName(project1.name) })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+      expect(filter).toHaveAttribute('title', 'Session status: All statuses')
+      expect(search).toHaveValue('')
+      expect(search).toHaveFocus()
+      expect(screen.getByText('Done agent')).toBeInTheDocument()
+      expect(screen.queryByText('No matching sessions')).not.toBeInTheDocument()
+    })
+
+    it('updates matches on idle and lifecycle events without changing the active session', async () => {
+      const user = userEvent.setup()
+      setup()
+      act(() => useAppStore.setState({ activeProjectId: project1.id, activeSessionId: 'busy' }))
+      await chooseStatus(user, 'done')
+      expect(screen.queryByText('Busy agent')).not.toBeInTheDocument()
+      act(() => useAppStore.setState({ idleAgentSessionIds: { busy: true } }))
+      expect(screen.getByText('Busy agent')).toBeInTheDocument()
+      expect(screen.queryByText('Done agent')).not.toBeInTheDocument()
+      act(() => useAppStore.setState({
+        appState: { version: 1, projects: [project1], sessions: sessions.map((session) =>
+          session.id === 'busy' ? { ...session, status: 'stopped' } : session) }
+      }))
+      expect(screen.queryByText('Busy agent')).not.toBeInTheDocument()
+      expect(useAppStore.getState().activeSessionId).toBe('busy')
+      expect(api.restoreSession).not.toHaveBeenCalled()
+    })
+
+    it('reveals matches across collapsed projects and restores folds after clearing', async () => {
+      const user = userEvent.setup()
+      const secondProject = { ...project1, id: 'project-2', name: 'second-project' }
+      seedStore({ version: 1, projects: [project1, secondProject], sessions: [
+        runningWorktreeSession, { ...stoppedSession, projectId: secondProject.id }
+      ] })
+      useAppStore.setState({ collapsedProjectIds: [project1.id, secondProject.id] })
+      const { container } = render(<ProjectSidebar />)
+      await chooseStatus(user, 'stopped')
+      expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
+      expect(screen.queryByText(runningWorktreeSession.title)).not.toBeInTheDocument()
+      for (const row of container.querySelectorAll('[data-project-row]')) expect(row).toHaveAttribute('draggable', 'false')
+      await chooseStatus(user, 'running')
+      expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
+      await chooseStatus(user, 'all')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(0)
+      expect(useAppStore.getState().collapsedProjectIds).toEqual([project1.id, secondProject.id])
+      expect(api.saveWorkspace).not.toHaveBeenCalled()
+    })
+
+    it('translates the filter and empty state into Chinese', async () => {
+      const user = userEvent.setup()
+      seedStore({ version: 1, projects: [project1], sessions: [] })
+      useAppStore.setState({ locale: 'zh-CN' })
+      render(<ProjectSidebar />)
+      await user.click(screen.getByRole('button', { name: '筛选会话' }))
+      const filter = screen.getByRole('combobox', { name: '会话状态' })
+      expect(within(filter).getAllByRole('option').map((option) => option.textContent)).toEqual([
+        '全部状态', '运行中', '已完成', '已停止', '启动中…', '路径不存在', '错误'
+      ])
+      await user.selectOptions(filter, 'done')
+      await user.click(screen.getByRole('button', { name: '应用筛选' }))
+      expect(screen.getByRole('status')).toHaveTextContent('没有符合条件的会话')
+      expect(screen.getByRole('button', { name: '清除筛选' })).toBeInTheDocument()
+    })
+
+    it('edits filters in a form, applies explicitly, and discards cancelled drafts', async () => {
+      const user = userEvent.setup()
+      const { container } = setup()
+      const trigger = screen.getByRole('button', { name: 'Filter sessions' })
+      await user.click(trigger)
+      const dialog = screen.getByRole('dialog', { name: 'Filter sessions' })
+      const select = within(dialog).getByRole('combobox', { name: 'Session status' })
+      expect(select).toHaveFocus()
+      await user.selectOptions(select, 'done')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(7)
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(trigger).toHaveFocus()
+      await user.click(trigger)
+      await user.tab({ shift: true })
+      await user.tab({ shift: true })
+      expect(trigger).toHaveFocus()
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(trigger).toHaveFocus()
+      await chooseStatus(user, 'done')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(1)
+      expect(trigger).toHaveFocus()
+      await user.click(trigger)
+      await user.click(screen.getByRole('button', { name: 'Reset filters' }))
+      expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('all')
+      expect(container.querySelectorAll('.session-row')).toHaveLength(1)
+      await user.click(screen.getByRole('searchbox', { name: 'Search sessions' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      await user.click(trigger)
+      expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('done')
+      await user.click(screen.getByRole('button', { name: 'Reset filters' }))
+      await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+      expect(container.querySelectorAll('.session-row')).toHaveLength(7)
+    })
+  })
+
   it('collapses the project actions into one labelled options menu', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [] })

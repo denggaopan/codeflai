@@ -16,7 +16,7 @@ import type {
   WorkspaceState
 } from '../../../shared/contracts'
 import { EXTERNAL_LINKS } from '../../../shared/links'
-import type { TerminalReplay } from '../../../shared/pty-protocol'
+import type { TerminalDataEvent, TerminalReplay } from '../../../shared/pty-protocol'
 import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
 import { DEFAULT_SESSION_KIND_PREFERENCES } from '../../../shared/contracts'
 import { AGENT_IDLE_MS, SESSION_KINDS_STORAGE_KEY, WINDOW_PINNED_STORAGE_KEY, useAppStore } from './use-app-store'
@@ -56,7 +56,7 @@ const powershellSession: SessionRecord = {
 const seededState: AppState = { version: 1, projects: [], sessions: [claudeSession, powershellSession] }
 
 const createFakeApi = () => {
-  const dataListeners = new Set<(payload: { sessionId: string; data: string }) => void>()
+  const dataListeners = new Set<(payload: TerminalDataEvent) => void>()
   const exitListeners = new Set<(payload: { sessionId: string; exitCode: number }) => void>()
   const progressListeners = new Set<(progress: UpdateDownloadProgress) => void>()
   return {
@@ -89,7 +89,7 @@ const createFakeApi = () => {
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((_listener: (state: AppState) => void) => () => undefined),
-    onTerminalData: vi.fn((listener: (payload: { sessionId: string; data: string }) => void) => {
+    onTerminalData: vi.fn((listener: (payload: TerminalDataEvent) => void) => {
       dataListeners.add(listener)
       return () => {
         dataListeners.delete(listener)
@@ -110,7 +110,7 @@ const createFakeApi = () => {
     emitUpdateProgress: (progress: UpdateDownloadProgress) => {
       for (const listener of [...progressListeners]) listener(progress)
     },
-    emitTerminalData: (payload: { sessionId: string; data: string }) => {
+    emitTerminalData: (payload: TerminalDataEvent) => {
       for (const listener of [...dataListeners]) listener(payload)
     },
     emitTerminalExit: (payload: { sessionId: string; exitCode: number }) => {
@@ -464,6 +464,122 @@ describe('useAppStore session-kind preferences', () => {
 })
 
 describe('useAppStore agent idle tracking', () => {
+  it('restores background status for inactive sessions from replay after a renderer reload', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    api.replayTerminal.mockImplementation(async (sessionId) => sessionId === claudeSession.id
+      ? { data: '\u001b]9;4;3;\u0007', cols: 80, rows: 24, throughSequence: 10 }
+      : undefined)
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    expect(api.replayTerminal).toHaveBeenCalledWith(claudeSession.id)
+    expect(idleIds()).toEqual({})
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;0;\u0007', sequence: 11 })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('orders replay before newer live completion and skips data already covered by its sequence', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    let resolveReplay!: (replay: TerminalReplay) => void
+    api.replayTerminal.mockImplementation(() => new Promise((resolve) => { resolveReplay = resolve }))
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;0;\u0007', sequence: 11 })
+    resolveReplay({ data: '\u001b]9;4;3;\u0007', cols: 80, rows: 24, throughSequence: 10 })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('does not resurrect background state from a replay that resolves after exit', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    let resolveReplay!: (replay: TerminalReplay) => void
+    api.replayTerminal.mockImplementation(() => new Promise((resolve) => { resolveReplay = resolve }))
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+    resolveReplay({ data: '\u001b]9;4;3;\u0007', cols: 80, rows: 24, throughSequence: 10 })
+    await vi.advanceTimersByTimeAsync(0)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'restored prompt' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('does not reapply a live start already included in a completed replay', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    let resolveReplay!: (replay: TerminalReplay) => void
+    api.replayTerminal.mockImplementation(() => new Promise((resolve) => { resolveReplay = resolve }))
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;3;\u0007', sequence: 9 })
+    resolveReplay({ data: '\u001b]9;4;0;\u0007', cols: 80, rows: 24, throughSequence: 10 })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('trusts the host aggregate until all tasks finish when their starts were trimmed from replay', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    api.getSnapshot.mockResolvedValueOnce({ platform: 'win32', state: { ...seededState, sessions: [{ ...claudeSession, kind: 'codex' }] }, capabilities: defaultCapabilities() })
+    api.replayTerminal.mockResolvedValueOnce({ data: '\u001b]777;codeflai-activity;1\u0007output tail', cols: 80, rows: 24, throughSequence: 10 })
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u2022 Completed `/root/one`\n', sequence: 11 })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    expect(idleIds()).toEqual({})
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u2022 Completed `/root/two`\n\u001b]777;codeflai-activity;0\u0007', sequence: 12 })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('does not keep buffering shell output that arrived before the initial snapshot', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    let resolveSnapshot!: (snapshot: AppSnapshot) => void
+    api.getSnapshot.mockImplementationOnce(() => new Promise((resolve) => { resolveSnapshot = resolve }))
+    dispose = useAppStore.getState().initialize()
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'PS>' })
+    resolveSnapshot({ platform: 'win32', state: seededState, capabilities: defaultCapabilities() })
+    await vi.advanceTimersByTimeAsync(0)
+    // Reusing the id for an agent exposes a leftover queue: new data must be processed.
+    useAppStore.setState({ appState: { ...seededState, sessions: [{ ...claudeSession, id: powershellSession.id }] } })
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'idle prompt' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [powershellSession.id]: true })
+  })
+
+  it('keeps multiple Codex agents Running until the last completes or is interrupted', async () => {
+    const session = { ...claudeSession, kind: 'codex' as const }
+    useAppStore.setState({ appState: { ...seededState, sessions: [session] } })
+    api.emitTerminalData({ sessionId: session.id, data: '\u2022 Started `/root/one`\n\u2022 Started `/root/two`\n' })
+    api.emitTerminalData({ sessionId: session.id, data: '\u2022 Completed `/root/one`\n' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 3)
+    expect(idleIds()).toEqual({})
+    api.emitTerminalData({ sessionId: session.id, data: '\u2022 Interrupted `/root/two`\n' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [session.id]: true })
+  })
+
+  it('clears stale timers and activity when a broadcast removes or stops a session', async () => {
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'output' })
+    api.onStateChanged.mock.calls[0]![0]({ ...seededState, sessions: [] })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    expect(idleIds()).toEqual({})
+  })
+
+  it('keeps background agents Running until the CLI clears its aggregate progress signal', async () => {
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;3;\u0007' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 3)
+    expect(idleIds()).toEqual({})
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;0;\u0007' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
   it('marks an agent session Done only after its output has been quiet for the idle window', async () => {
     api.emitTerminalData({ sessionId: claudeSession.id, data: 'thinking…' })
     expect(idleIds()).toEqual({})

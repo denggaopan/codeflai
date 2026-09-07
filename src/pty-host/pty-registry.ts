@@ -1,4 +1,5 @@
 import { spawn as spawnPty } from 'node-pty'
+import { AgentActivityTracker } from '../shared/agent-activity'
 
 import type { SessionKind } from '../shared/contracts'
 import {
@@ -58,6 +59,8 @@ type PtyEntry = {
   cols: number
   rows: number
   replay: string
+  readonly activity: AgentActivityTracker
+  publishedActivity?: boolean
   sequence: number
   kill?: KillState
 }
@@ -155,7 +158,15 @@ export class PtyRegistry {
         if (this.entries.get(sessionId) !== entry) return
         entry.sequence += 1
         entry.replay = trimReplayBuffer(entry.replay + data)
-        this.publish({ type: 'data', sessionId, data, sequence: entry.sequence })
+        entry.activity.write(data)
+        let published = data
+        const boundary = entry.activity.lastControlBoundary
+        if (boundary >= 0 && entry.activity.running !== entry.publishedActivity) {
+          const signal = entry.activity.replaySignal()
+          published = data.slice(0, boundary) + signal + data.slice(boundary)
+          entry.publishedActivity = entry.activity.running
+        }
+        this.publish({ type: 'data', sessionId, data: published, sequence: entry.sequence })
       })
       const exitSubscription = pty.onExit(({ exitCode }) => {
         if (this.entries.get(sessionId) !== entry) return
@@ -174,6 +185,7 @@ export class PtyRegistry {
         cols,
         rows,
         replay: '',
+        activity: new AgentActivityTracker(kind),
         sequence: 0
       }
       this.entries.set(sessionId, entry)
@@ -199,7 +211,11 @@ export class PtyRegistry {
 
   replay(sessionId: string): ReplaySnapshot {
     const entry = this.runningEntry(sessionId)
-    return { data: entry.replay, cols: entry.cols, rows: entry.rows, throughSequence: entry.sequence }
+    // Prefixing is safe even when the retained tail ends halfway through an escape.
+    // Activity outlives the 256 KB output tail without changing the host wire protocol.
+    const signal = entry.activity.replaySignal()
+    const data = signal + entry.replay
+    return { data, cols: entry.cols, rows: entry.rows, throughSequence: entry.sequence }
   }
 
   list(): PtySessionSummary[] {

@@ -280,14 +280,14 @@ test('persists quick prompts and inserts into the real terminal without sending'
       await page.screenshot({ path: testInfo.outputPath(`quick-prompts-overflow-${width}-${sidebar}.png`) })
     }
     await page.locator('button.quick-prompts-more').click()
-    await expect(page.getByRole('option')).toHaveCount(30)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(30)
     await expect(page.getByRole('option', { name: /Keep this unstarred/ })).toHaveCount(0)
     await page.getByRole('option', { name: /Review task 30:/ }).click()
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
     await expect(panel).toHaveCount(0)
     await assertCompactBar()
     await page.locator('.quick-prompts-trigger').click()
-    await expect(page.getByRole('option')).toHaveCount(31)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(31)
     await expect(page.getByRole('option', { name: /Keep this unstarred/ })).toBeVisible()
 
     await page.evaluate(() => {

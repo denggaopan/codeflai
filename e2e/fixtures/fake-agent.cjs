@@ -39,6 +39,15 @@ const handleLine = (line) => {
   if (line.trim() === 'exit') {
     process.exit(0)
   }
+  const activityOutput = {
+    'CODEFLAI_TEST_CLAUDE_BACKGROUND_START': '\r\n\u273b Waiting for 2 background agents to finish\r\n',
+    'CODEFLAI_TEST_CLAUDE_BACKGROUND_ONE_LEFT': '\r\n\u273b Waiting for 1 background agent to finish\r\n',
+    'CODEFLAI_TEST_CLAUDE_BACKGROUND_DONE': '\r\n\u273b Worked for 1m 2s\r\n',
+    'CODEFLAI_TEST_CODEX_BACKGROUND_START': '\r\n\u2022 Started `/root/review`\r\n\u2022 Started `/root/tests`\r\n',
+    'CODEFLAI_TEST_CODEX_BACKGROUND_ONE_LEFT': '\r\n\u2022 Completed `/root/review`\r\n',
+    'CODEFLAI_TEST_CODEX_BACKGROUND_DONE': '\r\n\u2022 Interrupted `/root/tests`\r\n'
+  }[line.trim()]
+  if (activityOutput) process.stdout.write(activityOutput)
 }
 
 process.stdin.setEncoding('utf8')

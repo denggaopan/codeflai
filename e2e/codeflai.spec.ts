@@ -158,6 +158,7 @@ test.beforeAll(async () => {
   const launched = await launchApp()
   electronApp = launched.app
   window = launched.page
+  await expect.poll(() => electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())).toBe(true)
 })
 
 test.afterAll(async () => {
@@ -457,19 +458,15 @@ test('marks the running Claude session Done once its output has gone quiet', asy
 })
 
 test('keeps the terminal workflow usable at the 900 by 600 minimum window size', async () => {
-  const { wasMaximized, size } = await electronApp.evaluate(({ BrowserWindow }) => {
+  const size = await electronApp.evaluate(({ BrowserWindow }) => {
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (!mainWindow) throw new Error('Codeflai main window is missing')
-    // Codeflai opens maximized (see createMainWindow), and a maximized window ignores
-    // setSize — so the resize below has to un-maximize first. Asserted rather than merely
-    // done, since this is the first test to touch the window frame and no earlier test
-    // changes it.
-    const maximized = mainWindow.isMaximized()
+    // Startup maximization is checked before the suite changes window geometry.
+    // The earlier Add Project test also resizes the window, so normalize it here.
     mainWindow.unmaximize()
     mainWindow.setSize(900, 600)
-    return { wasMaximized: maximized, size: mainWindow.getSize() }
+    return mainWindow.getSize()
   })
-  expect(wasMaximized).toBe(true)
   expect(size[0]).toBeGreaterThanOrEqual(900)
   expect(size[0]).toBeLessThanOrEqual(902)
   expect(size[1]).toBeGreaterThanOrEqual(600)
