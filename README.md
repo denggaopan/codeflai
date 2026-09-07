@@ -2,10 +2,12 @@
 
 English | [简体中文](README.zh-CN.md)
 
-CodeFly is a Windows and macOS desktop app that keeps every terminal and every AI coding
-agent you run against your local projects in one window. Pick a project, pick a session
-kind, and CodeFly starts it — PowerShell or Command Prompt on Windows, your login Shell on
-macOS, and up to seven coding-agent CLIs including Claude Code and Codex.
+**CodeFly is a desktop app that manages the terminals and AI coding agent sessions of your
+local projects in one window.**
+
+Pick a project, pick a session kind, and CodeFly starts it — PowerShell or Command Prompt on
+Windows, your login Shell on macOS, and up to seven coding-agent CLIs including Claude Code
+and Codex.
 
 It is a terminal workspace, not a code editor. Each session runs either directly in your
 project directory or in its own isolated Git worktree and same-named branch, so an agent can

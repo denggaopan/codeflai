@@ -2,7 +2,9 @@
 
 [English](README.md) | 简体中文
 
-CodeFly 是一款 Windows 与 macOS 桌面应用，把你在本地项目上开的所有终端和所有 AI 编程 agent 都收进同一个窗口。选好项目、选好会话类型，CodeFly 就把它启动起来——Windows 上是 PowerShell 或命令提示符，macOS 上是你的登录 Shell，另外还有最多七种编程 agent CLI，包括 Claude Code 和 Codex。
+**CodeFly 是一个桌面应用，用一个窗口管理本地项目的多个终端和 AI 编程 agent 会话。**
+
+选好项目、选好会话类型，CodeFly 就把它启动起来——Windows 上是 PowerShell 或命令提示符，macOS 上是你的登录 Shell，另外还有最多七种编程 agent CLI，包括 Claude Code 和 Codex。
 
 它是终端工作区，不是代码编辑器。每个会话要么直接跑在项目目录里，要么跑在自己独立的 Git worktree 和同名分支上，让 agent 干活时不碰你正在别处编辑的内容。所有 agent 都通过你自己已安装、已登录的 CLI 运行：**CodeFly 从不收集、存储或读取 API 密钥和 CLI 凭据。**
 
