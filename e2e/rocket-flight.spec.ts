@@ -17,7 +17,7 @@ async function launch(): Promise<ElectronApplication> {
   })
 }
 
-test('the 32nd and later logo clicks launch grand rockets that rapidly skip-glide out of the window', async ({}, testInfo) => {
+test('the 32nd and later logo clicks drop two original-size rockets that rapidly skip-glide out of the window', async ({}, testInfo) => {
   const app = await launch()
   try {
     expect(await app.evaluate(({ app }) => app.getVersion())).toBe(version)
@@ -36,16 +36,19 @@ test('the 32nd and later logo clicks launch grand rockets that rapidly skip-glid
       for (let index = 0; index < 31; index++) (button as HTMLButtonElement).click()
     })
     await expect(page.locator('.rocket-flight')).toHaveCount(31)
-    await expect(page.locator('.rocket-flight-grand')).toHaveCount(0)
+    await expect(page.locator('.rocket-flight-burst')).toHaveCount(0)
     await brand.click()
-    const rocket = page.locator('.rocket-flight-grand')
-    const body = rocket.locator('.rocket-flight-body')
-    await expect(rocket).toHaveCount(1)
-    await body.evaluate((node) => node.getAnimations()[0].pause())
-    await expect(body).toHaveCSS('width', '64px')
-    await expect(body).toHaveCSS('height', '88px')
-    await expect(rocket).toHaveCSS('pointer-events', 'none')
-    await expect(rocket.locator('.rocket-flight-exhaust')).toBeVisible()
+    const rocket = page.locator('.rocket-flight-burst')
+    const bodies = rocket.locator('.rocket-flight-body')
+    const body = bodies.first()
+    await expect(rocket).toHaveCount(2)
+    await bodies.evaluateAll((nodes) => nodes.forEach((node) => node.getAnimations()[0].pause()))
+    for (let index = 0; index < 2; index++) {
+      await expect(bodies.nth(index)).toHaveCSS('width', '32px')
+      await expect(bodies.nth(index)).toHaveCSS('height', '44px')
+      await expect(rocket.nth(index)).toHaveCSS('pointer-events', 'none')
+      await expect(rocket.nth(index).locator('.rocket-flight-exhaust')).toBeVisible()
+    }
 
     const samples = await body.evaluate((node) => {
       const animation = node.getAnimations()[0]
@@ -74,37 +77,47 @@ test('the 32nd and later logo clicks launch grand rockets that rapidly skip-glid
     expect(samples.points[5].left).toBeGreaterThan(samples.viewportWidth)
     expect(samples.points[5].exhaustLeft).toBeGreaterThan(samples.viewportWidth)
 
-    await page.locator('.rocket-flight:not(.rocket-flight-grand) .rocket-flight-body').evaluateAll((nodes) => {
+    const centers = await bodies.evaluateAll((nodes) => nodes.map((node) => {
+      const animation = node.getAnimations()[0]
+      const duration = Number(animation.effect!.getTiming().duration)
+      const glideStart = (animation.effect as KeyframeEffect).getKeyframes()[2].computedOffset * duration
+      animation.currentTime = glideStart + (duration - glideStart) * 0.3
+      const rect = node.getBoundingClientRect()
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+    }))
+    expect(Math.hypot(centers[0].x - centers[1].x, centers[0].y - centers[1].y)).toBeGreaterThan(44)
+
+    await page.locator('.rocket-flight:not(.rocket-flight-burst) .rocket-flight-body').evaluateAll((nodes) => {
       for (const node of nodes) node.getAnimations()[0]?.finish()
     })
-    await expect(page.locator('.rocket-flight')).toHaveCount(1)
-    await page.screenshot({ path: testInfo.outputPath('grand-rocket.png') })
+    await expect(page.locator('.rocket-flight')).toHaveCount(2)
+    await page.screenshot({ path: testInfo.outputPath('paired-rockets.png') })
     await page.locator('.title-bar-action').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.keyboard.press('Escape')
-    await body.evaluate((node) => {
+    await bodies.evaluateAll((nodes) => nodes.forEach((node) => {
       const animation = node.getAnimations()[0]
       animation.currentTime = 0
       animation.play()
-    })
+    }))
     await expect(rocket).toHaveCount(0, { timeout: samples.duration + 5000 })
     await brand.click()
     await brand.click()
     await brand.click()
-    await expect(rocket).toHaveCount(3)
-    await expect(page.locator('.rocket-flight:not(.rocket-flight-grand)')).toHaveCount(0)
+    await expect(rocket).toHaveCount(6)
+    await expect(page.locator('.rocket-flight:not(.rocket-flight-burst)')).toHaveCount(0)
     await expect(rocket).toHaveCount(0, { timeout: 5000 })
     await page.reload()
     await brand.click()
-    await expect(page.locator('.rocket-flight-grand')).toHaveCount(0)
-    await expect(page.locator('.rocket-flight:not(.rocket-flight-grand)')).toHaveCount(1)
+    await expect(page.locator('.rocket-flight-burst')).toHaveCount(0)
+    await expect(page.locator('.rocket-flight:not(.rocket-flight-burst)')).toHaveCount(1)
     expect(errors).toEqual([])
   } finally {
     await app.close()
   }
 })
 
-test('reduced motion skips both ordinary and grand rockets', async () => {
+test('reduced motion skips both ordinary and burst rockets', async () => {
   const app = await launch()
   try {
     const page = await app.firstWindow()

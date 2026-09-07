@@ -1,7 +1,7 @@
 import { MAX_DROP_DISTANCE, type Point, type RocketKeyframe, type Viewport } from './rocket-flight'
 
 const ROCKET_MARGIN = 64
-const EXIT_MARGIN = 220
+const EXIT_MARGIN = 120
 const DROP_MS = 480
 const TURN_MS = 140
 const GLIDE_PIXELS_PER_SECOND = 1200
@@ -10,11 +10,11 @@ const MAX_GLIDE_MS = 1800
 const GLIDE_SAMPLES = 240
 
 /** A fast decorative Qian Xuesen-style skip glide with diminishing arcs. */
-export function planGrandRocketFlight({ viewport, origin }: { viewport: Viewport; origin: Point }): {
+export function planBurstRocketFlight({ viewport, origin, lane = 0 }: { viewport: Viewport; origin: Point; lane?: 0 | 1 }): {
   keyframes: RocketKeyframe[]
   totalMs: number
 } {
-  const drop = Math.max(0, Math.min(MAX_DROP_DISTANCE, viewport.height - origin.y - ROCKET_MARGIN))
+  const drop = Math.max(0, Math.min(MAX_DROP_DISTANCE, viewport.height - origin.y - ROCKET_MARGIN) - lane * 72)
   const amplitude = Math.max(0, Math.min(220, origin.y + drop - ROCKET_MARGIN))
   const distance = Math.max(EXIT_MARGIN, viewport.width - origin.x + EXIT_MARGIN)
   const frequency = 2.5 * Math.PI

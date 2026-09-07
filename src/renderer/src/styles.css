@@ -315,24 +315,20 @@ html[data-platform='darwin'] .title-bar {
   display: block;
 }
 
-.rocket-flight-grand .rocket-flight-body {
-  width: 64px;
-  height: 88px;
-  margin-top: -44px;
-  margin-left: -32px;
+.rocket-flight-burst .rocket-flight-body {
   filter: drop-shadow(0 0 8px rgb(255 207 115 / 65%)) drop-shadow(0 0 20px rgb(255 116 38 / 40%));
 }
 
-.rocket-flight-grand .rocket-flight-art {
+.rocket-flight-burst .rocket-flight-art {
   overflow: visible;
 }
 
 .rocket-flight-exhaust {
   position: absolute;
-  top: 70px;
-  left: 22px;
-  width: 20px;
-  height: 128px;
+  top: 35px;
+  left: 11px;
+  width: 10px;
+  height: 64px;
   background: linear-gradient(to bottom, #fff9d9 0%, #7be7ff 14%, #ffb347 38%, rgb(255 84 0 / 0%) 100%);
   clip-path: polygon(10% 0, 90% 0, 100% 18%, 58% 100%, 42% 100%, 0 18%);
   filter: blur(1px);
@@ -340,8 +336,8 @@ html[data-platform='darwin'] .title-bar {
   animation: rocket-exhaust-pulse 100ms ease-in-out infinite alternate;
 }
 
-.rocket-flight-grand .rocket-flight-flame {
-  animation-name: rocket-grand-flame;
+.rocket-flight-burst .rocket-flight-flame {
+  animation-name: rocket-burst-flame;
   animation-duration: 90ms;
 }
 
@@ -350,7 +346,7 @@ html[data-platform='darwin'] .title-bar {
   to { transform: scale(1.15, 1.1); }
 }
 
-@keyframes rocket-grand-flame {
+@keyframes rocket-burst-flame {
   from { transform: scale(1.2, 2.5); }
   to { transform: scale(1.5, 3.5); }
 }
@@ -374,7 +370,7 @@ html[data-platform='darwin'] .title-bar {
 
 @media (prefers-reduced-motion: reduce) {
   .rocket-flight-flame,
-  .rocket-flight-grand .rocket-flight-flame,
+  .rocket-flight-burst .rocket-flight-flame,
   .rocket-flight-exhaust {
     animation: none;
   }

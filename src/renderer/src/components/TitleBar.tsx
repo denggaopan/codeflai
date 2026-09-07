@@ -11,7 +11,8 @@ import SettingsDialog from './SettingsDialog'
 interface RocketLaunch {
   id: number
   origin: Point
-  grand: boolean
+  burst: boolean
+  lane: 0 | 1
 }
 
 /**
@@ -26,20 +27,22 @@ export default function TitleBar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
-  const clickStreak = useRef<RocketClickStreak>({ clicks: [], grand: false })
+  const clickStreak = useRef<RocketClickStreak>({ clicks: [], burst: false })
 
   // The brand button is the easter egg's launch pad: every click drops another rocket from
-  // wherever the logo currently sits. Reaching 32 clicks unlocks grand rockets until reload.
+  // wherever the logo currently sits. Reaching 32 clicks unlocks paired launches until reload.
   const launchRocket = (event: MouseEvent<HTMLButtonElement>) => {
     const box = event.currentTarget.getBoundingClientRect()
-    const id = nextLaunchId.current++
     const streak = recordRocketClick(clickStreak.current, performance.now())
     clickStreak.current = streak
-    setLaunches((current) => [...current, {
-      id,
-      origin: { x: box.left + box.width / 2, y: box.bottom },
-      grand: streak.grand
-    }])
+    const lanes: (0 | 1)[] = streak.burst ? [0, 1] : [0]
+    const next = lanes.map((lane) => ({
+      id: nextLaunchId.current++,
+      origin: { x: box.left + box.width / 2 + (streak.burst ? (lane === 0 ? -18 : 18) : 0), y: box.bottom },
+      burst: streak.burst,
+      lane
+    }))
+    setLaunches((current) => [...current, ...next])
   }
 
   const endLaunch = useCallback((id: number) => {
@@ -111,7 +114,7 @@ export default function TitleBar() {
       </div>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {launches.map((launch) => (
-        <RocketFlight key={launch.id} origin={launch.origin} grand={launch.grand} onDone={() => endLaunch(launch.id)} />
+        <RocketFlight key={launch.id} origin={launch.origin} burst={launch.burst} lane={launch.lane} onDone={() => endLaunch(launch.id)} />
       ))}
     </header>
   )

@@ -537,11 +537,11 @@ for a few seconds, and dashes off the screen. Click again for more of them. It i
 decorative — it cannot intercept a click — and it is skipped entirely if your system asks for
 reduced motion.
 
-Click 32 times within any rolling 60 seconds to unlock grand rockets for the current window.
-The 32nd and every subsequent click launch a rocket twice as wide and tall, with a bright
-exhaust plume and glow. It drops nose-first, then sweeps out along a fast Qian Xuesen-style
-skip-glide in about two seconds, with its nose following the diminishing arcs. Pausing does
-not reset the unlocked mode; reopening or reloading the window starts a fresh count.
+Click 32 times within any rolling 60 seconds to unlock paired launches for the current window.
+The 32nd and every subsequent click drop two original-size rockets with bright exhaust plumes
+and a glow. They sweep out along separate Qian Xuesen-style skip-glide lanes in about two
+seconds, with their noses following the diminishing arcs. Pausing does not reset the unlocked
+mode; reopening or reloading the window starts a fresh count.
 
 ## License
 

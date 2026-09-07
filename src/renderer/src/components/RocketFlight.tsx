@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
-import { planGrandRocketFlight } from '../grand-rocket-flight'
+import { planBurstRocketFlight } from '../burst-rocket-flight'
 import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
 
 /**
  * One rocket, launched from the title bar's brand button: it falls nose-first, swings round
  * to a random rightwards course, cruises slowly for three seconds and then dashes off-screen.
- * A grand rocket is twice the size and blasts along a fast skip-glide with a bright exhaust.
+ * Burst rockets keep their original size and fly in two distinct lanes with bright exhaust.
  * The geometry (and the promise that the nose always points along the course) lives in
  * `rocket-flight.ts`; this component only measures the launch point and drives the animation.
  *
@@ -15,7 +15,7 @@ import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
  * that crosses the whole window, and it is inert to the pointer: purely decorative, and never
  * in the way of the UI it flies over.
  */
-export default function RocketFlight({ origin, grand = false, onDone }: { origin: Point; grand?: boolean; onDone: () => void }) {
+export default function RocketFlight({ origin, burst = false, lane = 0, onDone }: { origin: Point; burst?: boolean; lane?: 0 | 1; onDone: () => void }) {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const artId = useId()
   // Kept in a ref so the effect below never re-runs (and restarts the flight) just because the
@@ -40,7 +40,7 @@ export default function RocketFlight({ origin, grand = false, onDone }: { origin
       viewport: { width: window.innerWidth, height: window.innerHeight },
       origin
     }
-    const plan = grand ? planGrandRocketFlight(input) : (() => {
+    const plan = burst ? planBurstRocketFlight({ ...input, lane }) : (() => {
       const standard = planRocketFlight({ ...input, random: Math.random })
       return { keyframes: rocketKeyframes(standard), totalMs: standard.totalMs }
     })()
@@ -57,15 +57,15 @@ export default function RocketFlight({ origin, grand = false, onDone }: { origin
       animation.removeEventListener('cancel', finish)
       animation.cancel()
     }
-  }, [origin, grand])
+  }, [origin, burst, lane])
 
   const anchorStyle = { left: `${origin.x}px`, top: `${origin.y}px` } as CSSProperties
 
   return createPortal(
-    <div className={`rocket-flight${grand ? ' rocket-flight-grand' : ''}`} style={anchorStyle} aria-hidden="true">
+    <div className={`rocket-flight${burst ? ' rocket-flight-burst' : ''}`} style={anchorStyle} aria-hidden="true">
       <div className="rocket-flight-body" ref={bodyRef}>
-        {grand && <span className="rocket-flight-exhaust" />}
-        <svg className="rocket-flight-art" viewBox="0 0 32 44" width={grand ? 64 : 32} height={grand ? 88 : 44} fill="none">
+        {burst && <span className="rocket-flight-exhaust" />}
+        <svg className="rocket-flight-art" viewBox="0 0 32 44" width="32" height="44" fill="none">
           <defs>
             <linearGradient id={`${artId}-hull`} x1="8" y1="4" x2="26" y2="40" gradientUnits="userSpaceOnUse">
               <stop offset="0" stopColor="#ffffff" />
