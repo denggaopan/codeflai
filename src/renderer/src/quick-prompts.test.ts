@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { QUICK_PROMPTS_STORAGE_KEY, readStoredQuickPrompts } from './quick-prompts'
+import { QUICK_PROMPTS_STORAGE_KEY, moveQuickPrompt, readStoredQuickPrompts } from './quick-prompts'
 import { useAppStore } from './store/use-app-store'
 
 beforeEach(() => {
@@ -53,5 +53,30 @@ describe('stored quick prompts', () => {
     expect(useAppStore.getState().setQuickPrompts([prompt, prompt])).toBe(false)
     expect(readStoredQuickPrompts()).toEqual([prompt])
     expect(useAppStore.getState().quickPrompts).toEqual([prompt])
+  })
+})
+
+describe('moveQuickPrompt', () => {
+  const prompts = [
+    { id: 'a', starred: true, content: 'A' },
+    { id: 'b', starred: false, content: 'B' },
+    { id: 'c', starred: true, content: 'C' }
+  ]
+  const ids = (list: typeof prompts) => list.map((prompt) => prompt.id)
+
+  it('places the moved prompt before or after the target and keeps every other prompt in order', () => {
+    expect(ids(moveQuickPrompt(prompts, 'a', 'b', 'after'))).toEqual(['b', 'a', 'c'])
+    expect(ids(moveQuickPrompt(prompts, 'a', 'c', 'after'))).toEqual(['b', 'c', 'a'])
+    expect(ids(moveQuickPrompt(prompts, 'c', 'a', 'before'))).toEqual(['c', 'a', 'b'])
+    expect(ids(moveQuickPrompt(prompts, 'b', 'a', 'before'))).toEqual(['b', 'a', 'c'])
+    expect(ids(prompts)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('returns the same array when the order would not change or an id is unknown', () => {
+    expect(moveQuickPrompt(prompts, 'a', 'a', 'before')).toBe(prompts)
+    expect(moveQuickPrompt(prompts, 'a', 'b', 'before')).toBe(prompts)
+    expect(moveQuickPrompt(prompts, 'c', 'b', 'after')).toBe(prompts)
+    expect(moveQuickPrompt(prompts, 'missing', 'b', 'after')).toBe(prompts)
+    expect(moveQuickPrompt(prompts, 'a', 'missing', 'after')).toBe(prompts)
   })
 })

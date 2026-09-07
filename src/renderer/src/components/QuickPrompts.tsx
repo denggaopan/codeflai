@@ -5,11 +5,14 @@ import { useTranslation } from '../i18n/use-translation'
 import {
   MAX_QUICK_PROMPTS,
   MAX_QUICK_PROMPT_CONTENT,
+  moveQuickPrompt,
   quickPromptPreview,
   quickPromptSchema,
-  type QuickPrompt
+  type QuickPrompt,
+  type QuickPromptPlacement
 } from '../quick-prompts'
 import { useAppStore } from '../store/use-app-store'
+import { useQuickPromptSort } from './use-quick-prompt-sort'
 
 type QuickPromptsProps = {
   sessionId: string | null
@@ -20,25 +23,27 @@ type QuickPromptsProps = {
 
 type View = 'closed' | 'browse' | 'starred' | 'manage' | 'edit' | 'delete'
 
-function PromptIcon({ kind }: { kind: 'bolt' | 'plus' | 'manage' | 'close' | 'delete' | 'star' }) {
+function PromptIcon({ kind }: { kind: 'bolt' | 'plus' | 'manage' | 'close' | 'delete' | 'star' | 'grip' }) {
   const paths = {
     bolt: 'M9 1 3 9h4l-1 6 7-9H9l1-5Z',
     plus: 'M8 3v10M3 8h10',
     manage: 'M3 4h10M3 8h10M3 12h10M6 2v4M10 6v4M6 10v4',
     close: 'm4 4 8 8M4 12l8-8',
     delete: 'M2 4h12M6 4V2h4v2M4 4l1 10h6l1-10M7 7v4M9 7v4',
-    star: 'm8 1.5 2 4.1 4.5.7-3.2 3.1.7 4.5-4-2.1-4 2.1.7-4.5L1.5 6.3l4.5-.7Z'
+    star: 'm8 1.5 2 4.1 4.5.7-3.2 3.1.7 4.5-4-2.1-4 2.1.7-4.5L1.5 6.3l4.5-.7Z',
+    grip: 'M5 4h.01M11 4h.01M5 8h.01M11 8h.01M5 12h.01M11 12h.01'
   }
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[kind]} /></svg>
 }
 
-function StarredPromptBar({ prompts, running, insertedId, onInsert, onBrowse, expanded }: {
+function StarredPromptBar({ prompts, running, insertedId, onInsert, onBrowse, expanded, sorting }: {
   prompts: QuickPrompt[]
   running: boolean
   insertedId: string | null
   onInsert: (prompt: QuickPrompt) => void
   onBrowse: () => void
   expanded: boolean
+  sorting: ReturnType<typeof useQuickPromptSort>
 }) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -87,8 +92,9 @@ function StarredPromptBar({ prompts, running, insertedId, onInsert, onBrowse, ex
       </div>
       {prompts.length === 0 && <span className="quick-prompts-empty-inline">{t('quickPrompts.emptyBar')}</span>}
       {prompts.slice(0, visibleCount).map((prompt) => <button type="button" key={prompt.id} className="quick-prompts-chip" disabled={!running}
+        {...sorting.sourceProps(prompt.id, 'bar', running)} {...sorting.targetProps(prompt.id, 'bar', running)}
         data-inserted={prompt.id === insertedId ? 'true' : undefined} aria-label={t('quickPrompts.insert', { name: quickPromptPreview(prompt.content) })}
-        title={running ? prompt.content : t('quickPrompts.stopped')} onClick={() => onInsert(prompt)}>{quickPromptPreview(prompt.content)}</button>)}
+        title={running ? `${prompt.content}\n${t('quickPrompts.dragHint')}` : t('quickPrompts.stopped')} onClick={() => onInsert(prompt)}>{quickPromptPreview(prompt.content)}</button>)}
       {hiddenCount > 0 && <button type="button" className="quick-prompts-more" aria-expanded={expanded}
         aria-label={t('quickPrompts.moreStarred', { count: hiddenCount })} title={t('quickPrompts.moreStarred', { count: hiddenCount })}
         onClick={onBrowse}>+{hiddenCount}</button>}
@@ -109,6 +115,7 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
   const [pendingDelete, setPendingDelete] = useState<QuickPrompt | null>(null)
   const [error, setError] = useState<TranslationKey | null>(null)
   const [insertedId, setInsertedId] = useState<string | null>(null)
+  const [sortAnnouncement, setSortAnnouncement] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLTextAreaElement>(null)
@@ -119,6 +126,22 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
   const browsing = view === 'browse' || view === 'starred'
   const filtered = (view === 'starred' ? starred : prompts).filter((prompt) => prompt.content.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const selected = Math.min(selectedIndex, Math.max(0, filtered.length - 1))
+  const canSortList = view === 'manage' && !query.trim()
+
+  const reorder = (sourceId: string, targetId: string, placement: QuickPromptPlacement): void => {
+    const next = moveQuickPrompt(prompts, sourceId, targetId, placement)
+    if (next === prompts) return
+    if (!setQuickPrompts(next)) {
+      setError('quickPrompts.reorderFailed')
+      return
+    }
+    setError(null)
+    const index = next.findIndex((prompt) => prompt.id === sourceId)
+    setSortAnnouncement(t('quickPrompts.reordered', { name: quickPromptPreview(next[index].content), position: index + 1, count: next.length }))
+  }
+  const sorting = useQuickPromptSort(reorder)
+
+  useEffect(() => { sorting.cancel() }, [sessionId, enabled, view, query, prompts, sorting.cancel])
 
   useEffect(() => {
     setView('closed')
@@ -248,17 +271,18 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
   if (!sessionId || !enabled) return null
 
   return (
-    <div ref={rootRef} className="quick-prompts" onKeyDown={(event) => {
+    <div ref={rootRef} className="quick-prompts" {...sorting.rootProps} onKeyDown={(event) => {
       if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
       event.preventDefault()
       event.stopPropagation()
+      sorting.cancel()
       close()
     }}>
       {view !== 'closed' && (
         <section className="quick-prompts-panel" id={panelId} aria-labelledby={`${panelId}-title`}>
           <div className="quick-prompts-heading">
             <h2 id={`${panelId}-title`}>{t(view === 'edit' ? (prompts.some((prompt) => prompt.id === draft?.id) ? 'quickPrompts.editTitle' : 'quickPrompts.add') : view === 'delete' ? 'quickPrompts.deleteTitle' : view === 'manage' ? 'quickPrompts.manage' : view === 'starred' ? 'quickPrompts.starred' : 'quickPrompts.title')}</h2>
-            <span className="quick-prompts-panel-hint">{t(browsing ? 'quickPrompts.keyboardHint' : 'quickPrompts.sharedHint')}</span>
+            <span className="quick-prompts-panel-hint" id={`${panelId}-hint`}>{t(browsing ? 'quickPrompts.keyboardHint' : view === 'manage' ? (canSortList ? 'quickPrompts.reorderHint' : 'quickPrompts.filteredSortHint') : 'quickPrompts.sharedHint')}</span>
             <button type="button" className="quick-prompts-icon-button" aria-label={t('quickPrompts.close')} title={t('quickPrompts.close')} onClick={close}><PromptIcon kind="close" /></button>
           </div>
           {view === 'edit' && draft ? (
@@ -304,7 +328,22 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
                 onChange={(event) => { setQuery(event.target.value); setSelectedIndex(0) }} />
               <ul className="quick-prompts-list" id={`${panelId}-list`} role={browsing ? 'listbox' : undefined} aria-label={t(view === 'starred' ? 'quickPrompts.starred' : 'quickPrompts.title')}>
                 {filtered.map((prompt, index) => (
-                  <li key={prompt.id} className="quick-prompts-item" role={browsing ? 'presentation' : undefined}>
+                  <li key={prompt.id} className="quick-prompts-item" role={browsing ? 'presentation' : undefined}
+                    {...sorting.targetProps(prompt.id, 'manage', canSortList)}>
+                    {view === 'manage' && <button type="button" className="quick-prompts-icon-button quick-prompts-drag-handle"
+                      disabled={!canSortList} {...sorting.sourceProps(prompt.id, 'manage', canSortList)}
+                      aria-label={t('quickPrompts.reorder', { name: quickPromptPreview(prompt.content) })}
+                      aria-describedby={`${panelId}-hint`} aria-keyshortcuts="ArrowUp ArrowDown"
+                      title={t(canSortList ? 'quickPrompts.reorderHint' : 'quickPrompts.filteredSortHint')}
+                      onKeyDown={(event) => {
+                        if (!canSortList || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+                          (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        const previous = event.key === 'ArrowUp'
+                        const neighbor = prompts[index + (previous ? -1 : 1)]
+                        if (neighbor) reorder(prompt.id, neighbor.id, previous ? 'before' : 'after')
+                      }}><PromptIcon kind="grip" /></button>}
                     <button type="button" className="quick-prompts-result" disabled={browsing && !running}
                       role={browsing ? 'option' : undefined} aria-selected={browsing ? index === selected : undefined}
                       id={`${panelId}-option-${index}`} aria-label={t(browsing ? 'quickPrompts.insert' : 'quickPrompts.edit', { name: quickPromptPreview(prompt.content) })}
@@ -341,9 +380,10 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
           onClick={() => { if (view === 'browse') close(); else openBrowse() }}>
           <PromptIcon kind="bolt" /><span>{t('quickPrompts.title')}</span>
         </button>
-        <StarredPromptBar prompts={starred} running={running} insertedId={insertedId} onInsert={insert}
+        <StarredPromptBar prompts={starred} running={running} insertedId={insertedId} onInsert={insert} sorting={sorting}
           expanded={view === 'starred'} onBrowse={() => { if (view === 'starred') close(); else openBrowse(true) }} />
         <span className="quick-prompts-feedback" aria-live="polite" aria-atomic="true">{insertedId ? t('quickPrompts.inserted') : ''}</span>
+        <span className="quick-prompts-sort-announcement" aria-live="polite" aria-atomic="true">{sortAnnouncement}</span>
         <button type="button" className="quick-prompts-icon-button" disabled={prompts.length >= MAX_QUICK_PROMPTS && !draft}
           aria-label={t('quickPrompts.add')} title={prompts.length >= MAX_QUICK_PROMPTS ? t('quickPrompts.limit', { count: MAX_QUICK_PROMPTS }) : t('quickPrompts.add')}
           onClick={startAdding}><PromptIcon kind="plus" /></button>

@@ -2,10 +2,126 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { _electron as electron, expect, test } from '@playwright/test'
+import { _electron as electron, expect, test, type Locator } from '@playwright/test'
 import type { Terminal } from '@xterm/xterm'
 
 import { createRepo } from './create-repo'
+
+test('drags quick prompts without terminal input and retains the order after reload', async ({}, testInfo) => {
+  const userDataDir = mkdtempSync(join(tmpdir(), 'codefly-prompts-sort-e2e-'))
+  const app = await electron.launch({
+    args: ['.', `--user-data-dir=${userDataDir}`],
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      CODEFLY_E2E: '1',
+      CODEFLY_E2E_PROJECT: createRepo(),
+      CODEFLY_E2E_AGENT_CMD: resolve('e2e/fixtures/fake-agent.cmd'),
+      CODEFLY_E2E_HOST_PID_LOG: join(userDataDir, 'host.pid'),
+      CODEFLY_PTY_HOST_IDLE_MS: '250'
+    }
+  })
+  const page = await app.firstWindow()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const order = () => page.evaluate(() => JSON.parse(localStorage.getItem('codefly.quickPrompts')!).map((prompt: { id: string }) => prompt.id))
+  const row = (name: string) => page.locator('.quick-prompts-item').filter({ has: page.getByRole('button', { name: `Edit ${name}`, exact: true }) })
+  const handle = (name: string) => page.getByRole('button', { name: `Reorder ${name}`, exact: true })
+  const dragToEdge = async (source: Locator, target: Locator, horizontal: boolean, before: boolean) => {
+    const box = (await target.boundingBox())!
+    await source.dragTo(target, { targetPosition: {
+      x: horizontal ? (before ? 3 : box.width - 3) : box.width / 2,
+      y: horizontal ? box.height / 2 : (before ? 3 : box.height - 3)
+    } })
+  }
+  try {
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      window.unmaximize()
+      window.setSize(1180, 760)
+    })
+    await page.getByRole('button', { name: 'Add Project', exact: true }).click()
+    await page.getByRole('button', { name: 'Choose project directory' }).click()
+    await page.getByRole('button', { name: /^Project options for / }).click()
+    await page.getByRole('menuitem', { name: 'New session' }).click()
+    await page.getByRole('button', { name: 'Command Prompt', exact: true }).click()
+    await expect(page.locator('.terminal-instance-host .xterm')).toBeVisible()
+    await page.evaluate(() => {
+      localStorage.setItem('codefly.showQuickPrompts', 'true')
+      localStorage.setItem('codefly.quickPrompts', JSON.stringify([
+        { id: 'a', content: 'Alpha', starred: true },
+        { id: 'b', content: 'Beta', starred: false },
+        { id: 'c', content: 'Charlie', starred: true },
+        { id: 'd', content: 'Delta', starred: true }
+      ]))
+    })
+    await page.reload()
+    await expect(page.locator('.terminal-instance-host .xterm')).toBeVisible()
+    const input: string[] = []
+    await page.exposeFunction('recordSortInput', (data: string) => input.push(data))
+    await page.locator('.terminal-instance-host').evaluate((host) => {
+      const terminal = (host as HTMLElement & { codeflyTerminal: Terminal }).codeflyTerminal
+      terminal.onData((data) => {
+        void (window as unknown as { recordSortInput(data: string): Promise<void> }).recordSortInput(data)
+      })
+    })
+    const alpha = page.getByRole('button', { name: 'Insert Alpha', exact: true })
+    await dragToEdge(alpha, page.getByRole('button', { name: 'Insert Delta', exact: true }), true, false)
+    await expect.poll(order).toEqual(['b', 'c', 'd', 'a'])
+    await expect(page.locator('button.quick-prompts-chip')).toHaveText(['Charlie', 'Delta', 'Alpha'])
+
+    await page.getByRole('button', { name: 'Manage prompts', exact: true }).click()
+    await dragToEdge(handle('Alpha'), row('Beta'), false, true)
+    await expect.poll(order).toEqual(['a', 'b', 'c', 'd'])
+    await dragToEdge(handle('Alpha'), row('Charlie'), false, false)
+    await expect.poll(order).toEqual(['b', 'c', 'a', 'd'])
+    await page.getByRole('searchbox', { name: 'Search prompts' }).fill('a')
+    await expect(handle('Alpha')).toBeDisabled()
+    await page.getByRole('searchbox', { name: 'Search prompts' }).clear()
+    await handle('Alpha').focus()
+    await page.keyboard.press('ArrowUp')
+    await expect.poll(order).toEqual(['b', 'a', 'c', 'd'])
+    await expect(handle('Alpha')).toBeFocused()
+
+    await alpha.dragTo(page.locator('.terminal-instance-host'))
+    await expect.poll(order).toEqual(['b', 'a', 'c', 'd'])
+    const start = (await handle('Delta').boundingBox())!
+    const end = (await row('Beta').boundingBox())!
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2 - 8, { steps: 3 })
+    await page.mouse.move(end.x + end.width / 2, end.y + 3, { steps: 10 })
+    await expect(row('Beta')).toHaveAttribute('data-drop-position', 'before')
+    await page.screenshot({ path: testInfo.outputPath('quick-prompts-sort-indicator.png') })
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    await expect(page.locator('[data-drop-position]')).toHaveCount(0)
+    await expect.poll(order).toEqual(['b', 'a', 'c', 'd'])
+    expect(input.join('').replace(/\x1b\[[IO]/g, '')).toBe('')
+
+    await page.reload()
+    await expect(page.locator('button.quick-prompts-chip')).toHaveText(['Alpha', 'Charlie', 'Delta'])
+    await page.getByRole('button', { name: 'Manage prompts', exact: true }).click()
+    await expect(page.locator('.quick-prompts-preview')).toHaveText(['Beta', 'Alpha', 'Charlie', 'Delta'])
+    await expect.poll(order).toEqual(['b', 'a', 'c', 'd'])
+    await page.screenshot({ path: testInfo.outputPath('quick-prompts-sort-saved.png') })
+    expect(errors).toEqual([])
+  } finally {
+    try {
+      if (!page.isClosed()) {
+        await page.evaluate(async () => {
+          for (const project of (await window.codefly.getSnapshot()).state.projects) await window.codefly.removeProject(project.id)
+        })
+      }
+    } finally {
+      const uiPid = await app.evaluate(() => process.pid)
+      await app.evaluate(({ app }) => { setImmediate(() => app.exit(0)) })
+      await expect.poll(() => {
+        try { process.kill(uiPid, 0); return true } catch { return false }
+      }).toBe(false)
+    }
+  }
+})
 
 test('persists quick prompts and inserts into the real terminal without sending', async ({}, testInfo) => {
   const repoPath = createRepo()

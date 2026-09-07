@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -218,5 +218,150 @@ describe('QuickPrompts', () => {
     expect(screen.getByRole('button', { name: 'Star prompt Run tests' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.queryByRole('button', { name: 'Insert Run tests' })).not.toBeInTheDocument()
     expect(readStoredQuickPrompts()[0].starred).toBe(false)
+  })
+})
+
+describe('quick prompt sorting', () => {
+  const prompts = [
+    { id: 'a', content: 'Alpha', starred: true },
+    { id: 'b', content: 'Beta', starred: false },
+    { id: 'c', content: 'Charlie', starred: true }
+  ]
+  const savedIds = () => readStoredQuickPrompts().map((prompt) => prompt.id)
+  const handle = (name: string) => screen.getByRole('button', { name: `Reorder ${name}` })
+  const row = (name: string) => screen.getByRole('button', { name: `Edit ${name}` }).closest('li')!
+  const drag = (source: HTMLElement, target: HTMLElement, end = true) => {
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(source, { dataTransfer })
+    fireEvent.dragOver(target, { dataTransfer, clientX: 1, clientY: 1 })
+    fireEvent.drop(target, { dataTransfer, clientX: 1, clientY: 1 })
+    if (end) fireEvent.dragEnd(source, { dataTransfer })
+    return dataTransfer
+  }
+
+  beforeEach(() => { useAppStore.getState().setQuickPrompts(prompts) })
+
+  it('moves from a management handle, saves once on drop, and updates the starred bar', async () => {
+    const user = userEvent.setup()
+    const { onInsert } = mount()
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    const storage = vi.spyOn(Storage.prototype, 'setItem')
+    const source = handle('Alpha')
+    expect(source).toHaveAttribute('draggable', 'true')
+    expect(screen.getByRole('button', { name: 'Edit Alpha' })).not.toHaveAttribute('draggable', 'true')
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(source, { dataTransfer })
+    fireEvent.dragOver(row('Charlie'), { dataTransfer, clientY: 1 })
+    expect(row('Charlie')).toHaveAttribute('data-drop-position', 'after')
+    expect(storage).not.toHaveBeenCalled()
+    fireEvent.drop(row('Charlie'), { dataTransfer, clientY: 1 })
+    fireEvent.dragEnd(source)
+    expect(savedIds()).toEqual(['b', 'c', 'a'])
+    expect(storage).toHaveBeenCalledOnce()
+    expect(useAppStore.getState().quickPrompts).toEqual([prompts[1], prompts[2], prompts[0]])
+    expect(Array.from(document.querySelectorAll('button.quick-prompts-chip'), (chip) => chip.textContent)).toEqual(['Charlie', 'Alpha'])
+    expect(document.querySelector('[data-drop-position]')).toBeNull()
+    expect(onInsert).not.toHaveBeenCalled()
+  })
+
+  it('sorts starred chips without inserting and accepts the next deliberate click', async () => {
+    const user = userEvent.setup()
+    const { onInsert } = mount()
+    const source = screen.getByRole('button', { name: 'Insert Alpha' })
+    const target = screen.getByRole('button', { name: 'Insert Charlie' })
+    expect(source).toHaveAttribute('draggable', 'true')
+    const transfer = drag(source, target)
+    expect(transfer.setData).toHaveBeenCalledExactlyOnceWith('application/x-codefly-quick-prompt', 'a')
+    expect(savedIds()).toEqual(['b', 'c', 'a'])
+    fireEvent.click(source)
+    expect(onInsert).not.toHaveBeenCalled()
+    await user.click(source)
+    expect(onInsert).toHaveBeenCalledExactlyOnceWith('Alpha')
+  })
+
+  it('supports keyboard sorting in stopped sessions and leaves focus on the handle', async () => {
+    const user = userEvent.setup()
+    const { onInsert } = mount(false)
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    await user.click(handle('Charlie'))
+    await user.keyboard('{ArrowUp}{ArrowUp}')
+    expect(savedIds()).toEqual(['c', 'a', 'b'])
+    expect(handle('Charlie')).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(savedIds()).toEqual(['a', 'c', 'b'])
+    expect(onInsert).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Insert Alpha' })).toBeDisabled()
+  })
+
+  it('disables handles while management is filtered and does not sort search results', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    await user.type(screen.getByRole('searchbox'), 'a')
+    expect(handle('Alpha')).toBeDisabled()
+    expect(handle('Alpha')).toHaveAttribute('draggable', 'false')
+    drag(handle('Alpha'), row('Charlie'))
+    expect(savedIds()).toEqual(['a', 'b', 'c'])
+    await user.clear(screen.getByRole('searchbox'))
+    expect(handle('Alpha')).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Quick prompts' }))
+    expect(screen.queryByRole('button', { name: 'Reorder Alpha' })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Insert Alpha' })).not.toHaveAttribute('draggable', 'true')
+  })
+
+  it('retains the original order on save failure and allows a retry', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage full') })
+    drag(handle('Alpha'), row('Charlie'))
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save')
+    expect(savedIds()).toEqual(['a', 'b', 'c'])
+    expect(useAppStore.getState().quickPrompts).toEqual(prompts)
+    storage.mockRestore()
+    drag(handle('Alpha'), row('Charlie'))
+    expect(savedIds()).toEqual(['b', 'c', 'a'])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('ignores external drops, cancelled drags, and drops on a different surface', async () => {
+    const user = userEvent.setup()
+    const { onInsert } = mount()
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+    fireEvent.drop(row('Charlie'), { dataTransfer, clientY: 1 })
+    fireEvent.dragStart(handle('Alpha'), { dataTransfer })
+    fireEvent.dragOver(row('Charlie'), { dataTransfer, clientY: 1 })
+    fireEvent.dragLeave(row('Charlie'), { relatedTarget: document.body })
+    expect(document.querySelector('[data-drop-position]')).toBeNull()
+    fireEvent.dragEnd(handle('Alpha'))
+    fireEvent.drop(row('Charlie'), { dataTransfer, clientY: 1 })
+    drag(handle('Alpha'), screen.getByRole('button', { name: 'Insert Charlie' }))
+    expect(savedIds()).toEqual(['a', 'b', 'c'])
+    expect(onInsert).not.toHaveBeenCalled()
+  })
+
+  it.each(['session', 'view', 'visibility', 'filter'])('cancels a drag when %s changes', async (change) => {
+    const user = userEvent.setup()
+    const props = { running: true, onInsert: vi.fn(() => null), onFocusTerminal: vi.fn() }
+    const { rerender } = render(<QuickPrompts sessionId="first" {...props} />)
+    await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(handle('Alpha'), { dataTransfer })
+    fireEvent.dragOver(row('Charlie'), { dataTransfer, clientY: 1 })
+    expect(row('Charlie')).toHaveAttribute('data-drop-position', 'after')
+    if (change === 'session') rerender(<QuickPrompts sessionId="second" {...props} />)
+    else if (change === 'visibility') {
+      act(() => useAppStore.getState().setShowQuickPrompts(false))
+      act(() => useAppStore.getState().setShowQuickPrompts(true))
+    } else if (change === 'filter') {
+      await user.type(screen.getByRole('searchbox'), 'a')
+      await user.clear(screen.getByRole('searchbox'))
+    } else await user.click(screen.getByRole('button', { name: 'Close quick prompts' }))
+    if (change !== 'filter') await user.click(screen.getByRole('button', { name: 'Manage prompts' }))
+    expect(document.querySelector('[data-drop-position]')).toBeNull()
+    fireEvent.drop(row('Charlie'), { dataTransfer, clientY: 1 })
+    expect(savedIds()).toEqual(['a', 'b', 'c'])
+    expect(props.onInsert).not.toHaveBeenCalled()
   })
 })

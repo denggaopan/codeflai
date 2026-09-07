@@ -323,6 +323,12 @@ workspace. Search covers starred *and* unstarred prompts; **↑/↓** choose, **
 **Esc** returns to the terminal. The management button opens starring, editing, and deletion
 in a panel below the terminal, keeping the terminal visible above it.
 
+**Reordering:** drag starred buttons left or right in the bar, or drag the handles in
+the management list to arrange all prompts. You can also focus a handle and press **Up/Down**.
+Clear the management search before sorting. The order is shared by the bar and the lists,
+survives restarts, and dragging never inserts a prompt. Use management to reorder prompts
+that are hidden behind **+N** or when a session is stopped.
+
 Prompts are shared by every project and session on this computer and survive restarts. You
 can save up to 100, each up to 16,000 characters.
 

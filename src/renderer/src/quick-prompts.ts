@@ -15,6 +15,22 @@ export const quickPromptSchema = z.object({
 
 export type QuickPrompt = z.infer<typeof quickPromptSchema>
 
+export type QuickPromptPlacement = 'before' | 'after'
+
+export const moveQuickPrompt = (
+  prompts: QuickPrompt[], sourceId: string, targetId: string, placement: QuickPromptPlacement
+): QuickPrompt[] => {
+  const sourceIndex = prompts.findIndex((prompt) => prompt.id === sourceId)
+  const targetIndex = prompts.findIndex((prompt) => prompt.id === targetId)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return prompts
+  const destination = targetIndex + (placement === 'after' ? 1 : 0) - (sourceIndex < targetIndex ? 1 : 0)
+  if (sourceIndex === destination) return prompts
+  const next = [...prompts]
+  const [moved] = next.splice(sourceIndex, 1)
+  next.splice(destination, 0, moved)
+  return next
+}
+
 export const quickPromptPreview = (content: string): string => {
   const text = content.trim().replace(/\s+/g, ' ')
   const characters = Array.from(text)
