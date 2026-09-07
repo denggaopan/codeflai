@@ -119,7 +119,7 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 
 **本项目约定**：重新打安装包（`npm run package:win`）发布前，先按上述规则递增 `package.json` 的 `version`，用独立的 `chore` 提交记录版本号变更，不要混入 feat/fix 提交。
 
-**Release 标题**：GitHub Release 标题只写版本号，例如 `0.21.1`，不加 `Codeflai` 或其他前缀；安装包文件名继续沿用现有命名。
+**Release 标题**：GitHub Release 标题使用 `Codeflai <版本号>`，例如 `Codeflai 0.21.1`；安装包文件名继续沿用现有命名。
 
 ## 提交规范
 
