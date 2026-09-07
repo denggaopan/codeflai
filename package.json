@@ -4,6 +4,11 @@
   "private": true,
   "description": "A Windows and macOS workspace for local terminal and AI coding sessions",
   "author": "Codeflai Contributors",
+  "homepage": "https://github.com/denggaopan/codeflai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/denggaopan/codeflai.git"
+  },
   "license": "MIT",
   "main": "./out/main/index.js",
   "type": "module",
