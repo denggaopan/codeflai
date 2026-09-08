@@ -70,6 +70,20 @@ const readTransform = (keyframe: Keyframe): { x: number; y: number; headingDeg: 
   return { x: Number(match[1]), y: Number(match[2]), headingDeg: Number(match[3]) }
 }
 
+function expectTwoSecondStraightCruise(flight: RecordedFlight): void {
+  expect(flight.keyframes).toHaveLength(5)
+  const [start, cruise, exit] = flight.keyframes.slice(2).map(readTransform)
+  expect(cruise.headingDeg).toBe(start.headingDeg)
+  expect(exit.headingDeg).toBe(start.headingDeg)
+  const dx = cruise.x - start.x
+  const dy = cruise.y - start.y
+  const exitDx = exit.x - cruise.x
+  const exitDy = exit.y - cruise.y
+  expect((dx * exitDx + dy * exitDy) / (Math.hypot(dx, dy) * Math.hypot(exitDx, exitDy))).toBeGreaterThan(0.999999)
+  expect((Number(flight.keyframes[3].offset) - Number(flight.keyframes[2].offset)) * Number(flight.options.duration))
+    .toBeCloseTo(2000, 6)
+}
+
 describe('TitleBar', () => {
   beforeEach(() => {
     flights.length = 0
@@ -183,14 +197,14 @@ describe('TitleBar', () => {
     expect(rockets()[31].getAttribute('style')).not.toBe(rockets()[32].getAttribute('style'))
     expect(flights[31].keyframes).not.toEqual(flights[32].keyframes)
     expect(readTransform(flights[31].keyframes[2]).headingDeg).not.toBe(readTransform(flights[32].keyframes[2]).headingDeg)
-    expect(Number(flights[31].options.duration)).toBeLessThanOrEqual(2500)
-    expect(flights[31].keyframes.length).toBeGreaterThan(20)
+    expectTwoSecondStraightCruise(flights[31])
+    expectTwoSecondStraightCruise(flights[32])
     expect(burst!.querySelector('.rocket-flight-exhaust')).not.toBeNull()
     now.mockReturnValue(4000)
     fireEvent.click(brand)
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(4)
-    expect(flights[33].keyframes.length).toBeGreaterThan(20)
-    expect(flights[34].keyframes.length).toBeGreaterThan(20)
+    expectTwoSecondStraightCruise(flights[33])
+    expectTwoSecondStraightCruise(flights[34])
     act(() => flights[31].animation.emit('finish'))
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(3)
     act(() => flights[32].animation.emit('finish'))
@@ -214,6 +228,7 @@ describe('TitleBar', () => {
     expect(flights).toHaveLength(63)
     fireEvent.click(brand)
     expect(flights).toHaveLength(66)
+    flights.slice(-3).forEach(expectTwoSecondStraightCruise)
     const triple = [...rockets()].slice(-3)
     expect(new Set(triple.map((rocket) => rocket.getAttribute('style'))).size).toBe(3)
     expect(triple.every((rocket) => rocket.classList.contains('rocket-flight-burst'))).toBe(true)

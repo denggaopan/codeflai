@@ -521,8 +521,8 @@ reduced motion.
 Keep clicking with no gap longer than three seconds: reaching 32 clicks within a rolling
 60 seconds unlocks two rockets per click, and reaching 48 unlocks three. The unlocked tier
 lasts while clicks remain consecutive. All rockets keep their original size, bright exhaust
-plumes, and glow. Each independently chooses its direction, turn positions, and arc heights for a
-Qian Xuesen-style glide lasting about two seconds, with its nose following the curve.
+plumes, and glow. Each falls, independently turns to a random direction, cruises in a straight
+line for two seconds, then accelerates off-screen. Single rockets keep their three-second cruise.
 A gap longer than three seconds resets the count and returns the next click to one rocket;
 exactly three seconds still counts as consecutive. Reopening or reloading also resets the count.
 

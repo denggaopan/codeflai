@@ -77,6 +77,14 @@ describe('planRocketFlight', () => {
     expect(flight.exitMs).toBeLessThan(flight.cruiseMs)
   })
 
+  it('supports a two-second slow cruise for each rocket in a multi-launch', () => {
+    const flight = planRocketFlight({ random: sequence([0.5]), viewport: VIEWPORT, origin: ORIGIN, cruiseMs: 2000 })
+    const frames = rocketKeyframes(flight)
+    expect(flight.cruiseMs).toBe(2000)
+    expect((frames[3].offset - frames[2].offset) * flight.totalMs).toBeCloseTo(2000, 6)
+    expect(flight.totalMs).toBe(flight.dropMs + flight.turnMs + 2000 + flight.exitMs)
+  })
+
   it('reports a total that covers all four legs', () => {
     const flight = plan(sequence([0.5]))
     expect(flight.totalMs).toBe(flight.dropMs + flight.turnMs + flight.cruiseMs + flight.exitMs)

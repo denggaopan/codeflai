@@ -86,8 +86,9 @@ export function planRocketFlight(input: {
   random: () => number
   viewport: Viewport
   origin: Point
+  cruiseMs?: number
 }): RocketFlightPlan {
-  const { random, viewport, origin } = input
+  const { random, viewport, origin, cruiseMs = CRUISE_MS } = input
 
   // The fall is capped by the ask AND by the window: dropping a rocket below the bottom edge
   // just hides the part of the animation the click was for.
@@ -112,9 +113,9 @@ export function planRocketFlight(input: {
     exitDistance,
     dropMs,
     turnMs: TURN_MS,
-    cruiseMs: CRUISE_MS,
+    cruiseMs,
     exitMs: EXIT_MS,
-    totalMs: dropMs + TURN_MS + CRUISE_MS + EXIT_MS
+    totalMs: dropMs + TURN_MS + cruiseMs + EXIT_MS
   }
 }
 

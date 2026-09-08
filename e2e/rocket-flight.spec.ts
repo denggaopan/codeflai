@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
+import { _electron as electron, expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const executablePath = process.env.CODEFLAI_TEST_EXECUTABLE
@@ -17,7 +17,50 @@ async function launch(): Promise<ElectronApplication> {
   })
 }
 
-test('consecutive logo clicks launch independent random glides and reset after a three-second gap', async ({}, testInfo) => {
+async function holdRocketFlights(page: Page) {
+  // Pause at creation so a slow automation round trip cannot consume the short flight.
+  return page.evaluateHandle(() => {
+    const animate = Element.prototype.animate
+    Element.prototype.animate = function (keyframes, options) {
+      const animation = animate.call(this, keyframes, options)
+      if (this.classList.contains('rocket-flight-body')) animation.pause()
+      return animation
+    }
+    return () => { Element.prototype.animate = animate }
+  })
+}
+
+async function expectTwoSecondStraightFlights(bodies: Locator) {
+  const flights = await bodies.evaluateAll((nodes) => nodes.map((node) => {
+    const animation = node.getAnimations()[0]
+    animation.pause()
+    const frames = (animation.effect as KeyframeEffect).getKeyframes()
+    const duration = Number(animation.effect!.getTiming().duration)
+    const cruiseStart = frames[2].computedOffset * duration
+    const cruiseMs = (frames[3].computedOffset - frames[2].computedOffset) * duration
+    const points = [0, 0.5, 1].map((fraction) => {
+      animation.currentTime = cruiseStart + cruiseMs * fraction
+      const rect = node.getBoundingClientRect()
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+    })
+    animation.currentTime = cruiseStart + cruiseMs / 2
+    return { frameCount: frames.length, cruiseMs, points, tracks: frames.slice(2).map((frame) => String(frame.transform)) }
+  }))
+  for (const flight of flights) {
+    expect(flight.frameCount).toBe(5)
+    expect(flight.cruiseMs).toBeCloseTo(2000, 5)
+    expect(new Set(flight.tracks.map((track) => track.split('rotate(')[1])).size).toBe(1)
+    const [start, middle, end] = flight.points
+    expect(middle.x).toBeCloseTo((start.x + end.x) / 2, 1)
+    expect(middle.y).toBeCloseTo((start.y + end.y) / 2, 1)
+    const distance = Math.hypot(end.x - start.x, end.y - start.y)
+    expect(distance).toBeGreaterThan(100)
+    expect(distance).toBeLessThan(210)
+  }
+  return flights
+}
+
+test('consecutive logo clicks launch independent straight flights and reset after a three-second gap', async ({}, testInfo) => {
   const app = await launch()
   try {
     expect(await app.evaluate(({ app }) => app.getVersion())).toBe(version)
@@ -40,6 +83,7 @@ test('consecutive logo clicks launch independent random glides and reset after a
     })
     const brand = page.locator('.title-bar-brand')
     await expect(brand).toBeVisible()
+    const restoreAnimations = await holdRocketFlights(page)
     await brand.evaluate((button) => {
       for (let index = 0; index < 31; index++) (button as HTMLButtonElement).click()
     })
@@ -63,38 +107,28 @@ test('consecutive logo clicks launch independent random glides and reset after a
       animation.pause()
       const duration = Number(animation.effect!.getTiming().duration)
       const keyframes = (animation.effect as KeyframeEffect).getKeyframes()
-      const glideStart = keyframes[2].computedOffset * duration
+      const cruiseStart = keyframes[2].computedOffset * duration
       const points = [0, 0.2, 0.4, 0.6, 0.8, 1].map((fraction) => {
-        animation.currentTime = glideStart + (duration - glideStart) * fraction
+        animation.currentTime = cruiseStart + (duration - cruiseStart) * fraction
         const rect = node.getBoundingClientRect()
         const exhaust = node.querySelector('.rocket-flight-exhaust')!.getBoundingClientRect()
         return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, left: rect.left, exhaustLeft: exhaust.left }
       })
-      animation.currentTime = glideStart + (duration - glideStart) * 0.3
+      animation.currentTime = cruiseStart + (duration - cruiseStart) * 0.3
       return { duration, points, viewportWidth: window.innerWidth }
     })
-    expect(samples.duration).toBeGreaterThan(1000)
-    expect(samples.duration).toBeLessThanOrEqual(2500)
+    expect(samples.duration).toBeGreaterThan(3000)
+    expect(samples.duration).toBeLessThanOrEqual(4000)
     for (let index = 1; index < samples.points.length; index++) {
       expect(samples.points[index].x).toBeGreaterThan(samples.points[index - 1].x)
     }
-    expect(new Set(samples.points.map((point) => Math.round(point.y))).size).toBeGreaterThan(3)
     expect(samples.points[5].left).toBeGreaterThan(samples.viewportWidth)
     expect(samples.points[5].exhaustLeft).toBeGreaterThan(samples.viewportWidth)
 
-    const centers = await bodies.evaluateAll((nodes) => nodes.map((node) => {
-      const animation = node.getAnimations()[0]
-      const duration = Number(animation.effect!.getTiming().duration)
-      const glideStart = (animation.effect as KeyframeEffect).getKeyframes()[2].computedOffset * duration
-      animation.currentTime = glideStart + (duration - glideStart) * 0.3
-      const rect = node.getBoundingClientRect()
-      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
-    }))
+    const flights = await expectTwoSecondStraightFlights(bodies)
+    const centers = flights.map((flight) => flight.points[1])
     expect(Math.hypot(centers[0].x - centers[1].x, centers[0].y - centers[1].y)).toBeGreaterThan(44)
-    const tracks = await bodies.evaluateAll((nodes) => nodes.map((node) => {
-      const frames = (node.getAnimations()[0].effect as KeyframeEffect).getKeyframes().slice(2)
-      return frames.map((frame) => String(frame.transform))
-    }))
+    const tracks = flights.map((flight) => flight.tracks)
     expect(tracks[0]).not.toEqual(tracks[1])
     expect(tracks[0][0].split('rotate(')[1]).not.toBe(tracks[1][0].split('rotate(')[1])
 
@@ -106,6 +140,8 @@ test('consecutive logo clicks launch independent random glides and reset after a
     await page.locator('.title-bar-action').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.keyboard.press('Escape')
+    await restoreAnimations.evaluate((restore) => restore())
+    await restoreAnimations.dispose()
     await bodies.evaluateAll((nodes) => nodes.forEach((node) => {
       const animation = node.getAnimations()[0]
       animation.currentTime = 0
@@ -143,28 +179,19 @@ test('the 48th click launches three independent rockets and a real three-second 
     const page = await app.firstWindow()
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     const brand = page.locator('.title-bar-brand')
-    await brand.evaluate((button) => {
-      for (let index = 0; index < 47; index++) (button as HTMLButtonElement).click()
-    })
-    await expect(page.locator('.rocket-flight')).toHaveCount(63)
-    await page.locator('.rocket-flight-body').evaluateAll((nodes) => {
-      nodes.forEach((node) => node.getAnimations()[0]?.finish())
-    })
-    await expect(page.locator('.rocket-flight')).toHaveCount(0)
+    const restoreAnimations = await holdRocketFlights(page)
     const lastClick = await brand.evaluate((button) => {
-      ;(button as HTMLButtonElement).click()
+      for (let index = 0; index < 48; index++) (button as HTMLButtonElement).click()
       return performance.now()
+    })
+    await expect(page.locator('.rocket-flight')).toHaveCount(66)
+    await page.locator('.rocket-flight-body').evaluateAll((nodes) => {
+      nodes.slice(0, -3).forEach((node) => node.getAnimations()[0]?.finish())
     })
     const rockets = page.locator('.rocket-flight-burst')
     await expect(rockets).toHaveCount(3)
-    const tracks = await rockets.locator('.rocket-flight-body').evaluateAll((nodes) => nodes.map((node) => {
-      const animation = node.getAnimations()[0]
-      animation.pause()
-      const frames = (animation.effect as KeyframeEffect).getKeyframes()
-      const duration = Number(animation.effect!.getTiming().duration)
-      animation.currentTime = duration * 0.55
-      return frames.map((frame) => frame.transform)
-    }))
+    const flights = await expectTwoSecondStraightFlights(rockets.locator('.rocket-flight-body'))
+    const tracks = flights.map((flight) => flight.tracks)
     expect(new Set(tracks.map((frames) => JSON.stringify(frames))).size).toBe(3)
     await page.screenshot({ path: testInfo.outputPath('triple-rockets.png') })
     await page.waitForFunction((last) => performance.now() - last > 3100, lastClick)
@@ -172,6 +199,8 @@ test('the 48th click launches three independent rockets and a real three-second 
       nodes.forEach((node) => node.getAnimations()[0]?.finish())
     })
     await expect(page.locator('.rocket-flight')).toHaveCount(0)
+    await restoreAnimations.evaluate((restore) => restore())
+    await restoreAnimations.dispose()
     await brand.click()
     await expect(page.locator('.rocket-flight-burst')).toHaveCount(0)
     await expect(page.locator('.rocket-flight')).toHaveCount(1)

@@ -1,13 +1,12 @@
 import { useEffect, useId, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
-import { planBurstRocketFlight } from '../burst-rocket-flight'
 import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
 
 /**
  * One rocket, launched from the title bar's brand button: it falls nose-first, swings round
  * to a random rightwards course, cruises slowly for three seconds and then dashes off-screen.
- * Burst rockets keep their original size and each follow a random glide with bright exhaust.
+ * Multi-launch rockets independently choose a straight course and cruise for two seconds.
  * The geometry (and the promise that the nose always points along the course) lives in
  * `rocket-flight.ts`; this component only measures the launch point and drives the animation.
  *
@@ -36,16 +35,13 @@ export default function RocketFlight({ origin, burst = false, onDone }: { origin
       return
     }
 
-    const input = {
+    const plan = planRocketFlight({
       viewport: { width: window.innerWidth, height: window.innerHeight },
       origin,
-      random: Math.random
-    }
-    const plan = burst ? planBurstRocketFlight(input) : (() => {
-      const standard = planRocketFlight(input)
-      return { keyframes: rocketKeyframes(standard), totalMs: standard.totalMs }
-    })()
-    const animation = node.animate(plan.keyframes, {
+      random: Math.random,
+      ...(burst ? { cruiseMs: 2000 } : {})
+    })
+    const animation = node.animate(rocketKeyframes(plan), {
       duration: plan.totalMs,
       easing: 'linear',
       fill: 'forwards'
