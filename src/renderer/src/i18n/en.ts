@@ -16,6 +16,8 @@ export const en = {
   'titleBar.unpinWindow': 'Stop keeping window on top',
 
   'sidebar.searchSessions': 'Search sessions',
+  'sidebar.closeSearch': 'Close search',
+  'sidebar.clearSearch': 'Clear search',
   'sidebar.sessionStatus': 'Session status',
   'sidebar.filterSessions': 'Filter sessions',
   'sidebar.collapseAllProjects': 'Collapse all projects',

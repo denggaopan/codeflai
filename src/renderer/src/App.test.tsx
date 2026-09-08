@@ -269,6 +269,7 @@ describe('App', () => {
     render(<App />)
 
     await screen.findByText(stoppedPowerShellSession.title)
+    await user.click(screen.getByRole('button', { name: 'Search sessions' }))
     await user.type(screen.getByRole('searchbox', { name: 'Search sessions' }), 'crash')
 
     expect(screen.getByText(otherSession.title)).toBeInTheDocument()
@@ -713,7 +714,7 @@ describe('App', () => {
     expect(document.querySelector('.agent-bypass-status')).toBeNull()
   })
 
-  it('renders the title bar with a settings control and no session tabs', async () => {
+  it('renders the title bar and sidebar settings without session tabs', async () => {
     api = createFakeApi(stateWith(runningClaudeSession), allAvailableCapabilities)
     window.codeflai = api
     render(<App />)
@@ -721,10 +722,10 @@ describe('App', () => {
     await screen.findByText(runningClaudeSession.title, { selector: 'span.session-title' })
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(document.querySelector('.title-bar')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Settings' }).closest('.project-sidebar-footer')).not.toBeNull()
   })
 
-  it('opens Settings from the title bar and switches between light and dark themes', async () => {
+  it('opens Settings from the sidebar footer and switches between light and dark themes', async () => {
     const user = userEvent.setup()
     render(<App />)
 

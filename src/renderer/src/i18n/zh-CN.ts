@@ -17,6 +17,8 @@ export const zhCN: Translations = {
   'titleBar.unpinWindow': '取消窗口置顶',
 
   'sidebar.searchSessions': '搜索会话',
+  'sidebar.closeSearch': '关闭搜索',
+  'sidebar.clearSearch': '清除搜索',
   'sidebar.sessionStatus': '会话状态',
   'sidebar.filterSessions': '筛选会话',
   'sidebar.collapseAllProjects': '全部折叠',

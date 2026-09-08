@@ -6,7 +6,6 @@ import { recordRocketClick, type RocketClickStreak } from '../rocket-click-strea
 import type { Point } from '../rocket-flight'
 import { useAppStore } from '../store/use-app-store'
 import RocketFlight from './RocketFlight'
-import SettingsDialog from './SettingsDialog'
 
 interface RocketLaunch {
   id: number
@@ -23,7 +22,6 @@ export default function TitleBar() {
   const { t } = useTranslation()
   const pinned = useAppStore((state) => state.windowPinned)
   const setWindowPinned = useAppStore((state) => state.setWindowPinned)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
   const clickStreak = useRef<RocketClickStreak>({ clicks: [], rocketCount: 1 })
@@ -62,30 +60,6 @@ export default function TitleBar() {
       <div className="title-bar-actions">
         <button
           type="button"
-          className="title-bar-action"
-          aria-label={t('titleBar.settings')}
-          title={t('titleBar.settings')}
-          aria-haspopup="dialog"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <svg
-            className="icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-        <button
-          type="button"
           className="title-bar-action title-bar-pin"
           aria-label={pinLabel}
           title={pinLabel}
@@ -109,7 +83,6 @@ export default function TitleBar() {
           </svg>
         </button>
       </div>
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {launches.map((launch) => (
         <RocketFlight key={launch.id} origin={launch.origin} burst={launch.burst} onDone={() => endLaunch(launch.id)} />
       ))}

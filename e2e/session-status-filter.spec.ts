@@ -130,6 +130,11 @@ test('filters live sessions by status and search while retaining the active term
     const filterDialog = page.getByRole('dialog', { name: 'Filter sessions', exact: true })
     const filter = filterDialog.getByRole('combobox', { name: 'Session status', exact: true })
     const search = page.getByRole('searchbox', { name: 'Search sessions' })
+    const openSearch = async () => {
+      const trigger = page.getByRole('button', { name: 'Search sessions', exact: true })
+      if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+      return search
+    }
     const sidebar = page.locator('.project-sidebar')
     await expect(sidebar.locator('.session-row')).toHaveCount(2)
     await expect(sidebar.locator('[data-status="done"]')).toHaveCount(1)
@@ -158,7 +163,7 @@ test('filters live sessions by status and search while retaining the active term
         await expect(filterButton).toBeFocused()
         await page.keyboard.press('Escape')
       } else {
-        await search.click()
+        await (await openSearch()).click()
       }
       await expect(filterDialog).toBeHidden()
       await expect(filterButton).toHaveAttribute('title', 'Session status: Running')
@@ -182,11 +187,12 @@ test('filters live sessions by status and search while retaining the active term
     await applyStatusFilter(page, 'done')
     await expect(sidebar.locator('.session-row')).toHaveCount(1)
     await expect(sidebar.locator('[data-kind="claude"]')).toHaveCount(1)
-    await search.fill('no-such-session')
+    await (await openSearch()).fill('no-such-session')
     await expect(sidebar.getByRole('status')).toHaveText('No matching sessions')
+    await page.keyboard.press('Escape')
     await sidebar.getByRole('button', { name: 'Clear filters' }).click()
     await expect(filterButton).toHaveAttribute('title', 'Session status: All statuses')
-    await expect(search).toBeFocused()
+    await expect(page.getByRole('button', { name: 'Search sessions', exact: true })).toBeFocused()
     await expect(sidebar.locator('.session-row')).toHaveCount(2)
 
     await applyStatusFilter(page, 'stopped')

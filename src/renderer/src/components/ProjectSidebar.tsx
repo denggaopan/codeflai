@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { ProjectRecord, SessionRecord } from '../../../shared/contracts'
+import newFolderIconUrl from '../assets/new_folder.svg'
 import closeIconUrl from '../assets/close.svg'
 import optionsIconUrl from '../assets/options.svg'
 import removeIconUrl from '../assets/remove.svg'
@@ -14,6 +15,8 @@ import { useAppStore } from '../store/use-app-store'
 import ConfirmDialog from './ConfirmDialog'
 import AddProjectDialog from './AddProjectDialog'
 import SessionLauncher from './SessionLauncher'
+import SessionSearch from './SessionSearch'
+import SettingsDialog from './SettingsDialog'
 import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
 
 const PROJECT_OPTIONS_GAP = 6
@@ -99,8 +102,8 @@ function SessionRow({ session, active, onActivate, onRequestDelete }: SessionRow
 }
 
 /**
- * Left navigation: session search and status filter, project groups, and a round
- * Add Project action docked at the bottom-left.
+ * Left navigation: project actions, search and filters above project groups, with
+ * Settings docked at the bottom-left.
  * Each project label and options trigger are sibling buttons, with menu and launcher sibling
  * popovers. Every stopPropagation() call is defensive rather than load-bearing: it keeps a
  * click on an action from ever being interpreted as also activating the row, even if the DOM
@@ -139,6 +142,7 @@ export default function ProjectSidebar() {
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
   const [addProjectOpen, setAddProjectOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
   const [openOptionsProjectId, setOpenOptionsProjectId] = useState<string | null>(null)
   const [optionsMenuLayout, setOptionsMenuLayout] = useState<ProjectOptionsLayout>({ placement: 'below', maxHeight: null })
@@ -146,7 +150,7 @@ export default function ProjectSidebar() {
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const optionsMenuRef = useRef<HTMLDivElement | null>(null)
   const projectGroupsRef = useRef<HTMLDivElement | null>(null)
-  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const searchTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const closeProjectOptions = (restoreFocus = false): void => {
     if (restoreFocus) optionsTriggerRef.current?.focus()
@@ -503,15 +507,21 @@ export default function ProjectSidebar() {
   return (
     <aside className="project-sidebar">
       <div className="project-sidebar-header">
-        <input
-          ref={searchInputRef}
-          type="search"
-          className="session-search"
-          aria-label={t('sidebar.searchSessions')}
-          placeholder={t('sidebar.searchSessions')}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-        />
+        <button
+          type="button"
+          className="add-project-button"
+          aria-label={t('sidebar.addProject')}
+          title={t('sidebar.addProject')}
+          aria-haspopup="dialog"
+          onClick={() => {
+            closeProjectOptions()
+            closeLauncher()
+            setAddProjectOpen(true)
+          }}
+        >
+          <span aria-hidden="true" className="add-project-icon" style={{ maskImage: `url("${newFolderIconUrl}")` }} />
+        </button>
+        <SessionSearch value={searchQuery} onChange={setSearchQuery} triggerRef={searchTriggerRef} />
         <SessionFilters value={statusFilter} onChange={setStatusFilter} />
         <button
           type="button"
@@ -540,7 +550,7 @@ export default function ProjectSidebar() {
         {filtering && filteredSessions.length === 0 && (
           <div className="session-filter-empty">
             <p role="status">{t('sidebar.noMatchingSessions')}</p>
-            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); searchInputRef.current?.focus() }}>
+            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); searchTriggerRef.current?.focus() }}>
               {t('sidebar.clearFilters')}
             </button>
           </div>
@@ -758,20 +768,31 @@ export default function ProjectSidebar() {
       <div className="project-sidebar-footer">
         <button
           type="button"
-          className="add-project-fab"
-          aria-label={t('sidebar.addProject')}
-          title={t('sidebar.addProject')}
+          className="sidebar-settings"
+          aria-label={t('titleBar.settings')}
+          title={t('titleBar.settings')}
           aria-haspopup="dialog"
-          onClick={() => {
-            closeProjectOptions()
-            closeLauncher()
-            setAddProjectOpen(true)
-          }}
+          onClick={() => setSettingsOpen(true)}
         >
-          +
+          <svg
+            className="icon"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
         </button>
       </div>
 
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {addProjectOpen && <AddProjectDialog onClose={() => setAddProjectOpen(false)} />}
 
       <ConfirmDialog

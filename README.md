@@ -92,8 +92,8 @@ disabled, check that `command -v claude` (or whichever CLI) succeeds in a *login
 
 ## Your first session
 
-1. **Add a project.** Click **Add Project** at the bottom of the sidebar and choose a folder
-   on this computer — or clone a repository straight into place.
+1. **Add a project.** Click the **Add Project** folder icon at the top of the sidebar and
+   choose a folder on this computer — or clone a repository straight into place.
 2. **Open the project's ⋯ menu** and choose **New session**.
 3. **Pick a kind.** **PowerShell** or **Shell** gives you a plain terminal in the project
    directory. **Claude** or **Codex** starts that agent. An entry marked **(new worktree)**
@@ -108,17 +108,20 @@ one tells you what it is doing. Closing the window does **not** stop them.
 
 **Title bar** — the logo and **Codeflai** wordmark (click it for the
 [rocket](#the-rocket)), the pin button that
-[keeps the window above everything else](#keeping-the-window-on-top), and the gear that
-opens [Settings](#settings).
+[keeps the window above everything else](#keeping-the-window-on-top).
 
-**Sidebar** — a **Search sessions** box at the top, your projects below it, and
-**Add Project** at the bottom. A project name toggles just that project's session list;
-switching sessions never re-folds anything. Searching temporarily reveals matching sessions
+**Sidebar** — **Add Project**, **Search sessions**, filter, and fold icons at the top,
+your projects below them, and the [Settings](#settings) gear at the bottom. Click the search
+icon to open its input; results update as you type. Escape, Enter, or clicking outside
+closes the search popup while keeping the query active. The search icon highlights when
+a query is active; reopen it to edit the query or use **Clear search**.
+
+A project name toggles just that project's session list; switching sessions never re-folds anything. Searching temporarily reveals matching sessions
 across every project, and clearing the search puts each project's fold state back. Each
 project row has a ⋯ button for its [options menu](#the-project-options-menu), and each
 session row has a delete button.
 
-Click the small gray filter icon beside the search box to open the filter form. Choose
+Click the small gray filter icon beside the search icon to open the filter form. Choose
 **All statuses**, **Running**, **Done**, **Stopped**, **Starting…**, **Path missing**, or
 **Error** in **Session status**, then click **Apply filters**. **Reset filters** resets the
 form; closing it without applying discards those edits. Status and title
@@ -396,7 +399,7 @@ folds the row.
 
 ## Keeping the window on top
 
-The pin button next to the gear keeps Codeflai above every other window — which is what you
+The pin button in the title bar keeps Codeflai above every other window — which is what you
 want while an agent works and you watch it from another app. Click it again to release; the
 pressed state and the filled pin show that it is on top. The choice comes back the next time
 you launch. If your window manager refuses the request, the button reflects that instead of
@@ -404,7 +407,7 @@ pretending it worked.
 
 ## Settings
 
-The gear in the title bar opens Settings.
+The gear at the bottom-left of the sidebar opens Settings.
 
 - **Launch at startup** — registers Codeflai as a login item. The switch shows the value read
   back from the system *after* writing it, so a change the OS refuses is never displayed as

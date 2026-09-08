@@ -206,13 +206,19 @@ const controlProjectOptionsGeometry = (state: {
   })
 }
 
+const openSearch = async (user: ReturnType<typeof userEvent.setup>) => {
+  const trigger = screen.getByRole('button', { name: 'Search sessions' })
+  if (trigger.getAttribute('aria-expanded') !== 'true') await user.click(trigger)
+  return screen.getByRole('searchbox', { name: 'Search sessions' })
+}
+
 describe('ProjectSidebar', () => {
   it('renders Add Project, search, and the project group', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
     expect(screen.getByRole('button', { name: 'Add Project' })).toBeInTheDocument()
-    expect(screen.getByRole('searchbox', { name: 'Search sessions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Search sessions' })).toBeInTheDocument()
     expect(screen.getByText(project1.name)).toBeInTheDocument()
     expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
   })
@@ -368,14 +374,17 @@ describe('ProjectSidebar', () => {
     expect(screen.getByRole('button', { name: 'Clone and open' })).toBeEnabled()
   })
 
-  it('renders Add Project as a round icon button docked in the sidebar footer, not in the header', () => {
+  it('places Add Project before search and docks Settings in the sidebar footer', () => {
     seedStore({ version: 1, projects: [project1], sessions: [] })
     render(<ProjectSidebar />)
 
     const addButton = screen.getByRole('button', { name: 'Add Project' })
-    expect(addButton).toHaveClass('add-project-fab')
-    expect(addButton.closest('.project-sidebar-footer')).not.toBeNull()
-    expect(addButton.closest('.project-sidebar-header')).toBeNull()
+    expect(addButton).toHaveClass('add-project-button')
+    expect(addButton.closest('.project-sidebar-header')).not.toBeNull()
+    const search = screen.getByRole('button', { name: 'Search sessions' })
+    expect(addButton.nextElementSibling).toBe(search.parentElement)
+    expect(search.parentElement?.nextElementSibling).toBe(screen.getByRole('button', { name: 'Filter sessions' }).parentElement)
+    expect(screen.getByRole('button', { name: 'Settings' }).closest('.project-sidebar-footer')).not.toBeNull()
   })
 
   it('filters session rows to those matching the search query', async () => {
@@ -384,10 +393,62 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession, otherSession] })
     render(<ProjectSidebar />)
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search sessions' }), 'crash')
+    await user.type(await openSearch(user), 'crash')
 
     expect(screen.getByText(otherSession.title)).toBeInTheDocument()
     expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+  })
+
+  it('collapses search into an icon, retains live results on dismissal, and clears from the popup', async () => {
+    const user = userEvent.setup()
+    const otherSession = { ...stoppedSession, id: 'other', title: 'Investigate crash' }
+    seedStore({ version: 1, projects: [project1], sessions: [stoppedSession, otherSession] })
+    render(<ProjectSidebar />)
+    const trigger = screen.getByRole('button', { name: 'Search sessions' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    const search = await openSearch(user)
+    expect(search).toHaveFocus()
+    await user.type(search, 'crash')
+    expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    expect(trigger).toHaveAttribute('data-active', 'true')
+    expect(trigger).toHaveAttribute('title', 'Search sessions: crash')
+    expect(await openSearch(user)).toHaveValue('crash')
+    await user.keyboard('{Enter}')
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    await openSearch(user)
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(screen.getByRole('searchbox')).toHaveFocus()
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(trigger).not.toHaveAttribute('data-active')
+    expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close search' }))
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  })
+
+  it('dismisses search for other controls without stealing focus and translates the popup', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await openSearch(user)
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toHaveFocus()
+    await openSearch(user)
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    await user.tab()
+    await user.tab()
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Filter sessions' })).toHaveFocus()
+    act(() => useAppStore.getState().setLocale('zh-CN'))
+    await user.click(screen.getByRole('button', { name: '搜索会话' }))
+    expect(screen.getByRole('searchbox', { name: '搜索会话' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: '关闭搜索' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '清除搜索' })).toBeInTheDocument()
   })
 
   describe('bulk project folding', () => {
@@ -431,8 +492,7 @@ describe('ProjectSidebar', () => {
         await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
         await user.click(screen.getByRole('button', { name: 'Apply filters' }))
       }
-      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
-      if (mode !== 'status') await user.type(search, 'login')
+      if (mode !== 'status') await user.type(await openSearch(user), 'login')
       expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Collapse results' }))
       expect(row(project1.name)).toHaveAttribute('aria-expanded', 'false')
@@ -447,7 +507,7 @@ describe('ProjectSidebar', () => {
       expect(row(secondProject.name)).toHaveAttribute('aria-expanded', 'false')
       await user.click(row(project1.name))
       expect(screen.getByRole('button', { name: 'Expand results' })).toBeEnabled()
-      await user.type(search, 'no-match')
+      await user.type(await openSearch(user), 'no-match')
       expect(screen.getByRole('button', { name: 'Expand results' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Clear filters' }))
       expect(row(project1.name)).toHaveAttribute('aria-expanded', 'true')
@@ -457,11 +517,10 @@ describe('ProjectSidebar', () => {
     it('reveals new results after changing criteria and updates the toggle for live matches', async () => {
       const user = userEvent.setup()
       setup()
-      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
-      await user.type(search, 'login')
+      await user.type(await openSearch(user), 'login')
       await user.click(screen.getByRole('button', { name: 'Collapse results' }))
-      await user.clear(search)
-      await user.type(search, 'PowerShell')
+      await user.clear(await openSearch(user))
+      await user.type(await openSearch(user), 'PowerShell')
       expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Collapse results' }))
       act(() => useAppStore.setState({ appState: { ...useAppStore.getState().appState, sessions: [
@@ -482,6 +541,7 @@ describe('ProjectSidebar', () => {
       })
       await user.click(screen.getByRole('button', { name: '全部折叠' }))
       expect(screen.getByRole('button', { name: '全部展开' })).toBeEnabled()
+      await user.click(screen.getByRole('button', { name: '搜索会话' }))
       await user.type(screen.getByRole('searchbox', { name: '搜索会话' }), 'login')
       await user.click(screen.getByRole('button', { name: '折叠搜索/筛选结果' }))
       expect(screen.getByRole('button', { name: '展开搜索/筛选结果' })).toBeEnabled()
@@ -540,9 +600,8 @@ describe('ProjectSidebar', () => {
       const user = userEvent.setup()
       setup()
       const filter = screen.getByRole('button', { name: 'Filter sessions' })
-      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
       await chooseStatus(user, 'running')
-      await user.type(search, '  SHELL ')
+      await user.type(await openSearch(user), '  SHELL ')
       expect(screen.getByText('Running shell')).toBeInTheDocument()
       expect(screen.queryByText('Busy agent')).not.toBeInTheDocument()
 
@@ -551,8 +610,8 @@ describe('ProjectSidebar', () => {
       expect(screen.getByRole('button', { name: projectOptionsName(project1.name) })).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Clear filters' }))
       expect(filter).toHaveAttribute('title', 'Session status: All statuses')
-      expect(search).toHaveValue('')
-      expect(search).toHaveFocus()
+      expect(useAppStore.getState().searchQuery).toBe('')
+      expect(screen.getByRole('button', { name: 'Search sessions' })).toHaveFocus()
       expect(screen.getByText('Done agent')).toBeInTheDocument()
       expect(screen.queryByText('No matching sessions')).not.toBeInTheDocument()
     })
@@ -638,8 +697,8 @@ describe('ProjectSidebar', () => {
       await user.click(screen.getByRole('button', { name: 'Reset filters' }))
       expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('all')
       expect(container.querySelectorAll('.session-row')).toHaveLength(1)
-      await user.click(screen.getByRole('searchbox', { name: 'Search sessions' }))
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      await user.click(await openSearch(user))
+      expect(screen.queryByRole('dialog', { name: 'Filter sessions' })).not.toBeInTheDocument()
       await user.click(trigger)
       expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('done')
       await user.click(screen.getByRole('button', { name: 'Reset filters' }))
@@ -1119,7 +1178,7 @@ describe('ProjectSidebar', () => {
     render(<ProjectSidebar />)
 
     await openProjectOptions(user)
-    const search = screen.getByRole('searchbox', { name: 'Search sessions' })
+    const search = await openSearch(user)
     await user.click(search)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(search).toHaveFocus()
@@ -1127,7 +1186,7 @@ describe('ProjectSidebar', () => {
     await openProjectOptions(user)
     await user.tab()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add Project' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus()
 
     await openProjectOptions(user)
     await user.tab({ shift: true })
@@ -1211,7 +1270,7 @@ describe('ProjectSidebar', () => {
     render(<ProjectSidebar />)
 
     await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'New session' }))
-    const search = screen.getByRole('searchbox', { name: 'Search sessions' })
+    const search = await openSearch(user)
     await user.click(search)
 
     expect(screen.queryByLabelText('Create session')).not.toBeInTheDocument()
@@ -1442,12 +1501,11 @@ describe('ProjectSidebar', () => {
 
     await user.click(screen.getByText(project2.name))
     expect(screen.queryByText('Special P2 session')).not.toBeInTheDocument()
-    const search = screen.getByRole('searchbox', { name: 'Search sessions' })
-    await user.type(search, 'special')
+    await user.type(await openSearch(user), 'special')
     expect(screen.getByText('Special P2 session')).toBeInTheDocument()
     expect(screen.getByText(project2.name).closest('button')).toHaveAttribute('aria-expanded', 'true')
 
-    await user.clear(search)
+    await user.clear(await openSearch(user))
     expect(screen.queryByText('Special P2 session')).not.toBeInTheDocument()
     expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
     expect(screen.getByText(project2.name).closest('button')).toHaveAttribute('aria-expanded', 'false')
@@ -1497,7 +1555,7 @@ describe('ProjectSidebar', () => {
       seedStore({ version: 1, projects: [project1, project2], sessions: [] })
       render(<ProjectSidebar />)
 
-      await user.type(screen.getByRole('searchbox', { name: 'Search sessions' }), 'x')
+      await user.type(await openSearch(user), 'x')
 
       for (const row of projectRows()) {
         expect(row).toHaveAttribute('draggable', 'false')

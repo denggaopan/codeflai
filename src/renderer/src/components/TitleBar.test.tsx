@@ -104,16 +104,16 @@ describe('TitleBar', () => {
   it('keeps a draggable strip next to the no-drag action buttons', () => {
     render(<TitleBar />)
     expect(document.querySelector('.title-bar-drag-area')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Settings' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Keep window on top' })).not.toBeNull()
   })
 
-  it('offers the pin unpressed, to the right of Settings', () => {
+  it('offers the pin unpressed as the title bar action', () => {
     render(<TitleBar />)
 
     const pin = screen.getByRole('button', { name: 'Keep window on top' })
     expect(pin).toHaveAttribute('aria-pressed', 'false')
-    expect(pin.previousElementSibling).toBe(screen.getByRole('button', { name: 'Settings' }))
+    expect(pin.previousElementSibling).toBeNull()
   })
 
   it('shows the pressed pin and the undo label while the window is pinned', () => {

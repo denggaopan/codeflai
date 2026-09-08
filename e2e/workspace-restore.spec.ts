@@ -96,9 +96,15 @@ for (const exitMode of ['window close', 'forced termination', 'renderer reload']
       })).toContain('_AFTER')
 
       const search = page.getByRole('searchbox', { name: 'Search sessions' })
-      await search.fill('Session')
+      const openSearch = async () => {
+        const trigger = page.getByRole('button', { name: 'Search sessions', exact: true })
+        if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+        return search
+      }
+      await (await openSearch()).fill('Session')
       await expect(projectLabel('second')).toHaveAttribute('aria-expanded', 'true')
-      await search.fill('')
+      await (await openSearch()).fill('')
+      await page.keyboard.press('Escape')
       await expect(projectLabel('second')).toHaveAttribute('aria-expanded', 'false')
       await projectLabel('second').click()
       await expect(page.locator('.session-row-content[aria-current="true"]')).toContainText('Session second')

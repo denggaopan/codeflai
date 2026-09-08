@@ -325,11 +325,11 @@ test('exposes the startup toggle, version check, About links, and language switc
   await expect(window.getByRole('dialog', { name: '设置' })).toBeVisible()
   await expect(window.getByRole('switch', { name: '开机自动启动' })).toBeVisible()
   // The whole window re-renders, not just the dialog.
-  await expect(window.getByPlaceholder('搜索会话')).toBeVisible()
+  await expect(window.getByRole('button', { name: '搜索会话', exact: true })).toBeVisible()
 
   await window.getByRole('button', { name: 'English' }).click()
   await expect(window.getByRole('dialog', { name: 'Settings' })).toBeVisible()
-  await expect(window.getByPlaceholder('Search sessions')).toBeVisible()
+  await expect(window.getByRole('button', { name: 'Search sessions', exact: true })).toBeVisible()
   await window.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 })

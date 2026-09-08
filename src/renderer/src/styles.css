@@ -469,7 +469,7 @@ body[data-sidebar-resizing='true'] .app-main {
   min-width: 0;
   min-height: 0;
   /* The sidebar itself does not scroll: .project-groups is the scroll region, so the
-     header (search) and footer (Add Project) stay pinned while projects scroll between. */
+     header controls and footer (Settings) stay pinned while projects scroll between. */
   overflow: hidden;
   background: var(--color-panel);
 }
@@ -485,7 +485,7 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .session-search {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
@@ -495,6 +495,8 @@ body[data-sidebar-resizing='true'] .app-main {
   font-size: 0.85rem;
 }
 
+.add-project-button,
+.session-search-toggle,
 .session-status-filter,
 .project-fold-toggle {
   display: flex;
@@ -510,11 +512,16 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-text-muted);
 }
 
+.add-project-button:hover,
+.session-search-toggle:hover,
 .session-status-filter:hover,
 .project-fold-toggle:not(:disabled):hover {
   color: var(--color-text);
 }
 
+.add-project-button:focus-visible,
+.session-search-toggle:focus-visible,
+.sidebar-settings:focus-visible,
 .session-status-filter:focus-visible,
 .project-fold-toggle:focus-visible {
   outline: 2px solid var(--color-text-muted);
@@ -525,8 +532,27 @@ body[data-sidebar-resizing='true'] .app-main {
   opacity: 0.4;
 }
 
+.session-search-control,
 .session-filter-control {
   flex: 0 0 24px;
+}
+
+.session-search-control {
+  margin-left: auto;
+}
+
+.session-search-toggle[data-active='true'] {
+  color: var(--color-accent);
+  background: var(--color-panel-elevated);
+}
+
+.add-project-icon {
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
 }
 
 .session-filter-popover {
@@ -691,7 +717,7 @@ body[data-sidebar-resizing='true'] .app-main {
   padding: 10px 12px;
 }
 
-.add-project-fab {
+.sidebar-settings {
   display: grid;
   place-items: center;
   width: 36px;
@@ -704,7 +730,7 @@ body[data-sidebar-resizing='true'] .app-main {
   line-height: 1;
 }
 
-.add-project-fab:hover {
+.sidebar-settings:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
