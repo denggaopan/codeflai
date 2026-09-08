@@ -36,6 +36,8 @@ for (const kind of ['claude', 'codex'] as const) {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     try {
+      // Wait for the initial snapshot before creating projects in the packaged app.
+      await expect(page.locator('html')).toHaveAttribute('data-platform', 'win32', { timeout: 20_000 })
       await page.getByRole('button', { name: 'Add Project', exact: true }).click()
       await page.getByRole('button', { name: 'Choose project directory' }).click()
       await page.getByRole('button', { name: /^Project options for / }).click()
@@ -115,6 +117,7 @@ test('filters live sessions by status and search while retaining the active term
       window.unmaximize()
       window.setSize(1180, 760)
     })
+    await expect(page.locator('html')).toHaveAttribute('data-platform', 'win32', { timeout: 20_000 })
     await page.getByRole('button', { name: 'Add Project', exact: true }).click()
     await page.getByRole('button', { name: 'Choose project directory' }).click()
     const create = async (name: string) => {
