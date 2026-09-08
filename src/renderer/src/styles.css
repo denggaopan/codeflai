@@ -541,14 +541,9 @@ body[data-sidebar-resizing='true'] .app-main {
   margin-left: auto;
 }
 
-.session-search-toggle[data-active='true'] {
-  color: var(--color-accent);
-  background: var(--color-panel-elevated);
-}
-
 .add-project-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   background: currentColor;
   mask-size: contain;
   mask-position: center;

@@ -58,7 +58,7 @@ export default function SessionSearch({ value, onChange, triggerRef }: SessionSe
         data-active={active ? 'true' : undefined}
         onClick={() => setOpen(!open)}
       >
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
           <circle cx="10.5" cy="10.5" r="6.5" />
           <path d="m16 16 5 5" />
         </svg>

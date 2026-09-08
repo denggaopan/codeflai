@@ -113,7 +113,7 @@ one tells you what it is doing. Closing the window does **not** stop them.
 **Sidebar** — **Add Project**, **Search sessions**, filter, and fold icons at the top,
 your projects below them, and the [Settings](#settings) gear at the bottom. Click the search
 icon to open its input; results update as you type. Escape, Enter, or clicking outside
-closes the search popup while keeping the query active. The search icon highlights when
+closes the search popup while keeping the query active. The search icon fills when
 a query is active; reopen it to edit the query or use **Clear search**.
 
 A project name toggles just that project's session list; switching sessions never re-folds anything. Searching temporarily reveals matching sessions
