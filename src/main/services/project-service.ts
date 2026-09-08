@@ -118,6 +118,15 @@ export class ProjectService {
     return persisted
   }
 
+  async removeRecent(projectId: string): Promise<void> {
+    await this.store.update((state) => {
+      if (!state.recentProjects?.some((project) => project.id === projectId)) {
+        throw new ProjectNotFoundError(projectId)
+      }
+      return { ...state, recentProjects: state.recentProjects.filter((project) => project.id !== projectId) }
+    })
+  }
+
   async reopen(projectId: string): Promise<ProjectRecord> {
     const state = await this.store.load()
     const project = [...state.projects, ...(state.recentProjects ?? [])].find((entry) => entry.id === projectId)

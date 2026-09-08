@@ -271,6 +271,7 @@ describe('shared contracts', () => {
       workspaceSave: 'workspace:save',
       projectAdd: 'project:add',
       projectReopen: 'project:reopen',
+      projectRemoveRecent: 'project:remove-recent',
       projectCloneDirectory: 'project:clone-directory',
       projectClone: 'project:clone',
       projectOpenVSCode: 'project:open-vscode',

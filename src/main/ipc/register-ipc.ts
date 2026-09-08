@@ -122,6 +122,14 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ],
 
     [
+      IPC.projectRemoveRecent,
+      async (_event, payload): Promise<void> => {
+        const { projectId } = projectIdRequestSchema.parse(payload)
+        await projectService.removeRecent(projectId)
+      }
+    ],
+
+    [
       IPC.projectCloneDirectory,
       async (): Promise<string | null> => {
         const result = await dialog.showOpenDialog(window, { properties: ['openDirectory', 'createDirectory'] })

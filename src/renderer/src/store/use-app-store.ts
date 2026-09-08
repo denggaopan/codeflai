@@ -92,6 +92,7 @@ export type AppStore = {
   setShowQuickPrompts: (show: boolean) => void
 
   addProject: (source?: { recentProjectId: string } | CloneProjectRequest) => Promise<boolean>
+  removeRecentProject: (projectId: string) => Promise<void>
   reorderProjects: (orderedProjectIds: readonly string[]) => Promise<void>
   openProjectInVSCode: (projectId: string) => Promise<void>
   openProjectFolder: (projectId: string) => Promise<void>
@@ -720,6 +721,13 @@ export const useAppStore = create<AppStore>()((set, get) => {
         launcherOpen: false
       }))
       return true
+    },
+
+    removeRecentProject: async (projectId) => {
+      await window.codeflai.removeRecentProject(projectId)
+      set((state) => ({
+        appState: { ...state.appState, recentProjects: (state.appState.recentProjects ?? []).filter((project) => project.id !== projectId) }
+      }))
     },
 
     reorderProjects: async (orderedProjectIds) => {

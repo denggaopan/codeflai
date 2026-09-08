@@ -25,6 +25,7 @@ export type CodeflaiApi = {
   saveWorkspace(workspace: WorkspaceState): Promise<void>
   addProject(): Promise<ProjectRecord | null>
   reopenProject(projectId: string): Promise<ProjectRecord>
+  removeRecentProject(projectId: string): Promise<void>
   selectCloneDirectory(): Promise<string | null>
   cloneProject(request: CloneProjectRequest): Promise<ProjectRecord>
   reorderProjects(orderedProjectIds: readonly string[]): Promise<ProjectRecord[]>
@@ -72,6 +73,7 @@ const api: CodeflaiApi = {
   saveWorkspace: (workspace) => ipcRenderer.invoke(IPC.workspaceSave, workspace),
   addProject: () => ipcRenderer.invoke(IPC.projectAdd),
   reopenProject: (projectId) => ipcRenderer.invoke(IPC.projectReopen, { projectId }),
+  removeRecentProject: (projectId) => ipcRenderer.invoke(IPC.projectRemoveRecent, { projectId }),
   selectCloneDirectory: () => ipcRenderer.invoke(IPC.projectCloneDirectory),
   cloneProject: (request) => ipcRenderer.invoke(IPC.projectClone, request),
   reorderProjects: (orderedProjectIds) => ipcRenderer.invoke(IPC.projectReorder, { orderedProjectIds: [...orderedProjectIds] }),

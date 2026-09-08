@@ -1917,16 +1917,37 @@ body[data-sidebar-resizing='true'] .app-main {
   border-radius: 8px;
 }
 
-.add-project-recent-list button {
+.add-project-recent-list li {
+  display: flex;
+  align-items: stretch;
+  background: var(--color-panel);
+}
+
+.add-project-recent-open {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 12px;
   border: 0;
   background: var(--color-panel);
   color: var(--color-text);
   text-align: left;
+}
+
+.add-project-recent-open > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.add-project-recent-remove {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
 }
 
 .add-project-recent-list li + li {

@@ -66,6 +66,7 @@ const createFakeApi = () => {
     getSnapshot: vi.fn(async (): Promise<AppSnapshot> => ({ platform: 'win32', state: seededState, capabilities: defaultCapabilities() })),
     addProject: vi.fn(async (): Promise<ProjectRecord | null> => null),
     reopenProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('reopenProject not stubbed') }),
+    removeRecentProject: vi.fn(async (): Promise<void> => undefined),
     selectCloneDirectory: vi.fn(async (): Promise<string | null> => null),
     cloneProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('cloneProject not stubbed') }),
     openProjectInVSCode: vi.fn(async (): Promise<void> => undefined),

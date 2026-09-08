@@ -205,7 +205,7 @@ type Harness = {
   ipcMain: FakeIpcMain
   window: ReturnType<typeof fakeWindow>
   dialog: ReturnType<typeof fakeDialog>
-  projectService: { register: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; reorder: ReturnType<typeof vi.fn>; reopen: ReturnType<typeof vi.fn>; clone: ReturnType<typeof vi.fn> }
+  projectService: { register: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; reorder: ReturnType<typeof vi.fn>; reopen: ReturnType<typeof vi.fn>; removeRecent: ReturnType<typeof vi.fn>; clone: ReturnType<typeof vi.fn> }
   coordinator: FakeCoordinator
   externalAppService: { openInVSCode: ReturnType<typeof vi.fn>; openInExplorer: ReturnType<typeof vi.fn>; openRepository: ReturnType<typeof vi.fn> }
   appInfoService: {
@@ -234,7 +234,7 @@ const buildHarness = (options: {
   const window = fakeWindow(options.windowDestroyed ?? false)
   const ipcMain = new FakeIpcMain(window.webContents)
   const dialog = fakeDialog(options.dialogResult ?? { canceled: true, filePaths: [] })
-  const projectService = { register: vi.fn(async () => project), get: vi.fn(async () => project), reorder: vi.fn(async () => [project]), reopen: vi.fn(async () => project), clone: vi.fn(async () => project) }
+  const projectService = { register: vi.fn(async () => project), get: vi.fn(async () => project), reorder: vi.fn(async () => [project]), reopen: vi.fn(async () => project), removeRecent: vi.fn(async () => undefined), clone: vi.fn(async () => project) }
   const coordinator = new FakeCoordinator()
   const externalAppService = {
     openInVSCode: vi.fn(async () => undefined),
@@ -386,6 +386,24 @@ describe('registerIpc: recent projects and clone', () => {
       await expect(ipcMain.invoke(IPC.projectClone, invalid)).rejects.toBeInstanceOf(z.ZodError)
     }
     expect(projectService.clone).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('registerIpc: project:remove-recent', () => {
+  it('removes history through the project service without stopping sessions', async () => {
+    const { ipcMain, projectService, coordinator } = buildHarness()
+    await expect(ipcMain.invoke(IPC.projectRemoveRecent, { projectId: 'recent' })).resolves.toBeUndefined()
+    expect(projectService.removeRecent).toHaveBeenCalledWith('recent')
+    expect(coordinator.removeProject).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid requests and foreign senders before changing history', async () => {
+    const { ipcMain, projectService } = buildHarness()
+    for (const payload of [{}, { projectId: '' }, { projectId: 'recent', path: 'C:\\other' }]) {
+      await expect(ipcMain.invoke(IPC.projectRemoveRecent, payload)).rejects.toBeInstanceOf(z.ZodError)
+    }
+    await expect(ipcMain.invokeFrom({}, IPC.projectRemoveRecent, { projectId: 'recent' })).rejects.toThrow()
+    expect(projectService.removeRecent).not.toHaveBeenCalled()
   })
 })
 

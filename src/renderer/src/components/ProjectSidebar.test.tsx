@@ -39,6 +39,7 @@ const createFakeApi = (): FakeApi => ({
   })),
   addProject: vi.fn(async (): Promise<ProjectRecord | null> => null),
   reopenProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('reopenProject not stubbed') }),
+  removeRecentProject: vi.fn(async (): Promise<void> => undefined),
   selectCloneDirectory: vi.fn(async (): Promise<string | null> => null),
   cloneProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('cloneProject not stubbed') }),
   reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
@@ -253,11 +254,61 @@ describe('ProjectSidebar', () => {
     await user.click(screen.getByRole('button', { name: 'Recent projects' }))
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).queryByText(project1.name)).not.toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: /Historical project/ }))
+    await user.click(within(dialog).getByRole('button', { name: /^Historical project/ }))
     expect(api.reopenProject).toHaveBeenCalledWith('recent')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(useAppStore.getState().activeProjectId).toBe('recent')
     expect(useAppStore.getState().appState.recentProjects).not.toContainEqual(recent)
+  })
+
+  it('deletes history without reopening it and keeps the dialog open through the empty state', async () => {
+    const user = userEvent.setup()
+    const recent = { ...project1, id: 'recent', name: 'Historical project', path: 'C:\\history' }
+    const other = { ...recent, id: 'other', name: 'Other project' }
+    seedStore({ version: 1, projects: [project1], recentProjects: [recent, other], sessions: [stoppedSession] })
+    const selected = useAppStore.getState().activeProjectId
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Recent projects' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Remove Historical project from history' }))
+    expect(api.removeRecentProject).toHaveBeenCalledWith(recent.id)
+    expect(api.reopenProject).not.toHaveBeenCalled()
+    expect(api.removeProject).not.toHaveBeenCalled()
+    expect(within(dialog).queryByText(recent.name)).not.toBeInTheDocument()
+    expect(within(dialog).getByText(other.name)).toBeInTheDocument()
+    expect(useAppStore.getState().appState).toEqual({ version: 1, projects: [project1], recentProjects: [other], sessions: [stoppedSession] })
+    expect(useAppStore.getState().activeProjectId).toBe(selected)
+    const remove = within(dialog).getByRole('button', { name: 'Remove Other project from history' })
+    remove.focus()
+    await user.keyboard('{Enter}')
+    expect(within(dialog).getByText('No recent projects outside your project list.')).toBeInTheDocument()
+    expect(dialog).toBeInTheDocument()
+  })
+
+  it('locks the dialog while deleting and retains history with a retryable error when saving fails', async () => {
+    const user = userEvent.setup()
+    const recent = { ...project1, id: 'recent', name: 'Historical project' }
+    seedStore({ version: 1, projects: [], recentProjects: [recent], sessions: [] })
+    let reject!: (reason: Error) => void
+    vi.mocked(api.removeRecentProject).mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }))
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Recent projects' }))
+    const dialog = screen.getByRole('dialog')
+    const remove = within(dialog).getByRole('button', { name: 'Remove Historical project from history' })
+    await user.click(remove)
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Removing from history...')
+    for (const button of within(dialog).getAllByRole('button')) expect(button).toBeDisabled()
+    await user.keyboard('{Escape}')
+    expect(dialog).toBeInTheDocument()
+    await act(async () => reject(new Error('disk full')))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not remove project from history: disk full')
+    expect(within(dialog).getByText(recent.name)).toBeInTheDocument()
+    expect(useAppStore.getState().appState.recentProjects).toEqual([recent])
+    await user.click(remove)
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('No recent projects outside your project list.')).toBeInTheDocument()
   })
 
   it('shows an empty history and keeps a missing-project error inside the dialog', async () => {
@@ -268,7 +319,7 @@ describe('ProjectSidebar', () => {
     expect(screen.getByText('No recent projects outside your project list.')).toBeInTheDocument()
     act(() => useAppStore.setState({ appState: { version: 1, projects: [], recentProjects: [project1], sessions: [] } }))
     vi.mocked(api.reopenProject).mockRejectedValue(new Error('Project folder is missing'))
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /demo-project/ }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^demo-project/ }))
     expect(screen.getByRole('alert')).toHaveTextContent('Project folder is missing')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })

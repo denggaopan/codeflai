@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { cloneDirectoryName } from '../../../shared/git-clone'
 import { normalizeProjectPath } from '../../../shared/project-path'
 import closeIconUrl from '../assets/close.svg'
+import removeIconUrl from '../assets/remove.svg'
 import { useTranslation } from '../i18n/use-translation'
 import { useAppStore } from '../store/use-app-store'
 
@@ -14,10 +15,11 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
   const appState = useAppStore((state) => state.appState)
   const platform = useAppStore((state) => state.platform)
   const addProject = useAppStore((state) => state.addProject)
+  const removeRecentProject = useAppStore((state) => state.removeRecentProject)
   const [mode, setMode] = useState<Mode>('folder')
   const [repositoryUrl, setRepositoryUrl] = useState('')
   const [targetDirectory, setTargetDirectory] = useState('')
-  const [busy, setBusy] = useState<Mode | 'directory' | null>(null)
+  const [busy, setBusy] = useState<Mode | 'directory' | 'remove' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pending = useRef(false)
   const panel = useRef<HTMLDivElement>(null)
@@ -53,7 +55,9 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
     try {
       if (await operation()) onClose()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : t('notice.genericError'))
+      setError(t(activity === 'remove' ? 'addProject.removeFailed' : 'addProject.failed', {
+        reason: failure instanceof Error ? failure.message : t('notice.genericError')
+      }))
     } finally {
       pending.current = false
       setBusy(null)
@@ -133,9 +137,22 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
               <ul className="add-project-recent-list">
                 {recentProjects.map((project) => (
                   <li key={project.id}>
-                    <button type="button" disabled={busy !== null} onClick={() => void run(() => addProject({ recentProjectId: project.id }), 'recent')}>
+                    <button type="button" className="add-project-recent-open" disabled={busy !== null} onClick={() => void run(() => addProject({ recentProjectId: project.id }), 'recent')}>
                       <span>{project.name}</span>
                       <span className="add-project-path" title={project.path}>{project.path}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="add-project-recent-remove"
+                      aria-label={t('addProject.removeRecent', { name: project.name })}
+                      title={t('addProject.removeRecent', { name: project.name })}
+                      disabled={busy !== null}
+                      onClick={() => void run(async () => {
+                        await removeRecentProject(project.id)
+                        return false
+                      }, 'remove')}
+                    >
+                      <img src={removeIconUrl} alt="" width={16} height={16} className="icon-mono" />
                     </button>
                   </li>
                 ))}
@@ -189,8 +206,8 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
           </form>
         )}
 
-        {busy && <p role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : 'addProject.opening')}</p>}
-        {error && <p role="alert" className="settings-dialog-error add-project-error">{t('addProject.failed', { reason: error })}</p>}
+        {busy && <p role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : busy === 'remove' ? 'addProject.removing' : 'addProject.opening')}</p>}
+        {error && <p role="alert" className="settings-dialog-error add-project-error">{error}</p>}
       </div>
     </div>,
     document.body

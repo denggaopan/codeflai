@@ -162,7 +162,10 @@ Codeflai opens maximized every time and restores a 1180×760 window when you un-
 - **Local folder** — pick any project directory on this computer.
 - **Recent projects** — reopen something you removed from the list earlier. Codeflai keeps up
   to 50 removed projects, across restarts, and hides ones already in your list. Reopening
-  brings the folder back but not its old sessions.
+  brings the folder back but not its old sessions. Use the trash button beside a history
+  entry to forget it permanently, including entries whose folder no longer exists. This
+  only removes the history record; project files and current sessions stay intact. You
+  can add the folder again through **Local folder**.
 - **Clone Git repository** — paste an HTTPS or SSH address (`git@host:owner/repository.git`
   works) and choose where to put it. Codeflai shows the full destination, creates a
   subdirectory named after the repository, and adds the project once Git finishes. An
