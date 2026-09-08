@@ -160,8 +160,13 @@ describe('TitleBar', () => {
     expect(rockets()).toHaveLength(3)
   })
 
-  it('unlocks two fast original-size rockets per click from the 32nd click onwards, even after a pause', () => {
+  it('unlocks two independently directed rockets while clicks remain consecutive', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    let seed = 42
+    vi.spyOn(Math, 'random').mockImplementation(() => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 0x100000000
+    })
     render(<TitleBar />)
     const brand = screen.getByRole('button', { name: 'Codeflai — launch a rocket' })
     for (let index = 0; index < 31; index++) fireEvent.click(brand)
@@ -177,10 +182,11 @@ describe('TitleBar', () => {
     }
     expect(rockets()[31].getAttribute('style')).not.toBe(rockets()[32].getAttribute('style'))
     expect(flights[31].keyframes).not.toEqual(flights[32].keyframes)
+    expect(readTransform(flights[31].keyframes[2]).headingDeg).not.toBe(readTransform(flights[32].keyframes[2]).headingDeg)
     expect(Number(flights[31].options.duration)).toBeLessThanOrEqual(2500)
     expect(flights[31].keyframes.length).toBeGreaterThan(20)
     expect(burst!.querySelector('.rocket-flight-exhaust')).not.toBeNull()
-    now.mockReturnValue(120_000)
+    now.mockReturnValue(4000)
     fireEvent.click(brand)
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(4)
     expect(flights[33].keyframes.length).toBeGreaterThan(20)
@@ -194,6 +200,29 @@ describe('TitleBar', () => {
       flights[34].animation.emit('finish')
     })
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(0)
+    now.mockReturnValue(7001)
+    fireEvent.click(brand)
+    expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(0)
+    expect(flights[35].keyframes).toHaveLength(5)
+  })
+
+  it('launches three independent rockets from click 48 and resets all tiers after a pause', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    render(<TitleBar />)
+    const brand = screen.getByRole('button', { name: 'Codeflai — launch a rocket' })
+    for (let index = 0; index < 47; index++) fireEvent.click(brand)
+    expect(flights).toHaveLength(63)
+    fireEvent.click(brand)
+    expect(flights).toHaveLength(66)
+    const triple = [...rockets()].slice(-3)
+    expect(new Set(triple.map((rocket) => rocket.getAttribute('style'))).size).toBe(3)
+    expect(triple.every((rocket) => rocket.classList.contains('rocket-flight-burst'))).toBe(true)
+    fireEvent.click(brand)
+    expect(flights).toHaveLength(69)
+    now.mockReturnValue(4001)
+    fireEvent.click(brand)
+    expect(flights).toHaveLength(70)
+    expect(flights[69].keyframes).toHaveLength(5)
   })
 
   it('expires old logo clicks before deciding whether to launch a burst rocket', () => {

@@ -7,7 +7,7 @@ import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
 /**
  * One rocket, launched from the title bar's brand button: it falls nose-first, swings round
  * to a random rightwards course, cruises slowly for three seconds and then dashes off-screen.
- * Burst rockets keep their original size and fly in two distinct lanes with bright exhaust.
+ * Burst rockets keep their original size and each follow a random glide with bright exhaust.
  * The geometry (and the promise that the nose always points along the course) lives in
  * `rocket-flight.ts`; this component only measures the launch point and drives the animation.
  *
@@ -15,7 +15,7 @@ import { planRocketFlight, rocketKeyframes, type Point } from '../rocket-flight'
  * that crosses the whole window, and it is inert to the pointer: purely decorative, and never
  * in the way of the UI it flies over.
  */
-export default function RocketFlight({ origin, burst = false, lane = 0, onDone }: { origin: Point; burst?: boolean; lane?: 0 | 1; onDone: () => void }) {
+export default function RocketFlight({ origin, burst = false, onDone }: { origin: Point; burst?: boolean; onDone: () => void }) {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const artId = useId()
   // Kept in a ref so the effect below never re-runs (and restarts the flight) just because the
@@ -38,10 +38,11 @@ export default function RocketFlight({ origin, burst = false, lane = 0, onDone }
 
     const input = {
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      origin
+      origin,
+      random: Math.random
     }
-    const plan = burst ? planBurstRocketFlight({ ...input, lane }) : (() => {
-      const standard = planRocketFlight({ ...input, random: Math.random })
+    const plan = burst ? planBurstRocketFlight(input) : (() => {
+      const standard = planRocketFlight(input)
       return { keyframes: rocketKeyframes(standard), totalMs: standard.totalMs }
     })()
     const animation = node.animate(plan.keyframes, {
@@ -57,7 +58,7 @@ export default function RocketFlight({ origin, burst = false, lane = 0, onDone }
       animation.removeEventListener('cancel', finish)
       animation.cancel()
     }
-  }, [origin, burst, lane])
+  }, [origin, burst])
 
   const anchorStyle = { left: `${origin.x}px`, top: `${origin.y}px` } as CSSProperties
 
