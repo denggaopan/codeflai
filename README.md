@@ -106,8 +106,7 @@ one tells you what it is doing. Closing the window does **not** stop them.
 
 ## The window
 
-**Title bar** — the logo and **Codeflai** wordmark (click it for the
-[rocket](#the-rocket)), the pin button that
+**Title bar** — the logo and **Codeflai** wordmark, the pin button that
 [keeps the window above everything else](#keeping-the-window-on-top).
 
 **Sidebar** — **Add Project**, **Search sessions**, filter, and fold icons at the top,
@@ -523,21 +522,6 @@ on the CLI. Comate has none at all.
 **A session vanished after a restart.** Deleting a session, or removing its project from the
 list, removes the record — but never anything on disk. Any work an agent did in a worktree is
 still on that worktree's branch.
-
-## The rocket
-
-Click the logo and the **Codeflai** wordmark. A rocket drops nose-first, swings round, cruises
-for a few seconds, and dashes off the screen. Click again for more of them. It is purely
-decorative — it cannot intercept a click — and it is skipped entirely if your system asks for
-reduced motion.
-
-Keep clicking with no gap longer than three seconds: reaching 32 clicks within a rolling
-60 seconds unlocks two rockets per click, and reaching 48 unlocks three. The unlocked tier
-lasts while clicks remain consecutive. All rockets keep their original size, bright exhaust
-plumes, and glow. Each falls, independently turns to a random direction, cruises in a straight
-line for two seconds, then accelerates off-screen. Single rockets keep their three-second cruise.
-A gap longer than three seconds resets the count and returns the next click to one rocket;
-exactly three seconds still counts as consecutive. Reopening or reloading also resets the count.
 
 ## License
 
