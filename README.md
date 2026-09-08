@@ -129,6 +129,13 @@ filtering resets to **All statuses** when the window is reopened or reloaded. Th
 is borderless and changes from outline to filled when a status filter is applied; hover
 over it to see the current filter.
 
+The icon to the right of the filter toggles **Collapse all projects** and **Expand all
+projects**. If any project is expanded, it folds them all; otherwise, it opens them all.
+With search or a status filter active, it only folds or opens matching results, and each
+matching project's name also toggles its results. Other projects keep their fold state.
+Changing the search or filter reveals the new results, and clearing both restores the
+saved project folds. The button is disabled when there are no projects or no matches.
+
 **Terminal** — the active session's header (its title, its status, a **Restart session**
 action when it is not running, and the bypass warning while an agent runs), the terminal
 itself, and the optional [quick prompts](#quick-prompts) bar underneath. With nothing

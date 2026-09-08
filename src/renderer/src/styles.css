@@ -495,7 +495,8 @@ body[data-sidebar-resizing='true'] .app-main {
   font-size: 0.85rem;
 }
 
-.session-status-filter {
+.session-status-filter,
+.project-fold-toggle {
   display: flex;
   flex: 0 0 24px;
   width: 24px;
@@ -509,13 +510,19 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-text-muted);
 }
 
-.session-status-filter:hover {
+.session-status-filter:hover,
+.project-fold-toggle:not(:disabled):hover {
   color: var(--color-text);
 }
 
-.session-status-filter:focus-visible {
+.session-status-filter:focus-visible,
+.project-fold-toggle:focus-visible {
   outline: 2px solid var(--color-text-muted);
   outline-offset: 2px;
+}
+
+.project-fold-toggle:disabled {
+  opacity: 0.4;
 }
 
 .session-filter-control {

@@ -182,6 +182,19 @@ describe('workspace persistence', () => {
     expect(useAppStore.getState().collapsedProjectIds).toEqual([secondProject.id])
   })
 
+  it('saves a bulk fold in one update and preserves projects outside the operation', async () => {
+    await restart()
+    api.saveWorkspace.mockClear()
+    useAppStore.getState().setProjectsCollapsed([project.id, secondProject.id], true)
+    expect(api.saveWorkspace).toHaveBeenCalledTimes(1)
+    expect(stored().collapsedProjectIds).toEqual([project.id, secondProject.id])
+    await restart()
+    useAppStore.getState().setProjectsCollapsed([project.id], false)
+    expect(stored().collapsedProjectIds).toEqual([secondProject.id])
+    await restart()
+    expect(useAppStore.getState().collapsedProjectIds).toEqual([secondProject.id])
+  })
+
   it('persists sessions selected through creation and restoration, and clears a deleted selection', async () => {
     await restart()
     await useAppStore.getState().createSession(project.id, 'claude', false)

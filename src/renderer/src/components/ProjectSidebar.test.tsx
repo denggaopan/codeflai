@@ -390,6 +390,104 @@ describe('ProjectSidebar', () => {
     expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
   })
 
+  describe('bulk project folding', () => {
+    const secondProject = { ...project1, id: 'project-2', name: 'second-project' }
+    const emptyProject = { ...project1, id: 'project-empty', name: 'empty-project' }
+    const setup = () => {
+      seedStore({ version: 1, projects: [project1, secondProject, emptyProject], sessions: [
+        runningWorktreeSession, { ...stoppedSession, projectId: secondProject.id }
+      ] })
+      return render(<ProjectSidebar />)
+    }
+    const row = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+
+    it('uses one button after the filter to collapse mixed projects and expand them all, including empty projects', async () => {
+      const user = userEvent.setup()
+      setup()
+      await user.click(row(project1.name))
+      const toggle = screen.getByRole('button', { name: 'Collapse all projects' })
+      expect(screen.getByRole('button', { name: 'Filter sessions' }).parentElement?.nextElementSibling).toBe(toggle)
+      const collapseIcon = toggle.querySelector('svg')!.innerHTML
+      await user.click(toggle)
+      for (const project of [project1, secondProject, emptyProject]) expect(row(project.name)).toHaveAttribute('aria-expanded', 'false')
+      expect(toggle).toHaveAccessibleName('Expand all projects')
+      expect(toggle).toHaveAttribute('title', 'Expand all projects')
+      expect(toggle.querySelector('svg')!.innerHTML).not.toBe(collapseIcon)
+      expect(useAppStore.getState().collapsedProjectIds).toHaveLength(3)
+      await user.keyboard('{Enter}')
+      for (const project of [project1, secondProject, emptyProject]) expect(row(project.name)).toHaveAttribute('aria-expanded', 'true')
+      expect(toggle).toHaveAccessibleName('Collapse all projects')
+      expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
+      expect(useAppStore.getState().collapsedProjectIds).toEqual([])
+    })
+
+    it.each(['search', 'status', 'combined'])('folds only %s results and restores saved project folds when cleared', async (mode) => {
+      const user = userEvent.setup()
+      setup()
+      await user.click(row(secondProject.name))
+      act(() => useAppStore.setState({ activeProjectId: project1.id, activeSessionId: runningWorktreeSession.id }))
+      if (mode !== 'search') {
+        await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
+        await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+      }
+      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
+      if (mode !== 'status') await user.type(search, 'login')
+      expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Collapse results' }))
+      expect(row(project1.name)).toHaveAttribute('aria-expanded', 'false')
+      expect(row(secondProject.name)).toHaveAttribute('aria-expanded', 'false')
+      expect(row(emptyProject.name)).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.queryByText(runningWorktreeSession.title)).not.toBeInTheDocument()
+      expect(screen.queryByText('No matching sessions')).not.toBeInTheDocument()
+      expect(useAppStore.getState().collapsedProjectIds).toEqual([secondProject.id])
+      expect(useAppStore.getState().activeSessionId).toBe(runningWorktreeSession.id)
+      await user.click(screen.getByRole('button', { name: 'Expand results' }))
+      expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
+      expect(row(secondProject.name)).toHaveAttribute('aria-expanded', 'false')
+      await user.click(row(project1.name))
+      expect(screen.getByRole('button', { name: 'Expand results' })).toBeEnabled()
+      await user.type(search, 'no-match')
+      expect(screen.getByRole('button', { name: 'Expand results' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+      expect(row(project1.name)).toHaveAttribute('aria-expanded', 'true')
+      expect(row(secondProject.name)).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('reveals new results after changing criteria and updates the toggle for live matches', async () => {
+      const user = userEvent.setup()
+      setup()
+      const search = screen.getByRole('searchbox', { name: 'Search sessions' })
+      await user.type(search, 'login')
+      await user.click(screen.getByRole('button', { name: 'Collapse results' }))
+      await user.clear(search)
+      await user.type(search, 'PowerShell')
+      expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Collapse results' }))
+      act(() => useAppStore.setState({ appState: { ...useAppStore.getState().appState, sessions: [
+        { ...runningWorktreeSession, title: 'PowerShell debugging' }, { ...stoppedSession, projectId: secondProject.id }
+      ] } }))
+      expect(screen.getByRole('button', { name: 'Collapse results' })).toBeEnabled()
+      expect(screen.getByText('PowerShell debugging')).toBeInTheDocument()
+      expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+    })
+
+    it('disables the empty-project-list toggle and translates both states', async () => {
+      const user = userEvent.setup()
+      render(<ProjectSidebar />)
+      expect(screen.getByRole('button', { name: 'Expand all projects' })).toBeDisabled()
+      act(() => {
+        seedStore({ version: 1, projects: [project1], sessions: [runningWorktreeSession] })
+        useAppStore.setState({ locale: 'zh-CN' })
+      })
+      await user.click(screen.getByRole('button', { name: '全部折叠' }))
+      expect(screen.getByRole('button', { name: '全部展开' })).toBeEnabled()
+      await user.type(screen.getByRole('searchbox', { name: '搜索会话' }), 'login')
+      await user.click(screen.getByRole('button', { name: '折叠搜索/筛选结果' }))
+      expect(screen.getByRole('button', { name: '展开搜索/筛选结果' })).toBeEnabled()
+    })
+  })
+
   describe('session status filter', () => {
     const chooseStatus = async (user: ReturnType<typeof userEvent.setup>, status: string) => {
       await user.click(screen.getByRole('button', { name: 'Filter sessions' }))

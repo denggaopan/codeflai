@@ -115,6 +115,7 @@ export default function ProjectSidebar() {
   const activeSessionId = useAppStore((state) => state.activeSessionId)
   const collapsedProjectIds = useAppStore((state) => state.collapsedProjectIds)
   const toggleProjectCollapsed = useAppStore((state) => state.toggleProjectCollapsed)
+  const setProjectsCollapsed = useAppStore((state) => state.setProjectsCollapsed)
   const searchQuery = useAppStore((state) => state.searchQuery)
   const idleAgentSessionIds = useAppStore((state) => state.idleAgentSessionIds)
   const notice = useAppStore((state) => state.notice)
@@ -366,11 +367,41 @@ export default function ProjectSidebar() {
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const filtering = normalizedQuery !== '' || statusFilter !== 'all'
+  const [resultFolds, setResultFolds] = useState<{ query: string; status: SessionStatusFilter; ids: string[] }>({
+    query: normalizedQuery, status: statusFilter, ids: []
+  })
+  // New criteria reveal matches; folding results never overwrites saved workspace folds.
+  if (resultFolds.query !== normalizedQuery || resultFolds.status !== statusFilter) {
+    setResultFolds({ query: normalizedQuery, status: statusFilter, ids: [] })
+  }
   const dragEnabled = !filtering
   const filteredSessions = appState.sessions.filter((session) => {
     const status = isAgentDone(session, idleAgentSessionIds[session.id] === true) ? 'done' : session.status
     return (statusFilter === 'all' || status === statusFilter) && session.title.toLowerCase().includes(normalizedQuery)
   })
+  const matchingProjectIds = new Set(filteredSessions.map((session) => session.projectId))
+  const targetProjectIds = appState.projects
+    .filter((project) => !filtering || matchingProjectIds.has(project.id))
+    .map((project) => project.id)
+  const isProjectExpanded = (projectId: string): boolean =>
+    !(filtering && matchingProjectIds.has(projectId) ? resultFolds.ids : collapsedProjectIds).includes(projectId)
+  const hasExpandedProjects = targetProjectIds.some(isProjectExpanded)
+  const foldActionLabel = filtering
+    ? t(hasExpandedProjects ? 'sidebar.collapseResults' : 'sidebar.expandResults')
+    : t(hasExpandedProjects ? 'sidebar.collapseAllProjects' : 'sidebar.expandAllProjects')
+
+  const toggleAllProjects = (): void => {
+    if (filtering) {
+      setResultFolds((current) => ({
+        ...current,
+        ids: hasExpandedProjects
+          ? [...new Set([...current.ids, ...targetProjectIds])]
+          : current.ids.filter((id) => !targetProjectIds.includes(id))
+      }))
+    } else {
+      setProjectsCollapsed(targetProjectIds, hasExpandedProjects)
+    }
+  }
 
   const clearDragState = (): void => {
     dragOriginIsExemptRef.current = false
@@ -482,6 +513,18 @@ export default function ProjectSidebar() {
           onChange={(event) => setSearchQuery(event.target.value)}
         />
         <SessionFilters value={statusFilter} onChange={setStatusFilter} />
+        <button
+          type="button"
+          className="project-fold-toggle"
+          aria-label={foldActionLabel}
+          title={foldActionLabel}
+          disabled={targetProjectIds.length === 0}
+          onClick={toggleAllProjects}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d={hasExpandedProjects ? 'm8 3 4 4 4-4M4 10h16M4 14h16m-12 7 4-4 4 4' : 'm8 6 4-4 4 4M4 10h16M4 14h16m-12 4 4 4 4-4'} />
+          </svg>
+        </button>
       </div>
 
       {notice && (
@@ -503,8 +546,7 @@ export default function ProjectSidebar() {
           </div>
         )}
         {appState.projects.map((project) => {
-          // Filters reveal matches without changing each project's saved collapse state.
-          const expanded = !collapsedProjectIds.includes(project.id) || filtering
+          const expanded = isProjectExpanded(project.id)
           const visibleSessions = filteredSessions.filter((session) => session.projectId === project.id)
 
           return (
@@ -536,7 +578,16 @@ export default function ProjectSidebar() {
                   className="project-row-label"
                   aria-expanded={expanded}
                   aria-controls={`project-sessions-${project.id}`}
-                  onClick={() => toggleProjectCollapsed(project.id)}
+                  onClick={() => {
+                    if (filtering && matchingProjectIds.has(project.id)) {
+                      setResultFolds((current) => ({
+                        ...current,
+                        ids: expanded ? [...current.ids, project.id] : current.ids.filter((id) => id !== project.id)
+                      }))
+                    } else {
+                      toggleProjectCollapsed(project.id)
+                    }
+                  }}
                 >
                   <span className="project-name" title={project.name}>
                     {project.name}

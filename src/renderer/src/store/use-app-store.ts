@@ -105,6 +105,7 @@ export type AppStore = {
 
   setActiveProject: (projectId: string) => void
   toggleProjectCollapsed: (projectId: string) => void
+  setProjectsCollapsed: (projectIds: string[], collapsed: boolean) => void
   setActiveSession: (sessionId: string, projectId?: string) => void
   restoreSession: (sessionId: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResult | undefined>
@@ -813,6 +814,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
       collapsedProjectIds: state.collapsedProjectIds.includes(projectId)
         ? state.collapsedProjectIds.filter((id) => id !== projectId)
         : [...state.collapsedProjectIds, projectId]
+    })),
+
+    setProjectsCollapsed: (projectIds, collapsed) => set((state) => ({
+      collapsedProjectIds: collapsed
+        ? [...new Set([...state.collapsedProjectIds, ...projectIds])]
+        : state.collapsedProjectIds.filter((id) => !projectIds.includes(id))
     })),
 
     setActiveSession: (sessionId, projectId) =>
