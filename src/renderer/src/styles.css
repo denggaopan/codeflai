@@ -587,13 +587,6 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .session-filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--color-text-muted);
-}
-
-.session-filter-field select {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border);

@@ -40,7 +40,7 @@ test('toggles all projects and filtered results while preserving workspace folds
   const applyStatus = async (status: string) => {
     await page.getByRole('button', { name: 'Filter sessions', exact: true }).click()
     await page.getByRole('combobox', { name: 'Session status', exact: true }).selectOption(status)
-    await page.getByRole('button', { name: 'Apply filters', exact: true }).click()
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
   }
   try {
     expect(await app.evaluate(({ app }) => app.getVersion())).toBe(JSON.parse(readFileSync('package.json', 'utf8')).version)
@@ -140,7 +140,7 @@ test('toggles all projects and filtered results while preserving workspace folds
       return popup.left >= sidebar.left && popup.right <= sidebar.right && input.left >= popup.left && input.right <= popup.right
     })).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('sidebar-search-narrow.png') })
-    await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+    await page.getByRole('button', { name: 'Clear', exact: true }).click()
     await expect(search).toHaveValue('')
     await expect(search).toBeFocused()
     await page.getByRole('button', { name: 'Close search', exact: true }).click()

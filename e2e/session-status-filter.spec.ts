@@ -11,7 +11,7 @@ const applyStatusFilter = async (page: Page, status: string): Promise<void> => {
   const dialog = page.getByRole('dialog', { name: 'Filter sessions', exact: true })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('combobox', { name: 'Session status', exact: true }).selectOption(status)
-  await dialog.getByRole('button', { name: 'Apply filters', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(trigger).toBeFocused()
 }
@@ -178,11 +178,11 @@ test('filters live sessions by status and search while retaining the active term
     await filterButton.click()
     await expect(filter).toHaveValue('running')
     await filter.selectOption('done')
-    await filterDialog.getByRole('button', { name: 'Reset filters', exact: true }).click()
+    await filterDialog.getByRole('button', { name: 'Reset', exact: true }).click()
     await expect(filter).toHaveValue('all')
     await expect(sidebar.locator('.session-row')).toHaveCount(1)
     await expect(filterButton).toHaveAttribute('title', 'Session status: Running')
-    await filterDialog.getByRole('button', { name: 'Apply filters', exact: true }).click()
+    await filterDialog.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(filterDialog).toBeHidden()
     await expect(filterButton).toBeFocused()
     await expect(sidebar.locator('.session-row')).toHaveCount(2)
@@ -237,7 +237,7 @@ test('filters live sessions by status and search while retaining the active term
     await page.keyboard.press('ArrowDown')
     await expect(filter).toHaveValue('running')
     await expect(sidebar.locator('.session-row')).toHaveCount(2)
-    await filterDialog.getByRole('button', { name: 'Apply filters', exact: true }).click()
+    await filterDialog.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(filterDialog).toBeHidden()
     await expect(filterButton).toBeFocused()
     await expect(sidebar.locator('.session-row')).toHaveCount(1)
@@ -258,7 +258,7 @@ test('filters live sessions by status and search while retaining the active term
     const chineseDialog = page.getByRole('dialog', { name: '筛选会话', exact: true })
     await expect(chineseDialog).toBeVisible()
     await expect(chineseDialog.getByRole('combobox', { name: '会话状态' })).toHaveValue('running')
-    for (const name of ['应用筛选', '重置筛选', '关闭筛选']) {
+    for (const name of ['应用', '重置', '关闭筛选']) {
       await expect(chineseDialog.getByRole('button', { name, exact: true })).toBeVisible()
     }
     await page.screenshot({ path: testInfo.outputPath('status-filter-light-zh.png') })

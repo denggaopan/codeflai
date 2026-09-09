@@ -72,7 +72,7 @@ export default function SessionSearch({ value, onChange, triggerRef }: SessionSe
           onSubmit={(event) => { event.preventDefault(); close() }}
         >
           <div className="session-filter-heading">
-            <strong>{t('sidebar.searchSessions')}</strong>
+            <strong>{t('sidebar.searchTitle')}</strong>
             <button type="button" aria-label={t('sidebar.closeSearch')} onClick={close}>&times;</button>
           </div>
           <input

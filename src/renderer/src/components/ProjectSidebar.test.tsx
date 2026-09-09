@@ -421,7 +421,7 @@ describe('ProjectSidebar', () => {
     expect(trigger).toHaveFocus()
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
     await openSearch(user)
-    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
     expect(screen.getByRole('searchbox')).toHaveFocus()
     expect(screen.getByRole('searchbox')).toHaveValue('')
     expect(trigger).not.toHaveAttribute('data-active')
@@ -448,7 +448,7 @@ describe('ProjectSidebar', () => {
     await user.click(screen.getByRole('button', { name: '搜索会话' }))
     expect(screen.getByRole('searchbox', { name: '搜索会话' })).toHaveFocus()
     expect(screen.getByRole('button', { name: '关闭搜索' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '清除搜索' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '清除' })).toBeInTheDocument()
   })
 
   describe('bulk project folding', () => {
@@ -490,7 +490,7 @@ describe('ProjectSidebar', () => {
       if (mode !== 'search') {
         await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
         await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
-        await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+        await user.click(screen.getByRole('button', { name: 'Apply' }))
       }
       if (mode !== 'status') await user.type(await openSearch(user), 'login')
       expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
@@ -552,7 +552,7 @@ describe('ProjectSidebar', () => {
     const chooseStatus = async (user: ReturnType<typeof userEvent.setup>, status: string) => {
       await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
       await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), status)
-      await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+      await user.click(screen.getByRole('button', { name: 'Apply' }))
     }
     const sessions: SessionRecord[] = [
       { ...runningWorktreeSession, id: 'busy', title: 'Busy agent' },
@@ -665,7 +665,7 @@ describe('ProjectSidebar', () => {
         '全部状态', '运行中', '已完成', '已停止', '启动中…', '路径不存在', '错误'
       ])
       await user.selectOptions(filter, 'done')
-      await user.click(screen.getByRole('button', { name: '应用筛选' }))
+      await user.click(screen.getByRole('button', { name: '应用' }))
       expect(screen.getByRole('status')).toHaveTextContent('没有符合条件的会话')
       expect(screen.getByRole('button', { name: '清除筛选' })).toBeInTheDocument()
     })
@@ -694,15 +694,15 @@ describe('ProjectSidebar', () => {
       expect(container.querySelectorAll('.session-row')).toHaveLength(1)
       expect(trigger).toHaveFocus()
       await user.click(trigger)
-      await user.click(screen.getByRole('button', { name: 'Reset filters' }))
+      await user.click(screen.getByRole('button', { name: 'Reset' }))
       expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('all')
       expect(container.querySelectorAll('.session-row')).toHaveLength(1)
       await user.click(await openSearch(user))
       expect(screen.queryByRole('dialog', { name: 'Filter sessions' })).not.toBeInTheDocument()
       await user.click(trigger)
       expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('done')
-      await user.click(screen.getByRole('button', { name: 'Reset filters' }))
-      await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+      await user.click(screen.getByRole('button', { name: 'Reset' }))
+      await user.click(screen.getByRole('button', { name: 'Apply' }))
       expect(container.querySelectorAll('.session-row')).toHaveLength(7)
     })
   })

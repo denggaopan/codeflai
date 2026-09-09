@@ -83,21 +83,24 @@ export default function SessionFilters({ value, onChange }: SessionFiltersProps)
           }}
         >
           <div className="session-filter-heading">
-            <strong>{t('sidebar.filterSessions')}</strong>
+            <strong>{t('sidebar.filterTitle')}</strong>
             <button type="button" aria-label={t('sidebar.closeFilters')} onClick={close}>&times;</button>
           </div>
-          <label className="session-filter-field">
-            <span>{t('sidebar.sessionStatus')}</span>
-            <select ref={selectRef} value={draftStatus} onChange={(event) => setDraftStatus(event.target.value as SessionStatusFilter)}>
-              <option value="all">{t('sidebar.allStatuses')}</option>
-              <option value="running">{t('status.running')}</option>
-              <option value="done">{t('status.done')}</option>
-              <option value="stopped">{t('sidebar.stoppedStatus')}</option>
-              <option value="creating">{t('status.creating')}</option>
-              <option value="missing">{t('status.missing')}</option>
-              <option value="error">{t('status.error')}</option>
-            </select>
-          </label>
+          <select
+            ref={selectRef}
+            className="session-filter-field"
+            aria-label={t('sidebar.sessionStatus')}
+            value={draftStatus}
+            onChange={(event) => setDraftStatus(event.target.value as SessionStatusFilter)}
+          >
+            <option value="all">{t('sidebar.allStatuses')}</option>
+            <option value="running">{t('status.running')}</option>
+            <option value="done">{t('status.done')}</option>
+            <option value="stopped">{t('sidebar.stoppedStatus')}</option>
+            <option value="creating">{t('status.creating')}</option>
+            <option value="missing">{t('status.missing')}</option>
+            <option value="error">{t('status.error')}</option>
+          </select>
           <div className="session-filter-actions">
             <button type="reset">{t('sidebar.resetFilters')}</button>
             <button type="submit">{t('sidebar.applyFilters')}</button>

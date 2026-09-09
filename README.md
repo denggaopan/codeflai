@@ -113,7 +113,7 @@ one tells you what it is doing. Closing the window does **not** stop them.
 your projects below them, and the [Settings](#settings) gear at the bottom. Click the search
 icon to open its input; results update as you type. Escape, Enter, or clicking outside
 closes the search popup while keeping the query active. The search icon fills when
-a query is active; reopen it to edit the query or use **Clear search**.
+a query is active; reopen it to edit the query or use **Clear**.
 
 A project name toggles just that project's session list; switching sessions never re-folds anything. Searching temporarily reveals matching sessions
 across every project, and clearing the search puts each project's fold state back. Each
@@ -122,7 +122,7 @@ session row has a delete button.
 
 Click the small gray filter icon beside the search icon to open the filter form. Choose
 **All statuses**, **Running**, **Done**, **Stopped**, **Starting…**, **Path missing**, or
-**Error** in **Session status**, then click **Apply filters**. **Reset filters** resets the
+**Error** in the status dropdown, then click **Apply**. **Reset** resets the
 form; closing it without applying discards those edits. Status and title
 search work together, and matching sessions update as their status changes. Filters
 temporarily unfold projects without changing their saved fold state or your active
