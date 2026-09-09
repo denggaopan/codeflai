@@ -122,6 +122,7 @@ export default function ProjectSidebar() {
   const searchQuery = useAppStore((state) => state.searchQuery)
   const idleAgentSessionIds = useAppStore((state) => state.idleAgentSessionIds)
   const notice = useAppStore((state) => state.notice)
+  const creatingSession = useAppStore((state) => state.creatingSession)
   const setSearchQuery = useAppStore((state) => state.setSearchQuery)
   const setActiveProject = useAppStore((state) => state.setActiveProject)
   const reorderProjects = useAppStore((state) => state.reorderProjects)
@@ -536,6 +537,18 @@ export default function ProjectSidebar() {
           </svg>
         </button>
       </div>
+
+      {creatingSession && (
+        <div className="session-creation-status" role="status" aria-live="polite" aria-atomic="true">
+          <span className="session-creation-spinner" aria-hidden="true" />
+          <div>
+            <span>{t('launcher.creatingSession')}</span>
+            <span className="session-creation-project">
+              {appState.projects.find((project) => project.id === creatingSession.projectId)?.name}
+            </span>
+          </div>
+        </div>
+      )}
 
       {notice && (
         <div className="sidebar-notice" role="alert">

@@ -400,6 +400,33 @@ describe('useAppStore.removeProject', () => {
 })
 
 describe('useAppStore.createSession', () => {
+  it('tracks the whole request and ignores duplicate creation from any entry point', async () => {
+    let resolve!: (session: SessionRecord) => void
+    api.createSession.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    const request = useAppStore.getState().createSession('project-1', 'claude', true)
+
+    expect(useAppStore.getState().creatingSession).toEqual({ projectId: 'project-1', kind: 'claude', worktree: true })
+    useAppStore.getState().closeLauncher()
+    await useAppStore.getState().createSession('project-1', 'powershell', false)
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+
+    resolve(claudeSession)
+    await request
+    expect(useAppStore.getState().creatingSession).toBeNull()
+    expect(useAppStore.getState().activeSessionId).toBe(claudeSession.id)
+  })
+
+  it('clears pending state on failure and allows retry', async () => {
+    api.createSession.mockRejectedValueOnce(new Error('Could not create worktree'))
+    await useAppStore.getState().createSession('project-1', 'claude', true)
+    expect(useAppStore.getState().creatingSession).toBeNull()
+    expect(useAppStore.getState().notice?.message).toBe('Could not create worktree')
+
+    await useAppStore.getState().createSession('project-1', 'claude', true)
+    expect(api.createSession).toHaveBeenCalledTimes(2)
+    expect(useAppStore.getState().creatingSession).toBeNull()
+  })
+
   it('forwards the per-creation worktree choice to the main process verbatim', async () => {
     await useAppStore.getState().createSession('project-1', 'claude', true)
     expect(api.createSession).toHaveBeenLastCalledWith('project-1', 'claude', true)

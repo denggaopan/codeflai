@@ -78,6 +78,7 @@ export const zhCN: Translations = {
 
   'launcher.createSession': '创建会话',
   'launcher.newSession': '新建会话',
+  'launcher.creatingSession': '正在创建会话…',
   'launcher.close': '关闭启动器',
   'launcher.worktreeVariant': '{kind}（新建 worktree）',
   'launcher.allKindsDisabled': '所有会话类型都已在设置中关闭。',

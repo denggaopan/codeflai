@@ -54,6 +54,7 @@ export type AppStore = {
   sessionFocusRequest: number
   collapsedProjectIds: string[]
   launcherOpen: boolean
+  creatingSession: { projectId: string; kind: SessionKind; worktree: boolean } | null
   searchQuery: string
   notice: Notice | null
   /** Quiet agent sessions with no reported foreground or background work. */
@@ -373,6 +374,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     sessionFocusRequest: 0,
     collapsedProjectIds: [],
     launcherOpen: false,
+    creatingSession: null,
     searchQuery: '',
     notice: null,
     idleAgentSessionIds: {},
@@ -559,6 +561,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         sessionFocusRequest: 0,
         collapsedProjectIds: [],
         launcherOpen: false,
+        creatingSession: null,
         searchQuery: '',
         notice: null,
         idleAgentSessionIds: {},
@@ -795,16 +798,19 @@ export const useAppStore = create<AppStore>()((set, get) => {
     closeLauncher: () => set({ launcherOpen: false }),
 
     createSession: async (projectId, kind, worktree) => {
+      if (get().creatingSession) return
+      set({ creatingSession: { projectId, kind, worktree }, notice: null })
       try {
         const session = await window.codeflai.createSession(projectId, kind, worktree)
         set((state) => ({
           appState: upsertSession(state.appState, session),
           activeProjectId: session.projectId,
           activeSessionId: session.id,
-          launcherOpen: false
+          launcherOpen: false,
+          creatingSession: null
         }))
       } catch (error) {
-        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
+        set({ creatingSession: null, notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
     },
 

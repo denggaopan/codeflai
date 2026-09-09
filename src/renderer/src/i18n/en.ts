@@ -78,6 +78,7 @@ export const en = {
 
   'launcher.createSession': 'Create session',
   'launcher.newSession': 'New session',
+  'launcher.creatingSession': 'Creating session...',
   'launcher.close': 'Close launcher',
   'launcher.worktreeVariant': '{kind} (new worktree)',
   'launcher.allKindsDisabled': 'Every session kind is turned off in Settings.',

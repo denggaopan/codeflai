@@ -640,6 +640,52 @@ body[data-sidebar-resizing='true'] .app-main {
   font: inherit;
 }
 
+.session-creation-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 12px 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-panel-elevated);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.session-creation-status > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-creation-project {
+  display: block;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-creation-spinner {
+  display: inline-block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: session-creation-spin 0.8s linear infinite;
+}
+
+@keyframes session-creation-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-creation-spinner { animation: none; }
+}
+
 .sidebar-notice {
   flex: 0 0 auto;
   display: flex;
@@ -1121,6 +1167,12 @@ body[data-sidebar-resizing='true'] .app-main {
 .session-launcher-item button:disabled {
   color: var(--color-text-muted);
   cursor: not-allowed;
+}
+
+.session-launcher-item button[aria-busy='true'] {
+  color: var(--color-text);
+  background: var(--color-panel);
+  cursor: progress;
 }
 
 .session-launcher-icon {

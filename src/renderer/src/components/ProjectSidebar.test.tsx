@@ -136,6 +136,73 @@ afterEach(() => {
 
 const projectOptionsName = (projectName: string): string => `Project options for ${projectName}`
 
+it('keeps creation feedback visible after dismissing and reopening the launcher', async () => {
+  const user = userEvent.setup()
+  let resolve!: (session: SessionRecord) => void
+  vi.mocked(api.createSession).mockReturnValueOnce(new Promise((done) => { resolve = done }))
+  seedStore({ version: 1, projects: [project1], sessions: [] })
+  render(<ProjectSidebar />)
+  await openProjectOptions(user)
+  await user.click(screen.getByRole('menuitem', { name: 'New session' }))
+  const entry = screen.getByRole('button', { name: 'Claude (new worktree)' })
+  await user.click(entry)
+
+  expect(screen.getByRole('status')).toHaveTextContent('Creating session...')
+  expect(screen.getByRole('status')).toHaveTextContent(project1.name)
+  expect(entry).toHaveAttribute('aria-busy', 'true')
+  expect(entry).toBeDisabled()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByLabelText('Create session')).not.toBeInTheDocument()
+  expect(screen.getByRole('status')).toBeVisible()
+
+  await openProjectOptions(user)
+  await user.click(screen.getByRole('menuitem', { name: 'New session' }))
+  expect(screen.getByRole('button', { name: 'Claude (new worktree)' })).toHaveAttribute('aria-busy', 'true')
+  expect(screen.getByRole('button', { name: 'PowerShell' })).toBeDisabled()
+  expect(api.createSession).toHaveBeenCalledTimes(1)
+
+  await act(async () => resolve(runningWorktreeSession))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Create session')).not.toBeInTheDocument()
+  expect(useAppStore.getState().activeSessionId).toBe(runningWorktreeSession.id)
+})
+
+it('replaces loading with an error and re-enables creation after failure', async () => {
+  const user = userEvent.setup()
+  let reject!: (reason: Error) => void
+  vi.mocked(api.createSession).mockReturnValueOnce(new Promise((_done, fail) => { reject = fail }))
+  seedStore({ version: 1, projects: [project1], sessions: [] })
+  render(<ProjectSidebar />)
+  await openProjectOptions(user)
+  await user.click(screen.getByRole('menuitem', { name: 'New session' }))
+  const entry = screen.getByRole('button', { name: 'PowerShell' })
+  await user.click(entry)
+  act(() => useAppStore.setState({ locale: 'zh-CN' }))
+  expect(screen.getByRole('status')).toHaveTextContent('正在创建会话…')
+
+  await act(async () => reject(new Error('Session launch failed')))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent('Session launch failed')
+  expect(entry).toBeEnabled()
+  expect(entry).not.toHaveAttribute('aria-busy', 'true')
+})
+
+it('shows loading for the macOS new-shell shortcut and ignores repeated shortcuts', async () => {
+  let resolve!: (session: SessionRecord) => void
+  vi.mocked(api.createSession).mockReturnValueOnce(new Promise((done) => { resolve = done }))
+  seedStore({ version: 1, projects: [project1], sessions: [] })
+  useAppStore.setState({ platform: 'darwin', activeProjectId: project1.id })
+  useAppStore.getState().setSessionKindPreference('shell', { enabled: true })
+  render(<ProjectSidebar />)
+  fireEvent.keyDown(document, { key: 't', code: 'KeyT', metaKey: true })
+  expect(screen.getByRole('status')).toHaveTextContent('Creating session...')
+  fireEvent.keyDown(document, { key: 't', code: 'KeyT', metaKey: true })
+  expect(api.createSession).toHaveBeenCalledTimes(1)
+  expect(api.createSession).toHaveBeenCalledWith(project1.id, 'shell', false)
+  await act(async () => resolve({ ...stoppedSession, kind: 'shell', status: 'running' }))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+})
+
 const openProjectOptions = async (
   user: ReturnType<typeof userEvent.setup>,
   projectName = project1.name

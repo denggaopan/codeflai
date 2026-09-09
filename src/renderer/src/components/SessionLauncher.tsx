@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { isAgentKind } from '../../../shared/agent-kinds'
 import type { SessionKind } from '../../../shared/contracts'
@@ -39,7 +39,7 @@ export default function SessionLauncher({ projectId }: SessionLauncherProps) {
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const createSession = useAppStore((state) => state.createSession)
   const closeLauncher = useAppStore((state) => state.closeLauncher)
-  const [pending, setPending] = useState(false)
+  const creatingSession = useAppStore((state) => state.creatingSession)
   const launcherRef = useRef<HTMLDivElement | null>(null)
 
   // Escape and outside clicks dismiss the popover; ProjectSidebar restores trigger focus.
@@ -79,13 +79,8 @@ export default function SessionLauncher({ projectId }: SessionLauncherProps) {
   })
 
   const handleSelect = async (kind: SessionKind, worktree: boolean): Promise<void> => {
-    if (!availability(kind).available || pending) return
-    setPending(true)
-    try {
-      await createSession(projectId, kind, worktree)
-    } finally {
-      setPending(false)
-    }
+    if (!availability(kind).available || creatingSession) return
+    await createSession(projectId, kind, worktree)
   }
 
   return (
@@ -103,17 +98,22 @@ export default function SessionLauncher({ projectId }: SessionLauncherProps) {
         {entries.map((entry) => {
           const info = availability(entry.kind)
           const detail = !info.available ? info.detail : undefined
+          const creating = creatingSession?.projectId === projectId &&
+            creatingSession.kind === entry.kind && creatingSession.worktree === entry.worktree
           return (
             <li key={entry.id} className="session-launcher-item" data-launcher-item title={detail}>
               <button
                 type="button"
                 data-kind={entry.kind}
                 data-worktree={entry.worktree ? 'true' : 'false'}
-                disabled={!info.available || pending}
+                disabled={!info.available || creatingSession !== null}
+                aria-busy={creating || undefined}
                 aria-description={detail}
                 onClick={() => handleSelect(entry.kind, entry.worktree)}
               >
-                <img src={sessionKindIconUrl(entry.kind)} alt="" width={16} height={16} className="session-launcher-icon" />
+                {creating ? <span className="session-creation-spinner" aria-hidden="true" /> : (
+                  <img src={sessionKindIconUrl(entry.kind)} alt="" width={16} height={16} className="session-launcher-icon" />
+                )}
                 <span className="session-launcher-label">{entry.label}</span>
                 {/* The accelerator is a literal key combination, identical in every language. */}
                 {entry.shortcut && (
