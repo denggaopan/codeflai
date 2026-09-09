@@ -597,7 +597,8 @@ describe('App', () => {
     window.codeflai = api
     render(<App />)
 
-    await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
+    await user.click(await screen.findByRole('button', { name: `Session options for ${stoppedPowerShellSession.title}` }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
 
     expect(api.restoreSession).not.toHaveBeenCalled()
     expect(api.deleteSession).not.toHaveBeenCalled()
@@ -614,7 +615,8 @@ describe('App', () => {
     window.codeflai = api
     render(<App />)
 
-    await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
+    await user.click(await screen.findByRole('button', { name: `Session options for ${stoppedPowerShellSession.title}` }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
     await user.click(await screen.findByRole('button', { name: 'Delete' }))
 
     expect(await screen.findByText('Worktree has 3 changed files. Commit or discard them before deleting.')).toBeInTheDocument()
@@ -628,7 +630,8 @@ describe('App', () => {
     window.codeflai = api
     render(<App />)
 
-    await user.click(await screen.findByRole('button', { name: `Delete ${stoppedPowerShellSession.title}` }))
+    await user.click(await screen.findByRole('button', { name: `Session options for ${stoppedPowerShellSession.title}` }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
     await user.click(await screen.findByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(screen.queryByText(stoppedPowerShellSession.title)).not.toBeInTheDocument())

@@ -889,7 +889,8 @@ test('blocks deleting a dirty worktree, then deletes cleanly and retains the bra
   const scratchFile = join(worktreePath, 'scratch.txt')
   writeFileSync(scratchFile, 'uncommitted change from the E2E test\n', 'utf8')
 
-  await cmdRow.locator('.session-delete').click()
+  await cmdRow.locator('.session-options-trigger').click()
+  await window.getByRole('menuitem', { name: 'Delete', exact: true }).click()
   const confirmDialog = window.getByRole('alertdialog')
   await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole('button', { name: 'Delete' }).click()
@@ -901,7 +902,8 @@ test('blocks deleting a dirty worktree, then deletes cleanly and retains the bra
   await window.getByRole('button', { name: 'Dismiss notice' }).click()
   rmSync(scratchFile)
 
-  await cmdRow.locator('.session-delete').click()
+  await cmdRow.locator('.session-options-trigger').click()
+  await window.getByRole('menuitem', { name: 'Delete', exact: true }).click()
   await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole('button', { name: 'Delete' }).click()
 

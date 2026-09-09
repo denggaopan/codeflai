@@ -60,7 +60,6 @@ export const zhCN: Translations = {
   'sidebar.allSessions': '全部会话',
   'sidebar.unreadOutput': '有未读输出',
   'sidebar.unreadCount': '{count} 个会话有未读输出',
-  'sidebar.deleteSessionAria': '删除 {title}',
   'sidebar.deleteSessionPrompt': '确定删除“{title}”吗？此操作无法撤销。',
   'sidebar.resizeHandle': '调整侧边栏宽度',
 

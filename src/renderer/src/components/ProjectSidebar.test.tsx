@@ -138,6 +138,13 @@ afterEach(() => {
 
 const projectOptionsName = (projectName: string): string => `Project options for ${projectName}`
 
+const requestSessionDelete = async (user: ReturnType<typeof userEvent.setup>, title: string): Promise<HTMLElement> => {
+  const trigger = screen.getByRole('button', { name: `Session options for ${title}` })
+  await user.click(trigger)
+  await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  return trigger
+}
+
 describe('session organization controls', () => {
   beforeEach(() => seedStore({ version: 1, projects: [project1], sessions: [runningWorktreeSession, stoppedSession] }))
 
@@ -233,12 +240,19 @@ describe('session organization controls', () => {
     expect(screen.getByRole('combobox', { name: 'Session visibility' })).toHaveValue('active')
   })
 
-  it('shows accessible unread markers and project counts without changing status', () => {
+  it('describes unread sessions and shows project counts without duplicating status dots', () => {
     useAppStore.setState({ unreadSessionIds: [runningWorktreeSession.id] })
     render(<ProjectSidebar />)
-    expect(screen.getByRole('img', { name: 'Unread output' })).toBeVisible()
+    const rowButton = screen.getByText(runningWorktreeSession.title).closest('button')!
+    expect(rowButton).toHaveAccessibleDescription('Unread output')
+    expect(screen.queryByRole('img', { name: 'Unread output' })).not.toBeInTheDocument()
+    expect(rowButton.closest('.session-row')).toHaveAttribute('data-unread', 'true')
     expect(screen.getByLabelText('1 unread session(s)')).toHaveTextContent('1')
     expect(screen.getByRole('img', { name: 'Running' })).toBeVisible()
+    act(() => useAppStore.setState({ unreadSessionIds: [] }))
+    expect(rowButton).not.toHaveAccessibleDescription()
+    expect(rowButton.closest('.session-row')).not.toHaveAttribute('data-unread')
+    expect(screen.queryByLabelText('1 unread session(s)')).not.toBeInTheDocument()
   })
 })
 
@@ -1806,12 +1820,13 @@ describe('ProjectSidebar', () => {
     expect(screen.queryByRole('img', { name: 'Done' })).not.toBeInTheDocument()
   })
 
-  it('stops propagation on the session delete button and opens a confirmation', async () => {
+  it('offers deletion only in the session menu and opens a confirmation without activating', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [runningWorktreeSession] })
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${runningWorktreeSession.title}` }))
+    expect(screen.queryByRole('button', { name: `Delete ${runningWorktreeSession.title}` })).not.toBeInTheDocument()
+    await requestSessionDelete(user, runningWorktreeSession.title)
 
     expect(api.restoreSession).not.toHaveBeenCalled()
     expect(useAppStore.getState().activeSessionId).toBeNull()
@@ -1823,7 +1838,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
+    await requestSessionDelete(user, stoppedSession.title)
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
   })
@@ -1833,7 +1848,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
+    await requestSessionDelete(user, stoppedSession.title)
     await user.keyboard('{Escape}')
 
     expect(api.deleteSession).not.toHaveBeenCalled()
@@ -1846,7 +1861,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
+    await requestSessionDelete(user, stoppedSession.title)
     await user.keyboard('{Enter}')
 
     expect(api.deleteSession).not.toHaveBeenCalled()
@@ -1857,7 +1872,7 @@ describe('ProjectSidebar', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
+    await requestSessionDelete(user, stoppedSession.title)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(api.deleteSession).not.toHaveBeenCalled()
@@ -1872,7 +1887,7 @@ describe('ProjectSidebar', () => {
     window.codeflai = api
     render(<ProjectSidebar />)
 
-    await user.click(screen.getByRole('button', { name: `Delete ${stoppedSession.title}` }))
+    await requestSessionDelete(user, stoppedSession.title)
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(await screen.findByText('Worktree has 2 changed files. Commit or discard them before deleting.')).toBeInTheDocument()
@@ -1929,53 +1944,50 @@ describe('ProjectSidebar', () => {
     expect(screen.getByText(runningWorktreeSession.worktreeName as string)).toHaveAttribute('title', runningWorktreeSession.worktreeName)
   })
 
-  it('exposes a non-empty accessible name for the sole icon-only project action', () => {
+  it('exposes accessible names for the project and session options buttons', () => {
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
     const trigger = screen.getByRole('button', { name: projectOptionsName(project1.name) })
     expect(trigger.getAttribute('aria-label')).toBeTruthy()
 
-    const deleteButton = screen.getByRole('button', { name: `Delete ${stoppedSession.title}` })
-    expect(deleteButton.getAttribute('aria-label')).toBeTruthy()
+    const optionsButton = screen.getByRole('button', { name: `Session options for ${stoppedSession.title}` })
+    expect(optionsButton.getAttribute('aria-label')).toBeTruthy()
   })
 
-  it('returns focus to the Delete button that opened the confirmation after Cancel', async () => {
+  it('returns focus to the session options button that opened the confirmation after Cancel', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    const deleteButton = screen.getByRole('button', { name: `Delete ${stoppedSession.title}` })
-    await user.click(deleteButton)
+    const optionsButton = await requestSessionDelete(user, stoppedSession.title)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(deleteButton).toHaveFocus()
+    expect(optionsButton).toHaveFocus()
   })
 
-  it('returns focus to the Delete button that opened the confirmation after Escape', async () => {
+  it('returns focus to the session options button that opened the confirmation after Escape', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     render(<ProjectSidebar />)
 
-    const deleteButton = screen.getByRole('button', { name: `Delete ${stoppedSession.title}` })
-    await user.click(deleteButton)
+    const optionsButton = await requestSessionDelete(user, stoppedSession.title)
     await user.keyboard('{Escape}')
 
-    expect(deleteButton).toHaveFocus()
+    expect(optionsButton).toHaveFocus()
   })
 
-  it('returns focus to the Delete button after a dirty-delete result leaves the session in place', async () => {
+  it('returns focus to the session options button after a dirty-delete result leaves the session in place', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
     api.deleteSession = vi.fn(async () => ({ status: 'dirty', changedFiles: 1 }) as DeleteSessionResult)
     window.codeflai = api
     render(<ProjectSidebar />)
 
-    const deleteButton = screen.getByRole('button', { name: `Delete ${stoppedSession.title}` })
-    await user.click(deleteButton)
+    const optionsButton = await requestSessionDelete(user, stoppedSession.title)
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     await screen.findByText('Worktree has 1 changed files. Commit or discard them before deleting.')
-    expect(deleteButton).toHaveFocus()
+    expect(optionsButton).toHaveFocus()
   })
 })

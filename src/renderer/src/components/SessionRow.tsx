@@ -118,7 +118,8 @@ export default function SessionRow({ session, active, onActivate, onRequestDelet
           <button type="button" disabled={busy} onClick={cancelRename} aria-label={t('common.cancel')} title={t('common.cancel')}>&times;</button>
         </form>
       ) : (
-        <button type="button" className="session-row-content" aria-current={active ? 'true' : undefined} onClick={onActivate}>
+        <button type="button" className="session-row-content" aria-current={active ? 'true' : undefined}
+          aria-description={unread ? t('sidebar.unreadOutput') : undefined} onClick={onActivate}>
           <span className="session-icon">
             <span aria-hidden="true" className="session-kind-icon" data-kind={session.kind}>
               <img src={sessionKindIconUrl(session.kind)} alt="" width={16} height={16} />
@@ -129,14 +130,11 @@ export default function SessionRow({ session, active, onActivate, onRequestDelet
           <span className="session-secondary" title={secondary}>{session.archived ? `${t('sidebar.archivedSession')} - ${secondary}` : secondary}</span>
         </button>
       )}
-      {unread && <span className="session-unread-dot" role="img" aria-label={t('sidebar.unreadOutput')} title={t('sidebar.unreadOutput')} />}
       <button ref={triggerRef} type="button" className="session-options-trigger" aria-label={t('sidebar.sessionOptions', { title: session.title })}
         aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={busy || editing}
         onClick={() => setMenuOpen(!menuOpen)}>
-        <img src={optionsIconUrl} className="icon icon-options" alt="" width={14} height={14} />
+        <img src={optionsIconUrl} className="icon icon-options" alt="" width={16} height={16} />
       </button>
-      <button type="button" className="session-delete" aria-label={t('sidebar.deleteSessionAria', { title: session.title })} disabled={busy}
-        onClick={(event) => onRequestDelete(event.currentTarget)}>&times;</button>
       {menuOpen && createPortal(
         <div ref={menuRef} id={menuId} className="session-options-menu" role="menu" aria-label={t('sidebar.sessionOptions', { title: session.title })} style={position}
           onBlur={(event) => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== triggerRef.current) closeMenu(false) }}

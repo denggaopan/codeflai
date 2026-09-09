@@ -60,7 +60,6 @@ export const en = {
   'sidebar.allSessions': 'All sessions',
   'sidebar.unreadOutput': 'Unread output',
   'sidebar.unreadCount': '{count} unread session(s)',
-  'sidebar.deleteSessionAria': 'Delete {title}',
   'sidebar.deleteSessionPrompt': 'Delete "{title}"? This cannot be undone.',
   'sidebar.resizeHandle': 'Resize sidebar',
 

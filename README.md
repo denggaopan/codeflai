@@ -119,7 +119,7 @@ a query is active; reopen it to edit the query or use **Clear**.
 A project name toggles just that project's session list; switching sessions never re-folds anything. Searching temporarily reveals matching sessions
 across every project, and clearing the search puts each project's fold state back. Each
 project row has a ⋯ button for its [options menu](#the-project-options-menu), and each
-session row has a delete button.
+session row has an options menu for renaming, archiving, and deleting.
 
 Click the small gray filter icon beside the search icon to open the filter form. Choose
 **All statuses**, **Running**, **Done**, **Stopped**, **Starting…**, **Path missing**, or
@@ -382,7 +382,7 @@ already-running title request. Renaming leaves the process and branch unchanged.
 ## Organizing sessions
 
 The options button on each session row offers **Rename**, **Archive** (or
-**Unarchive**), and **Delete**. The existing delete button is also available.
+**Unarchive**), and **Delete**. Deleting a session opens a confirmation dialog.
 
 **Archive** hides a session from the default list and saves that choice immediately.
 Its process keeps running, and its worktree and branch stay in place. Archiving
@@ -395,10 +395,11 @@ stopped sessions. Visibility combines with title search and status filtering.
 Reset restores the draft to all statuses and active sessions. Reopening the
 window resets the filter to active sessions without changing saved archives.
 
-A small **Unread output** dot marks sessions that receive live terminal output or
+Bold titles mark sessions that receive live terminal output or
 an exit event while you are viewing another session or the window is unfocused.
 The project shows the number of unread sessions in the current filter results.
-Viewing a session in the focused window clears its dot. Existing unread flags
+The row exposes an **Unread output** description to screen readers. Viewing a
+session in the focused window restores normal title weight. Existing unread flags
 survive reopening the window; replaying old terminal output does not create new
 ones. Unread activity is tracked while the window is connected and does not mean
 that an agent completed its task successfully.
