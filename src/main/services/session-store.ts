@@ -91,7 +91,17 @@ export class SessionStore {
   }
 
   async saveWorkspace(workspace: WorkspaceState): Promise<void> {
-    await this.update((state) => ({ ...state, workspace: reconcileWorkspace(workspace, state) }))
+    await this.update((state) => ({
+      ...state,
+      // Navigation can be saved before the renderer has hydrated unread activity.
+      // Omission preserves it; an explicit empty list acknowledges everything.
+      workspace: reconcileWorkspace({
+        ...workspace,
+        ...(workspace.unreadSessionIds === undefined && state.workspace?.unreadSessionIds !== undefined
+          ? { unreadSessionIds: state.workspace.unreadSessionIds }
+          : {})
+      }, state)
+    }))
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {

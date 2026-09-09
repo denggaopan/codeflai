@@ -427,7 +427,171 @@ describe('SessionCoordinator.restore', () => {
   })
 })
 
+describe('SessionCoordinator session metadata', () => {
+  it('persists a trimmed manual title before broadcasting the updated record', async () => {
+    const session = runningSession({ archived: true })
+    const { store, coordinator } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+    const seen: AppState[] = []
+    const persistedWhenEmitted: Promise<AppState>[] = []
+    coordinator.onStateChanged((state) => {
+      seen.push(state)
+      persistedWhenEmitted.push(store.load())
+    })
+
+    const renamed = await coordinator.rename(session.id, '  Fix login  ')
+
+    expect(renamed).toEqual({ ...session, title: 'Fix login', titleState: 'complete', titleManuallySet: true })
+    expect((await store.load()).sessions).toEqual([renamed])
+    expect(seen).toHaveLength(1)
+    expect(seen).toEqual(await Promise.all(persistedWhenEmitted))
+  })
+
+  it('rejects invalid titles before persisting any change', async () => {
+    const { store, coordinator } = buildHarness({ initial: { ...emptyState(), sessions: [runningSession()] } })
+    for (const title of ['', '  \t ', 'x'.repeat(201)]) {
+      await expect(coordinator.rename('session-1', title)).rejects.toThrow()
+    }
+    expect(store.update).not.toHaveBeenCalled()
+  })
+
+  it('leaves metadata unchanged and emits nothing when a rename cannot persist', async () => {
+    const session = runningSession()
+    const { store, coordinator } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+    const listener = vi.fn()
+    coordinator.onStateChanged(listener)
+    store.update.mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(coordinator.rename(session.id, 'Manual title')).rejects.toThrow('disk full')
+
+    expect((await store.load()).sessions).toEqual([session])
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it.each(['running', 'stopped'] as const)('archives and unarchives a %s worktree without changing its runtime or location', async (status) => {
+    const session = runningSession({
+      mode: 'worktree',
+      launchPath: worktreeLocation.launchPath,
+      worktreeName: worktreeLocation.worktreeName,
+      worktreePath: worktreeLocation.worktreePath,
+      branchName: worktreeLocation.branchName,
+      status
+    })
+    const { store, coordinator, terminalService, worktreeService, titleService } = buildHarness({
+      initial: { ...emptyState(), sessions: [session] }
+    })
+    const seen: AppState[] = []
+    coordinator.onStateChanged((state) => seen.push(state))
+
+    for (const archived of [true, false]) {
+      const updated = await coordinator.setArchived(session.id, archived)
+      expect(updated).toEqual({ ...session, archived })
+      expect((await store.load()).sessions).toEqual([updated])
+      expect(seen.at(-1)?.sessions).toEqual([updated])
+    }
+
+    expect(seen).toHaveLength(2)
+    expect(terminalService.start).not.toHaveBeenCalled()
+    expect(terminalService.stop).not.toHaveBeenCalled()
+    expect(terminalService.stopAll).not.toHaveBeenCalled()
+    expect(worktreeService.create).not.toHaveBeenCalled()
+    expect(worktreeService.remove).not.toHaveBeenCalled()
+    expect(worktreeService.rollback).not.toHaveBeenCalled()
+    expect(titleService.cancel).not.toHaveBeenCalled()
+  })
+
+  it('leaves metadata unchanged and emits nothing when archiving cannot persist', async () => {
+    const session = runningSession()
+    const { store, coordinator, terminalService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+    const listener = vi.fn()
+    coordinator.onStateChanged(listener)
+    store.update.mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(coordinator.setArchived(session.id, true)).rejects.toThrow('disk full')
+
+    expect((await store.load()).sessions).toEqual([session])
+    expect(listener).not.toHaveBeenCalled()
+    expect(terminalService.stop).not.toHaveBeenCalled()
+  })
+
+  it('rejects metadata changes for unknown sessions', async () => {
+    const { coordinator } = buildHarness()
+    const listener = vi.fn()
+    coordinator.onStateChanged(listener)
+
+    await expect(coordinator.rename('unknown', 'Title')).rejects.toBeInstanceOf(SessionNotFoundError)
+    await expect(coordinator.setArchived('unknown', true)).rejects.toBeInstanceOf(SessionNotFoundError)
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('keeps archive and manual-title metadata when restoring a stopped session', async () => {
+    const session = runningSession({ status: 'stopped', archived: true, title: 'Manual title', titleManuallySet: true, titleState: 'complete' })
+    const { coordinator, store } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+
+    const restored = await coordinator.restore(session.id)
+
+    expect(restored).toEqual({ ...session, status: 'running' })
+    expect((await store.load()).sessions).toEqual([restored])
+  })
+
+  it('serializes metadata changes behind an in-flight restore of the same session', async () => {
+    const session = runningSession({ status: 'stopped' })
+    const { coordinator, store, terminalService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+    let finishStart!: () => void
+    terminalService.start.mockImplementationOnce(() => new Promise<undefined>((resolve) => { finishStart = () => resolve(undefined) }))
+    const restoring = coordinator.restore(session.id)
+    await vi.waitFor(() => expect(terminalService.start).toHaveBeenCalledOnce())
+
+    const renaming = coordinator.rename(session.id, 'Manual title')
+    const archiving = coordinator.setArchived(session.id, true)
+    await Promise.resolve()
+    expect(store.update).not.toHaveBeenCalled()
+
+    finishStart()
+    await Promise.all([restoring, renaming, archiving])
+
+    expect((await store.load()).sessions[0]).toMatchObject({ status: 'running', archived: true, title: 'Manual title', titleManuallySet: true })
+    expect(terminalService.start).toHaveBeenCalledOnce()
+  })
+})
+
 describe('SessionCoordinator.submitFirstInput', () => {
+  it('never starts automatic title generation after the user renames a pending session', async () => {
+    const session = runningSession({ kind: 'claude', titleState: 'pending' })
+    const { coordinator, store, titleService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+
+    await coordinator.rename(session.id, 'My task')
+    await coordinator.submitFirstInput(session.id, 'A first prompt')
+
+    expect(titleService.generate).not.toHaveBeenCalled()
+    expect((await store.load()).sessions[0]).toMatchObject({ title: 'My task', titleState: 'complete', titleManuallySet: true })
+  })
+
+  it('does not overwrite a manual rename when an in-flight generated title completes', async () => {
+    const session = runningSession({ kind: 'claude', titleState: 'pending' })
+    const { coordinator, store, titleService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+    let finishTitle!: (title: string) => void
+    titleService.generate.mockImplementationOnce(() => new Promise<string>((resolve) => { finishTitle = resolve }))
+    const generating = coordinator.submitFirstInput(session.id, 'A first prompt')
+    await vi.waitFor(() => expect(titleService.generate).toHaveBeenCalledOnce())
+
+    await coordinator.rename(session.id, 'My task')
+    finishTitle('Generated title')
+    await generating
+
+    expect((await store.load()).sessions[0]).toMatchObject({ title: 'My task', titleState: 'complete', titleManuallySet: true })
+  })
+
+  it('honors persisted manual titles even when their title state is still pending', async () => {
+    const session = runningSession({ title: 'My task', titleManuallySet: true, titleState: 'pending' })
+    const { coordinator, store, titleService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
+
+    await coordinator.submitFirstInput(session.id, 'A first prompt after restarting')
+
+    expect(titleService.generate).not.toHaveBeenCalled()
+    expect((await store.load()).sessions[0]?.title).toBe('My task')
+  })
+
   it('flips titleState to complete (keeping the temporary title) before calling generate, then persists the sanitized title', async () => {
     const session = runningSession({ kind: 'claude', title: 'New Claude session', status: 'running' })
     const { store, titleService, coordinator } = buildHarness({

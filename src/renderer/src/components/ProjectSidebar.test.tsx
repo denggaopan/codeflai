@@ -54,6 +54,8 @@ const createFakeApi = (): FakeApi => ({
     throw new Error('restoreSession not stubbed for this test')
   }),
   deleteSession: vi.fn(async (_sessionId: string): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
+  renameSession: vi.fn(async (_sessionId: string, title: string): Promise<SessionRecord> => ({ ...runningWorktreeSession, title })),
+  setSessionArchived: vi.fn(async (_sessionId: string, archived: boolean): Promise<SessionRecord> => ({ ...runningWorktreeSession, archived })),
   submitFirstInput: vi.fn(async () => undefined),
   setTheme: vi.fn(async (): Promise<void> => undefined),
   setWindowPinned: vi.fn(async (pinned: boolean): Promise<boolean> => pinned),
@@ -135,6 +137,110 @@ afterEach(() => {
 })
 
 const projectOptionsName = (projectName: string): string => `Project options for ${projectName}`
+
+describe('session organization controls', () => {
+  beforeEach(() => seedStore({ version: 1, projects: [project1], sessions: [runningWorktreeSession, stoppedSession] }))
+
+  it('renames inline with Enter and cancels subsequent edits with Escape', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'Session name' })
+    expect(input).toHaveFocus()
+    await user.clear(input)
+    await user.type(input, 'Investigate sign-in{Enter}')
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Session name' })).not.toBeInTheDocument())
+    expect(api.renameSession).toHaveBeenCalledWith(runningWorktreeSession.id, 'Investigate sign-in')
+    expect(screen.getByText('Investigate sign-in')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Session options for Investigate sign-in' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Session options for Investigate sign-in' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    await user.type(screen.getByRole('textbox', { name: 'Session name' }), ' discarded{Escape}')
+    expect(api.renameSession).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Investigate sign-in')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Session options for Investigate sign-in' })).toHaveFocus()
+  })
+
+  it('keeps failed rename edits and prevents blank names', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.renameSession).mockRejectedValueOnce(new Error('Cannot write state'))
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'Session name' })
+    await user.clear(input)
+    await user.type(input, '   {Enter}')
+    expect(api.renameSession).not.toHaveBeenCalled()
+    await user.clear(input)
+    await user.type(input, 'Retry name{Enter}')
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Cannot write state'))
+    expect(input).toHaveValue('Retry name')
+    expect(input).toHaveFocus()
+  })
+
+  it('returns focus to search when a rename removes the row from search results', async () => {
+    const user = userEvent.setup()
+    useAppStore.getState().setSearchQuery('login')
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'Session name' })
+    await user.clear(input)
+    await user.type(input, 'Different task{Enter}')
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Session name' })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Search sessions' })).toHaveFocus()
+  })
+
+  it('archives without deleting and finds archived sessions through the filter form', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }))
+    await waitFor(() => expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument())
+    expect(api.setSessionArchived).toHaveBeenCalledWith(runningWorktreeSession.id, true)
+    expect(api.deleteSession).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'archived')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(screen.getByText('Fix login bug')).toBeVisible()
+    expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Unarchive' }))
+    await waitFor(() => expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument())
+    expect(api.setSessionArchived).toHaveBeenLastCalledWith(runningWorktreeSession.id, false)
+    expect(api.restoreSession).not.toHaveBeenCalled()
+  })
+
+  it('combines archive scope with search and status and discards unapplied scope changes', async () => {
+    const user = userEvent.setup()
+    useAppStore.setState({ appState: { version: 1, projects: [project1], sessions: [{ ...runningWorktreeSession, archived: true }, stoppedSession] } })
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'all')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    expect(screen.getByRole('combobox', { name: 'Session visibility' })).toHaveValue('active')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'all')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    act(() => useAppStore.getState().setSearchQuery('login'))
+    expect(screen.getByText('Fix login bug')).toBeVisible()
+    expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.getByRole('combobox', { name: 'Session visibility' })).toHaveValue('active')
+  })
+
+  it('shows accessible unread markers and project counts without changing status', () => {
+    useAppStore.setState({ unreadSessionIds: [runningWorktreeSession.id] })
+    render(<ProjectSidebar />)
+    expect(screen.getByRole('img', { name: 'Unread output' })).toBeVisible()
+    expect(screen.getByLabelText('1 unread session(s)')).toHaveTextContent('1')
+    expect(screen.getByRole('img', { name: 'Running' })).toBeVisible()
+  })
+})
 
 it('keeps creation feedback visible after dismissing and reopening the launcher', async () => {
   const user = userEvent.setup()
@@ -504,7 +610,7 @@ describe('ProjectSidebar', () => {
     await openSearch(user)
     await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
-    expect(screen.getByRole('combobox')).toHaveFocus()
+    expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveFocus()
     await openSearch(user)
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     await user.tab()

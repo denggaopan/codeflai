@@ -82,6 +82,8 @@ const createFakeApi = (state: AppState, capabilities: CapabilityState, platform:
       throw new Error('restoreSession not stubbed for this test')
     }),
     deleteSession: vi.fn(async (_sessionId: string): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
+    renameSession: vi.fn(async () => { throw new Error('renameSession not stubbed') }),
+    setSessionArchived: vi.fn(async () => { throw new Error('setSessionArchived not stubbed') }),
     submitFirstInput: vi.fn(async (): Promise<void> => undefined),
     setTheme: vi.fn(async (): Promise<void> => undefined),
     setWindowPinned: vi.fn(async (pinned: boolean): Promise<boolean> => pinned),

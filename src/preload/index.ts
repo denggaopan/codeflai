@@ -38,6 +38,8 @@ export type CodeflaiApi = {
   removeProject(projectId: string): Promise<void>
   createSession(projectId: string, kind: SessionKind, worktree: boolean): Promise<SessionRecord>
   restoreSession(sessionId: string): Promise<SessionRecord>
+  renameSession(sessionId: string, title: string): Promise<SessionRecord>
+  setSessionArchived(sessionId: string, archived: boolean): Promise<SessionRecord>
   deleteSession(sessionId: string): Promise<DeleteSessionResult>
   submitFirstInput(sessionId: string, text: string): Promise<void>
   setTheme(theme: ThemePreference): Promise<void>
@@ -83,6 +85,8 @@ const api: CodeflaiApi = {
   removeProject: (projectId) => ipcRenderer.invoke(IPC.projectRemove, { projectId }),
   createSession: (projectId, kind, worktree) => ipcRenderer.invoke(IPC.sessionCreate, { projectId, kind, worktree }),
   restoreSession: (sessionId) => ipcRenderer.invoke(IPC.sessionRestore, { sessionId }),
+  renameSession: (sessionId, title) => ipcRenderer.invoke(IPC.sessionRename, { sessionId, title }),
+  setSessionArchived: (sessionId, archived) => ipcRenderer.invoke(IPC.sessionSetArchived, { sessionId, archived }),
   deleteSession: (sessionId) => ipcRenderer.invoke(IPC.sessionDelete, { sessionId }),
   submitFirstInput: (sessionId, text) => ipcRenderer.invoke(IPC.sessionFirstInput, { sessionId, text }),
   setTheme: (theme) => ipcRenderer.invoke(IPC.themeSet, { theme }),

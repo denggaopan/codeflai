@@ -8,6 +8,7 @@ import {
   hostPlatformSchema,
   projectIdRequestSchema,
   reorderProjectsRequestSchema,
+  renameSessionRequestSchema,
   sessionKindSchema,
   sessionRecordSchema,
   sessionIdRequestSchema,
@@ -15,15 +16,60 @@ import {
   storedSessionKindPreferencesSchema,
   DEFAULT_SESSION_KIND_PREFERENCES,
   setAutoLaunchRequestSchema,
+  setSessionArchivedRequestSchema,
   setThemeRequestSchema,
   setWindowPinnedRequestSchema,
   terminalWriteRequestSchema,
-  terminalResizeRequestSchema
+  terminalResizeRequestSchema,
+  workspaceStateSchema
 } from './contracts'
 import type { SessionRecord } from './contracts'
 import { IPC } from './ipc'
 
 describe('shared contracts', () => {
+  it('keeps legacy sessions readable and accepts optional archive and manual-title metadata', () => {
+    expect(sessionRecordSchema.parse(validWorktreeSession)).toEqual(validWorktreeSession)
+    for (const session of [validWorktreeSession, { ...validWorktreeSession, mode: 'ordinary' }]) {
+      const updated = { ...session, archived: true, titleManuallySet: true }
+      expect(sessionRecordSchema.parse(updated)).toEqual(updated)
+      expect(sessionRecordSchema.safeParse({ ...session, archived: 'true' }).success).toBe(false)
+      expect(sessionRecordSchema.safeParse({ ...session, titleManuallySet: 'true' }).success).toBe(false)
+    }
+  })
+
+  it('trims manual titles and accepts only nonempty titles up to 200 characters', () => {
+    expect(renameSessionRequestSchema.parse({ sessionId: 's1', title: '  Fix login  ' })).toEqual({
+      sessionId: 's1', title: 'Fix login'
+    })
+    expect(renameSessionRequestSchema.safeParse({ sessionId: 's1', title: 'a'.repeat(200) }).success).toBe(true)
+    for (const invalid of [
+      {}, { sessionId: '', title: 'Title' }, { sessionId: 's1', title: '  \t ' },
+      { sessionId: 's1', title: 'a'.repeat(201) }, { sessionId: 's1', title: 1 },
+      { sessionId: 's1', title: 'Title', extra: true }
+    ]) {
+      expect(renameSessionRequestSchema.safeParse(invalid).success).toBe(false)
+    }
+  })
+
+  it('requires an explicit boolean archive flag and a nonempty session id', () => {
+    for (const archived of [true, false]) {
+      expect(setSessionArchivedRequestSchema.parse({ sessionId: 's1', archived })).toEqual({ sessionId: 's1', archived })
+    }
+    for (const invalid of [
+      {}, { sessionId: '', archived: true }, { sessionId: 's1' },
+      { sessionId: 's1', archived: 'true' }, { sessionId: 's1', archived: true, extra: true }
+    ]) {
+      expect(setSessionArchivedRequestSchema.safeParse(invalid).success).toBe(false)
+    }
+  })
+
+  it('preserves optional unread session ids without requiring them in legacy workspace state', () => {
+    const legacy = { activeProjectId: null, activeSessionId: null, collapsedProjectIds: [] }
+    expect(workspaceStateSchema.parse(legacy)).toEqual(legacy)
+    expect(workspaceStateSchema.parse({ ...legacy, unreadSessionIds: ['s1'] })).toEqual({ ...legacy, unreadSessionIds: ['s1'] })
+    expect(workspaceStateSchema.safeParse({ ...legacy, unreadSessionIds: [''] }).success).toBe(false)
+  })
+
   it('rejects a create-session request without a valid session kind', () => {
     expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'bash' }).success).toBe(false)
   })
@@ -281,6 +327,8 @@ describe('shared contracts', () => {
       projectReorder: 'project:reorder',
       sessionCreate: 'session:create',
       sessionRestore: 'session:restore',
+      sessionRename: 'session:rename',
+      sessionSetArchived: 'session:set-archived',
       sessionDelete: 'session:delete',
       sessionFirstInput: 'session:first-input',
       themeSet: 'theme:set',

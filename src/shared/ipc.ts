@@ -13,6 +13,8 @@ export const IPC = {
   projectRemove: 'project:remove',
   sessionCreate: 'session:create',
   sessionRestore: 'session:restore',
+  sessionRename: 'session:rename',
+  sessionSetArchived: 'session:set-archived',
   sessionDelete: 'session:delete',
   sessionFirstInput: 'session:first-input',
   themeSet: 'theme:set',

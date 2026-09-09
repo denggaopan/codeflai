@@ -36,6 +36,7 @@ CLI credentials.**
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Quick prompts](#quick-prompts)
 - [Session titles](#session-titles)
+- [Organizing sessions](#organizing-sessions)
 - [The project options menu](#the-project-options-menu)
 - [Keeping the window on top](#keeping-the-window-on-top)
 - [Settings](#settings)
@@ -373,6 +374,35 @@ Every other kind — the native shells and the five opt-in agents — and any AI
 fails or times out fall back to a tidied-up version of your own words, and finally to plain
 truncation. None of this ever delays your typing.
 
+You can override a title at any time using the session row's options menu and
+**Rename**. Enter saves the trimmed name (1-200 characters); Escape cancels.
+A manual name takes priority over automatic title generation, including an
+already-running title request. Renaming leaves the process and branch unchanged.
+
+## Organizing sessions
+
+The options button on each session row offers **Rename**, **Archive** (or
+**Unarchive**), and **Delete**. The existing delete button is also available.
+
+**Archive** hides a session from the default list and saves that choice immediately.
+Its process keeps running, and its worktree and branch stay in place. Archiving
+the selected session clears the terminal selection. **Unarchive** puts the record
+back in the normal list; it does not restart a stopped process.
+
+Open the sidebar filter and choose **Active sessions**, **Archived sessions**, or
+**All sessions**, then **Apply**. Here "active" means not archived; it includes
+stopped sessions. Visibility combines with title search and status filtering.
+Reset restores the draft to all statuses and active sessions. Reopening the
+window resets the filter to active sessions without changing saved archives.
+
+A small **Unread output** dot marks sessions that receive live terminal output or
+an exit event while you are viewing another session or the window is unfocused.
+The project shows the number of unread sessions in the current filter results.
+Viewing a session in the focused window clears its dot. Existing unread flags
+survive reopening the window; replaying old terminal output does not create new
+ones. Unread activity is tracked while the window is connected and does not mean
+that an agent completed its task successfully.
+
 ## The project options menu
 
 The ⋯ button on a project row opens it. Nothing in here changes which session is active or
@@ -494,6 +524,13 @@ that vendor spells it (`claude --continue`, `codex resume --last`, `gemini --res
 no resume of its own, so it starts fresh. Shell sessions always start fresh. Deleted projects
 and sessions are ignored on restore, and a session whose directory has gone shows
 **Path missing**.
+
+**Multiple sessions in one directory:** a surviving background host reconnects each
+Codeflai session ID to its original process. After that process is gone or the
+computer restarts, some CLI resume flags select only the latest conversation.
+Multiple same-kind agent sessions in the same directory therefore cannot be
+guaranteed to resume their respective original conversations. Separate worktrees
+reduce directory-based ambiguity but do not provide native conversation-ID binding.
 
 ## Troubleshooting
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { AppState, DeleteSessionResult, SessionKind, SessionRecord } from '../../shared/contracts'
+import { renameSessionRequestSchema } from '../../shared/contracts'
 import type { ProjectService } from './project-service'
 import type { SessionStore } from './session-store'
 import type { SessionLocation, WorktreeService } from './worktree-service'
@@ -179,6 +180,26 @@ export class SessionCoordinator {
     return this.withLock(`session:${sessionId}`, () => this.restoreLocked(sessionId))
   }
 
+  async rename(sessionId: string, title: string): Promise<SessionRecord> {
+    const request = renameSessionRequestSchema.parse({ sessionId, title })
+    return this.withLock(`session:${sessionId}`, async () => {
+      const updated = await this.updateSession(sessionId, (existing) => ({
+        ...existing,
+        title: request.title,
+        titleState: 'complete',
+        titleManuallySet: true
+      }), true)
+      return updated!
+    })
+  }
+
+  async setArchived(sessionId: string, archived: boolean): Promise<SessionRecord> {
+    return this.withLock(`session:${sessionId}`, async () => {
+      const updated = await this.updateSession(sessionId, (existing) => ({ ...existing, archived }), true)
+      return updated!
+    })
+  }
+
   /**
    * The body of `restore()`, callable by `reconcile()` while it already holds the session lock
    * (withLock is not reentrant). `adoptStaleRunning` exists because `running` is now intent
@@ -244,7 +265,9 @@ export class SessionCoordinator {
     }
 
     if (generated.length > 0) {
-      await this.updateSession(sessionId, (existing) => ({ ...existing, title: generated }))
+      // Read the durable marker inside the atomic mutation: a rename can finish while
+      // generation is running, including after this job originally claimed the title.
+      await this.updateSession(sessionId, (existing) => existing.titleManuallySet ? existing : { ...existing, title: generated })
     }
   }
 
@@ -259,7 +282,7 @@ export class SessionCoordinator {
       const index = state.sessions.findIndex((session) => session.id === sessionId)
       if (index === -1) return state
       const session = state.sessions[index]!
-      if (session.titleState !== 'pending') return state
+      if (session.titleState !== 'pending' || session.titleManuallySet) return state
       const updated: SessionRecord = { ...session, titleState: 'complete' }
       claimed = updated
       const sessions = [...state.sessions]
@@ -535,12 +558,16 @@ export class SessionCoordinator {
 
   private async updateSession(
     sessionId: string,
-    mutator: (session: SessionRecord) => SessionRecord
+    mutator: (session: SessionRecord) => SessionRecord,
+    requireExisting = false
   ): Promise<SessionRecord | undefined> {
     let updated: SessionRecord | undefined
     const next = await this.store.update((state) => {
       const index = state.sessions.findIndex((session) => session.id === sessionId)
-      if (index === -1) return state
+      if (index === -1) {
+        if (requireExisting) throw new SessionNotFoundError(sessionId)
+        return state
+      }
       const sessions = [...state.sessions]
       updated = mutator(sessions[index]!)
       sessions[index] = updated

@@ -86,6 +86,16 @@ describe('SessionStore', () => {
     })
   })
 
+  it('preserves unread IDs in navigation-only writes and clears them only when explicitly supplied', async () => {
+    const store = new SessionStore(filePath)
+    const workspace = { activeProjectId: 'p1', activeSessionId: null, collapsedProjectIds: [] as string[], unreadSessionIds: ['s1'] }
+    await store.save({ ...stateWith(), workspace })
+    await store.saveWorkspace({ activeProjectId: 'p1', activeSessionId: 's1', collapsedProjectIds: ['p1'] })
+    expect((await new SessionStore(filePath).load()).workspace?.unreadSessionIds).toEqual(['s1'])
+    await store.saveWorkspace({ ...workspace, unreadSessionIds: [] })
+    expect((await new SessionStore(filePath).load()).workspace?.unreadSessionIds).toEqual([])
+  })
+
   it.each([null, [], { collapsedProjectIds: [42] }])('ignores invalid workspace metadata without losing sessions: %j', async (workspace) => {
     await writeFile(filePath, JSON.stringify({ ...stateWith(), workspace }))
     const store = new SessionStore(filePath)

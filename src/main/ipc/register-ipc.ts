@@ -19,8 +19,10 @@ import {
   openExternalLinkRequestSchema,
   projectIdRequestSchema,
   reorderProjectsRequestSchema,
+  renameSessionRequestSchema,
   sessionIdRequestSchema,
   setAutoLaunchRequestSchema,
+  setSessionArchivedRequestSchema,
   setThemeRequestSchema,
   setWindowPinnedRequestSchema,
   terminalResizeRequestSchema,
@@ -198,6 +200,22 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
       async (_event, payload): Promise<SessionRecord> => {
         const { sessionId } = sessionIdRequestSchema.parse(payload)
         return coordinator.restore(sessionId)
+      }
+    ],
+
+    [
+      IPC.sessionRename,
+      async (_event, payload): Promise<SessionRecord> => {
+        const { sessionId, title } = renameSessionRequestSchema.parse(payload)
+        return coordinator.rename(sessionId, title)
+      }
+    ],
+
+    [
+      IPC.sessionSetArchived,
+      async (_event, payload): Promise<SessionRecord> => {
+        const { sessionId, archived } = setSessionArchivedRequestSchema.parse(payload)
+        return coordinator.setArchived(sessionId, archived)
       }
     ],
 

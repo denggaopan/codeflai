@@ -9,15 +9,15 @@ import sessionIconUrl from '../assets/session.svg'
 import vscodeIconUrl from '../assets/vscode.svg'
 import { useTranslation } from '../i18n/use-translation'
 import { repoHostIcon } from '../repo-host-icons'
-import { isAgentDone, isSessionRestartable, sessionStatusLabel } from '../session-status'
-import { sessionKindIconUrl } from '../session-kind-icons'
+import { isAgentDone, isSessionRestartable } from '../session-status'
 import { useAppStore } from '../store/use-app-store'
 import ConfirmDialog from './ConfirmDialog'
 import AddProjectDialog from './AddProjectDialog'
 import SessionLauncher from './SessionLauncher'
 import SessionSearch from './SessionSearch'
 import SettingsDialog from './SettingsDialog'
-import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
+import SessionFilters, { type SessionArchiveFilter, type SessionStatusFilter } from './SessionFilters'
+import SessionRow from './SessionRow'
 
 const PROJECT_OPTIONS_GAP = 6
 
@@ -31,73 +31,6 @@ function FolderGlyph() {
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-folder">
       <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" fill="currentColor" />
     </svg>
-  )
-}
-
-type SessionRowProps = {
-  session: SessionRecord
-  active: boolean
-  onActivate: () => void
-  onRequestDelete: (trigger: HTMLButtonElement) => void
-}
-
-function SessionRow({ session, active, onActivate, onRequestDelete }: SessionRowProps) {
-  const { t } = useTranslation()
-  const agentIdle = useAppStore((state) => state.idleAgentSessionIds[session.id] === true)
-  // A worktree's branch name is user data, never translated; only the ordinary-session
-  // fallback is UI copy.
-  const secondary = session.mode === 'worktree' ? session.worktreeName : t('sidebar.ordinarySession')
-
-  // The row is a plain <li>: its label and delete action are SIBLING <button> elements
-  // rather than a delete button nested inside a role="button" container. An element with
-  // role="button" must not have focusable descendants (screen readers flatten/misreport
-  // that), and native <button> elements get keyboard (Enter/Space) activation for free, so
-  // no manual onKeyDown is needed here either.
-  // The status is carried by a coloured dot badged onto the top-right corner of the kind
-  // icon rather than a text pill. Colour alone is not an accessible signal, so the dot keeps
-  // the very same status string the pill used to render: as its accessible name
-  // (role="img" + aria-label, which overrides the decorative bullet glyph for screen
-  // readers) and as its hover tooltip. The dot therefore sits NEXT TO the aria-hidden kind
-  // icon inside a shared positioning wrapper -- nesting it inside the icon would hide its
-  // label from screen readers along with the icon.
-  const statusLabel = sessionStatusLabel(t, session, agentIdle)
-
-  return (
-    <li className="session-row" data-active={active ? 'true' : undefined}>
-      <button type="button" className="session-row-content" aria-current={active ? 'true' : undefined} onClick={onActivate}>
-        <span className="session-icon">
-          <span aria-hidden="true" className="session-kind-icon" data-kind={session.kind}>
-            <img src={sessionKindIconUrl(session.kind)} alt="" width={16} height={16} />
-          </span>
-          <span
-            className="session-status-dot"
-            data-status={isAgentDone(session, agentIdle) ? 'done' : session.status}
-            role="img"
-            aria-label={statusLabel}
-            title={statusLabel}
-          >
-            &bull;
-          </span>
-        </span>
-        <span className="session-title" title={session.title}>
-          {session.title}
-        </span>
-        <span className="session-secondary" title={secondary}>
-          {secondary}
-        </span>
-      </button>
-      <button
-        type="button"
-        className="session-delete"
-        aria-label={t('sidebar.deleteSessionAria', { title: session.title })}
-        onClick={(event) => {
-          event.stopPropagation()
-          onRequestDelete(event.currentTarget)
-        }}
-      >
-        ×
-      </button>
-    </li>
   )
 }
 
@@ -121,6 +54,7 @@ export default function ProjectSidebar() {
   const setProjectsCollapsed = useAppStore((state) => state.setProjectsCollapsed)
   const searchQuery = useAppStore((state) => state.searchQuery)
   const idleAgentSessionIds = useAppStore((state) => state.idleAgentSessionIds)
+  const unreadSessionIds = useAppStore((state) => state.unreadSessionIds)
   const notice = useAppStore((state) => state.notice)
   const creatingSession = useAppStore((state) => state.creatingSession)
   const setSearchQuery = useAppStore((state) => state.setSearchQuery)
@@ -142,6 +76,7 @@ export default function ProjectSidebar() {
 
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
+  const [archiveFilter, setArchiveFilter] = useState<SessionArchiveFilter>('active')
   const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
@@ -371,16 +306,17 @@ export default function ProjectSidebar() {
     : undefined
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
-  const filtering = normalizedQuery !== '' || statusFilter !== 'all'
-  const [resultFolds, setResultFolds] = useState<{ query: string; status: SessionStatusFilter; ids: string[] }>({
-    query: normalizedQuery, status: statusFilter, ids: []
+  const filtering = normalizedQuery !== '' || statusFilter !== 'all' || archiveFilter !== 'active'
+  const [resultFolds, setResultFolds] = useState<{ query: string; status: SessionStatusFilter; archive: SessionArchiveFilter; ids: string[] }>({
+    query: normalizedQuery, status: statusFilter, archive: archiveFilter, ids: []
   })
   // New criteria reveal matches; folding results never overwrites saved workspace folds.
-  if (resultFolds.query !== normalizedQuery || resultFolds.status !== statusFilter) {
-    setResultFolds({ query: normalizedQuery, status: statusFilter, ids: [] })
+  if (resultFolds.query !== normalizedQuery || resultFolds.status !== statusFilter || resultFolds.archive !== archiveFilter) {
+    setResultFolds({ query: normalizedQuery, status: statusFilter, archive: archiveFilter, ids: [] })
   }
   const dragEnabled = !filtering
   const filteredSessions = appState.sessions.filter((session) => {
+    if (archiveFilter !== 'all' && (session.archived === true) !== (archiveFilter === 'archived')) return false
     const status = isAgentDone(session, idleAgentSessionIds[session.id] === true) ? 'done' : session.status
     return (statusFilter === 'all' || status === statusFilter) && session.title.toLowerCase().includes(normalizedQuery)
   })
@@ -523,7 +459,7 @@ export default function ProjectSidebar() {
           <span aria-hidden="true" className="add-project-icon" style={{ maskImage: `url("${newFolderIconUrl}")` }} />
         </button>
         <SessionSearch value={searchQuery} onChange={setSearchQuery} triggerRef={searchTriggerRef} />
-        <SessionFilters value={statusFilter} onChange={setStatusFilter} />
+        <SessionFilters value={statusFilter} onChange={setStatusFilter} archiveValue={archiveFilter} onArchiveChange={setArchiveFilter} />
         <button
           type="button"
           className="project-fold-toggle"
@@ -563,7 +499,7 @@ export default function ProjectSidebar() {
         {filtering && filteredSessions.length === 0 && (
           <div className="session-filter-empty">
             <p role="status">{t('sidebar.noMatchingSessions')}</p>
-            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); searchTriggerRef.current?.focus() }}>
+            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setArchiveFilter('active'); searchTriggerRef.current?.focus() }}>
               {t('sidebar.clearFilters')}
             </button>
           </div>
@@ -571,6 +507,7 @@ export default function ProjectSidebar() {
         {appState.projects.map((project) => {
           const expanded = isProjectExpanded(project.id)
           const visibleSessions = filteredSessions.filter((session) => session.projectId === project.id)
+          const unreadCount = visibleSessions.filter((session) => unreadSessionIds.includes(session.id)).length
 
           return (
             <section key={project.id} className="project-group">
@@ -614,6 +551,7 @@ export default function ProjectSidebar() {
                 >
                   <span className="project-name" title={project.name}>
                     {project.name}
+                    {unreadCount > 0 && <span className="project-unread-count" aria-label={t('sidebar.unreadCount', { count: unreadCount })} title={t('sidebar.unreadCount', { count: unreadCount })}>{unreadCount}</span>}
                   </span>
                   <span className="project-path" title={project.path}>
                     {project.path}
@@ -769,6 +707,7 @@ export default function ProjectSidebar() {
                       active={session.id === activeSessionId}
                       onActivate={() => handleRowActivate(session)}
                       onRequestDelete={(trigger) => handleRequestDelete(session, trigger)}
+                      onRowHidden={() => searchTriggerRef.current?.focus()}
                     />
                   ))}
                 </ul>

@@ -10,6 +10,10 @@ export const reconcileWorkspace = (workspace: WorkspaceState, state: AppState): 
     session.id === workspace.activeSessionId && projectIds.has(session.projectId)
   )
   const collapsedProjectIds = [...new Set(workspace.collapsedProjectIds.filter((id) => projectIds.has(id)))]
+  const sessionIds = new Set(state.sessions.filter((session) => projectIds.has(session.projectId)).map((session) => session.id))
+  const unreadSessionIds = workspace.unreadSessionIds
+    ? [...new Set(workspace.unreadSessionIds.filter((id) => sessionIds.has(id)))]
+    : undefined
   return {
     activeProjectId: workspace.activeProjectId && projectIds.has(workspace.activeProjectId)
       ? workspace.activeProjectId
@@ -17,6 +21,11 @@ export const reconcileWorkspace = (workspace: WorkspaceState, state: AppState): 
     activeSessionId: activeSession?.id ?? null,
     collapsedProjectIds: collapsedProjectIds.length === workspace.collapsedProjectIds.length
       ? workspace.collapsedProjectIds
-      : collapsedProjectIds
+      : collapsedProjectIds,
+    ...(unreadSessionIds ? {
+      unreadSessionIds: unreadSessionIds.length === workspace.unreadSessionIds!.length
+        ? workspace.unreadSessionIds
+        : unreadSessionIds
+    } : {})
   }
 }

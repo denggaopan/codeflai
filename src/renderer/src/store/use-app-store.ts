@@ -59,6 +59,7 @@ export type AppStore = {
   notice: Notice | null
   /** Quiet agent sessions with no reported foreground or background work. */
   idleAgentSessionIds: Record<string, true>
+  unreadSessionIds: string[]
   theme: ThemePreference
   locale: Locale
   /** Whether the window is kept above every other window (the title bar's pin button). */
@@ -109,6 +110,8 @@ export type AppStore = {
   setProjectsCollapsed: (projectIds: string[], collapsed: boolean) => void
   setActiveSession: (sessionId: string, projectId?: string) => void
   restoreSession: (sessionId: string) => Promise<void>
+  renameSession: (sessionId: string, title: string) => Promise<boolean>
+  setSessionArchived: (sessionId: string, archived: boolean) => Promise<boolean>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResult | undefined>
 
   setSearchQuery: (query: string) => void
@@ -116,6 +119,9 @@ export type AppStore = {
 }
 
 const emptyAppState = (): AppState => ({ version: 1, projects: [], sessions: [] })
+
+const isViewingSession = (sessionId: string, activeSessionId: string | null): boolean =>
+  sessionId === activeSessionId && document.visibilityState !== 'hidden' && document.hasFocus()
 
 // The resting state the launcher may already be reading from: it looks availability up by
 // kind with nothing to fall back to, so every agent kind needs an entry before the first
@@ -324,6 +330,19 @@ const upsertSession = (state: AppState, session: SessionRecord): AppState => {
  * so every catch here only reads error.message and never branches on error type.
  */
 export const useAppStore = create<AppStore>()((set, get) => {
+  const markViewedSessionRead = (): void => {
+    const { activeSessionId, unreadSessionIds } = get()
+    if (!activeSessionId || !unreadSessionIds.includes(activeSessionId) || !isViewingSession(activeSessionId, activeSessionId)) return
+    set({ unreadSessionIds: unreadSessionIds.filter((id) => id !== activeSessionId) })
+  }
+
+  const noteUnreadOutput = (sessionId: string): void => {
+    const { appState, activeSessionId, unreadSessionIds } = get()
+    if (!appState.sessions.some((session) => session.id === sessionId) ||
+      isViewingSession(sessionId, activeSessionId) || unreadSessionIds.includes(sessionId)) return
+    set({ unreadSessionIds: [...unreadSessionIds, sessionId] })
+  }
+
   const unmarkIdle = (sessionId: string): void => {
     clearIdleTimer(sessionId)
     if (get().idleAgentSessionIds[sessionId] !== true) return
@@ -378,6 +397,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     searchQuery: '',
     notice: null,
     idleAgentSessionIds: {},
+    unreadSessionIds: [],
     theme: 'dark',
     locale: DEFAULT_LOCALE,
     windowPinned: false,
@@ -393,7 +413,29 @@ export const useAppStore = create<AppStore>()((set, get) => {
       let hydratingWorkspace = false
       let workspaceChanged = false
       let latestBroadcast: AppState | undefined
+      let unreadPersisted = false
       const pendingActivity = new Map<string, TerminalDataEvent[]>()
+      const pendingUnread = new Set<string>()
+      const startupRead = new Set<string>()
+      const acknowledgeViewedSession = (): void => {
+        const { activeSessionId } = get()
+        if (!activeSessionId || !isViewingSession(activeSessionId, activeSessionId)) return
+        if (!snapshotLoaded) {
+          startupRead.add(activeSessionId)
+          pendingUnread.delete(activeSessionId)
+        }
+        markViewedSessionRead()
+      }
+      const recordUnread = (sessionId: string): void => {
+        if (snapshotLoaded) noteUnreadOutput(sessionId)
+        else if (isViewingSession(sessionId, get().activeSessionId)) {
+          startupRead.add(sessionId)
+          pendingUnread.delete(sessionId)
+        } else {
+          pendingUnread.add(sessionId)
+          startupRead.delete(sessionId)
+        }
+      }
       const hydrateActivity = (sessionId: string): void => {
         const pending = pendingActivity.get(sessionId) ?? []
         pendingActivity.set(sessionId, pending)
@@ -416,8 +458,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
       })
 
       const persistWorkspace = (): void => {
-        const { activeProjectId, activeSessionId, collapsedProjectIds } = get()
-        void window.codeflai.saveWorkspace({ activeProjectId, activeSessionId, collapsedProjectIds }).catch((error: unknown) => {
+        const { activeProjectId, activeSessionId, collapsedProjectIds, unreadSessionIds } = get()
+        if (snapshotLoaded && unreadSessionIds.length > 0) unreadPersisted = true
+        void window.codeflai.saveWorkspace({
+          activeProjectId, activeSessionId, collapsedProjectIds,
+          ...(snapshotLoaded && unreadPersisted ? { unreadSessionIds } : {})
+        }).catch((error: unknown) => {
           if (!disposed) set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
       }
@@ -425,10 +471,21 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // Save every navigation change, including selections made by create/delete actions.
       // Suppress hydration writes, but persist clicks even while capabilities are loading.
       const disposeWorkspace = useAppStore.subscribe((state, previous) => {
+        if (!snapshotLoaded && state.activeSessionId !== previous.activeSessionId && state.activeSessionId &&
+          isViewingSession(state.activeSessionId, state.activeSessionId)) {
+          startupRead.add(state.activeSessionId)
+          pendingUnread.delete(state.activeSessionId)
+        }
+        if (state.activeSessionId !== previous.activeSessionId && state.activeSessionId &&
+          state.unreadSessionIds.includes(state.activeSessionId) && isViewingSession(state.activeSessionId, state.activeSessionId)) {
+          markViewedSessionRead()
+          return
+        }
         if (
           state.activeProjectId !== previous.activeProjectId ||
           state.activeSessionId !== previous.activeSessionId ||
-          state.collapsedProjectIds !== previous.collapsedProjectIds
+          state.collapsedProjectIds !== previous.collapsedProjectIds ||
+          state.unreadSessionIds !== previous.unreadSessionIds
         ) {
           workspaceChanged = true
           if (!hydratingWorkspace) persistWorkspace()
@@ -456,6 +513,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         .then((snapshot) => {
           if (disposed) return
           const appState = latestBroadcast ?? snapshot.state
+          unreadPersisted = snapshot.state.workspace?.unreadSessionIds !== undefined
           document.documentElement.dataset.platform = snapshot.platform
           hydratingWorkspace = true
           set((state) => ({
@@ -463,11 +521,18 @@ export const useAppStore = create<AppStore>()((set, get) => {
             appState,
             capabilities: snapshot.capabilities,
             sessionKindPreferences: readStoredSessionKindPreferences(snapshot.platform),
-            ...reconcileWorkspace(workspaceChanged ? state : snapshot.state.workspace ?? emptyWorkspace(), appState),
+            ...reconcileWorkspace({
+              ...(workspaceChanged ? state : snapshot.state.workspace ?? emptyWorkspace()),
+              unreadSessionIds: (snapshot.state.workspace?.unreadSessionIds ?? []).filter((id) => !startupRead.has(id))
+            }, appState),
             notice: snapshot.recoveryWarning ? { message: snapshot.recoveryWarning, tone: 'info' } : state.notice
           }))
           hydratingWorkspace = false
           snapshotLoaded = true
+          markViewedSessionRead()
+          for (const sessionId of pendingUnread) noteUnreadOutput(sessionId)
+          pendingUnread.clear()
+          startupRead.clear()
           for (const sessionId of pendingActivity.keys()) {
             if (!appState.sessions.some((session) => session.id === sessionId && session.status === 'running' &&
               (session.kind === 'claude' || session.kind === 'codex'))) pendingActivity.delete(sessionId)
@@ -481,6 +546,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (disposed) return
           snapshotLoaded = true
           pendingActivity.clear()
+          pendingUnread.clear()
+          startupRead.clear()
           set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
 
@@ -500,6 +567,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
         }
       })
       const disposeData = window.codeflai.onTerminalData((event) => {
+        if (event.data.length > 0) {
+          recordUnread(event.sessionId)
+        }
         if (!snapshotLoaded || pendingActivity.has(event.sessionId)) {
           const pending = pendingActivity.get(event.sessionId) ?? []
           pending.push(event)
@@ -509,6 +579,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         noteAgentOutput(event.sessionId, event.data)
       })
       const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
+        recordUnread(sessionId)
         pendingActivity.delete(sessionId)
         forgetAgentActivity(sessionId)
       })
@@ -536,6 +607,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // Fire-and-forget: a startup check that finds nothing, fails, or cannot reach the
       // network must leave the app exactly as quiet as it would have been without it.
       void get().checkForUpdatesInBackground()
+      window.addEventListener('focus', acknowledgeViewedSession)
+      document.addEventListener('visibilitychange', acknowledgeViewedSession)
 
       return () => {
         disposed = true
@@ -546,6 +619,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
         disposeUpdateProgress()
         clearAllIdleTimers()
         pendingActivity.clear()
+        pendingUnread.clear()
+        startupRead.clear()
+        window.removeEventListener('focus', acknowledgeViewedSession)
+        document.removeEventListener('visibilitychange', acknowledgeViewedSession)
         set({ idleAgentSessionIds: {} })
       }
     },
@@ -565,6 +642,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         searchQuery: '',
         notice: null,
         idleAgentSessionIds: {},
+        unreadSessionIds: [],
         theme: 'dark',
         locale: DEFAULT_LOCALE,
         windowPinned: false,
@@ -786,6 +864,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
             activeProjectId: activeProjectRemoved ? (projects[0]?.id ?? null) : state.activeProjectId,
             activeSessionId: activeSessionRemoved ? null : state.activeSessionId,
             collapsedProjectIds: state.collapsedProjectIds.filter((id) => id !== projectId),
+            unreadSessionIds: state.unreadSessionIds.filter((id) => sessions.some((session) => session.id === id)),
             launcherOpen: activeProjectRemoved ? false : state.launcherOpen
           }
         })
@@ -848,6 +927,32 @@ export const useAppStore = create<AppStore>()((set, get) => {
       }
     },
 
+    renameSession: async (sessionId, title) => {
+      try {
+        const session = await window.codeflai.renameSession(sessionId, title)
+        set((state) => ({ appState: upsertSession(state.appState, session), notice: null }))
+        return true
+      } catch (error) {
+        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
+        return false
+      }
+    },
+
+    setSessionArchived: async (sessionId, archived) => {
+      try {
+        const session = await window.codeflai.setSessionArchived(sessionId, archived)
+        set((state) => ({
+          appState: upsertSession(state.appState, session),
+          activeSessionId: archived && state.activeSessionId === sessionId ? null : state.activeSessionId,
+          notice: null
+        }))
+        return true
+      } catch (error) {
+        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
+        return false
+      }
+    },
+
     deleteSession: async (sessionId) => {
       try {
         const result = await window.codeflai.deleteSession(sessionId)
@@ -856,6 +961,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
           forgetAgentActivity(sessionId)
           set((state) => ({
             appState: { ...state.appState, sessions: state.appState.sessions.filter((session) => session.id !== sessionId) },
+            unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
             activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
           }))
         } else if (result.status === 'dirty') {

@@ -75,6 +75,8 @@ const createFakeApi = () => {
     removeProject: vi.fn(async (): Promise<void> => undefined),
     createSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     restoreSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
+    renameSession: vi.fn(async (_id: string, title: string): Promise<SessionRecord> => ({ ...claudeSession, title })),
+    setSessionArchived: vi.fn(async (_id: string, archived: boolean): Promise<SessionRecord> => ({ ...claudeSession, archived })),
     reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
     deleteSession: vi.fn(async (): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
     submitFirstInput: vi.fn(async (): Promise<void> => undefined),
@@ -141,7 +143,163 @@ beforeEach(async () => {
 
 afterEach(() => {
   dispose()
+  vi.restoreAllMocks()
   vi.useRealTimers()
+})
+
+describe('session organization', () => {
+  it('updates a renamed session and leaves failed edits available to retry', async () => {
+    expect(await useAppStore.getState().renameSession(claudeSession.id, 'New task name')).toBe(true)
+    expect(useAppStore.getState().appState.sessions[0]?.title).toBe('New task name')
+    api.renameSession.mockRejectedValueOnce(new Error('disk full'))
+    expect(await useAppStore.getState().renameSession(claudeSession.id, 'Other name')).toBe(false)
+    expect(useAppStore.getState().appState.sessions[0]?.title).toBe('New task name')
+    expect(useAppStore.getState().notice?.message).toBe('disk full')
+  })
+
+  it('clears the selected session after archiving and does not launch it on unarchive', async () => {
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    expect(await useAppStore.getState().setSessionArchived(claudeSession.id, true)).toBe(true)
+    expect(useAppStore.getState().activeSessionId).toBeNull()
+    expect(useAppStore.getState().appState.sessions[0]?.archived).toBe(true)
+    await useAppStore.getState().setSessionArchived(claudeSession.id, false)
+    expect(useAppStore.getState().activeSessionId).toBeNull()
+    expect(api.restoreSession).not.toHaveBeenCalled()
+    expect(api.deleteSession).not.toHaveBeenCalled()
+  })
+
+  it('preserves selection and metadata when archiving fails', async () => {
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    api.setSessionArchived.mockRejectedValueOnce(new Error('cannot save'))
+    expect(await useAppStore.getState().setSessionArchived(claudeSession.id, true)).toBe(false)
+    expect(useAppStore.getState().activeSessionId).toBe(claudeSession.id)
+    expect(useAppStore.getState().appState.sessions[0]?.archived).not.toBe(true)
+  })
+})
+
+describe('unread session activity', () => {
+  beforeEach(() => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    window.dispatchEvent(new Event('focus'))
+  })
+
+  it('marks background live output once, persists it, and clears it on selection', () => {
+    useAppStore.getState().setActiveSession(powershellSession.id)
+    api.saveWorkspace.mockClear()
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'new output' })
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'more output' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
+    expect(api.saveWorkspace).toHaveBeenCalledTimes(1)
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0].unreadSessionIds).toEqual([claudeSession.id])
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0].unreadSessionIds ?? []).toEqual([])
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'viewed output' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('marks selected session output while unfocused and clears it when focus returns', () => {
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    window.dispatchEvent(new Event('blur'))
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'background output' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
+    vi.mocked(document.hasFocus).mockReturnValue(true)
+    window.dispatchEvent(new Event('focus'))
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('keeps hidden-window output unread until the selected terminal is visible', () => {
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'while hidden' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
+    visibility.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('marks background exits and removes unread flags when a session is deleted', async () => {
+    api.emitTerminalExit({ sessionId: powershellSession.id, exitCode: 1 })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+    await useAppStore.getState().deleteSession(powershellSession.id)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+    api.emitTerminalData({ sessionId: 'deleted', data: 'late output' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('restores unread IDs, discards deleted IDs, and never marks historical replay unread', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    const project: ProjectRecord = { id: 'project-1', name: 'Project', path: 'C:\\project', createdAt: claudeSession.createdAt }
+    api.getSnapshot.mockResolvedValue({ platform: 'win32', capabilities: defaultCapabilities(), state: {
+      ...seededState, projects: [project], workspace: {
+        activeProjectId: project.id, activeSessionId: null, collapsedProjectIds: [],
+        unreadSessionIds: [powershellSession.id, 'deleted', powershellSession.id]
+      }
+    } })
+    api.replayTerminal.mockResolvedValue({ data: 'old output', cols: 80, rows: 24, throughSequence: 7 })
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [project], sessions: [claudeSession] })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('retains live output arriving while the initial snapshot is loading', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    let resolveSnapshot!: (snapshot: AppSnapshot) => void
+    api.getSnapshot.mockReturnValueOnce(new Promise((resolve) => { resolveSnapshot = resolve }))
+    dispose = useAppStore.getState().initialize()
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'live while loading' })
+    resolveSnapshot({ platform: 'win32', capabilities: defaultCapabilities(), state: seededState })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+  })
+
+  it('hydrates unread independently of navigation performed before the snapshot arrives', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    const project: ProjectRecord = { id: 'project-1', name: 'Project', path: 'C:\\project', createdAt: claudeSession.createdAt }
+    let resolveSnapshot!: (snapshot: AppSnapshot) => void
+    api.getSnapshot.mockReturnValueOnce(new Promise((resolve) => { resolveSnapshot = resolve }))
+    dispose = useAppStore.getState().initialize()
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [project] })
+    useAppStore.getState().setActiveSession(powershellSession.id)
+    useAppStore.getState().toggleProjectCollapsed(project.id)
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0]).not.toHaveProperty('unreadSessionIds')
+    resolveSnapshot({ platform: 'win32', capabilities: defaultCapabilities(), state: {
+      ...seededState, projects: [project], workspace: {
+        activeProjectId: project.id, activeSessionId: null, collapsedProjectIds: [],
+        unreadSessionIds: [claudeSession.id, powershellSession.id]
+      }
+    } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useAppStore.getState().activeSessionId).toBe(powershellSession.id)
+    expect(useAppStore.getState().collapsedProjectIds).toEqual([project.id])
+    expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
+  })
+
+  it('acknowledges output viewed after regaining focus before startup hydration', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    const project: ProjectRecord = { id: 'project-1', name: 'Project', path: 'C:\\project', createdAt: claudeSession.createdAt }
+    let resolveSnapshot!: (snapshot: AppSnapshot) => void
+    api.getSnapshot.mockReturnValueOnce(new Promise((resolve) => { resolveSnapshot = resolve }))
+    dispose = useAppStore.getState().initialize()
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [project] })
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'output before focus' })
+    vi.mocked(document.hasFocus).mockReturnValue(true)
+    window.dispatchEvent(new Event('focus'))
+    useAppStore.getState().setActiveSession(powershellSession.id)
+    resolveSnapshot({ platform: 'win32', capabilities: defaultCapabilities(), state: { ...seededState, projects: [project] } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
 })
 
 describe('workspace persistence', () => {

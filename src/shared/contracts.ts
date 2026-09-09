@@ -49,6 +49,8 @@ const commonSessionRecordShape = {
   kind: sessionKindSchema,
   title: z.string().min(1),
   titleState: titleStateSchema,
+  titleManuallySet: z.boolean().optional(),
+  archived: z.boolean().optional(),
   createdAt: z.string().datetime(),
   launchPath: z.string().min(1),
   status: runtimeStatusSchema,
@@ -75,7 +77,8 @@ export const sessionRecordSchema = z.discriminatedUnion('mode', [
 export const workspaceStateSchema = z.strictObject({
   activeProjectId: z.string().min(1).nullable(),
   activeSessionId: z.string().min(1).nullable(),
-  collapsedProjectIds: z.array(z.string().min(1))
+  collapsedProjectIds: z.array(z.string().min(1)),
+  unreadSessionIds: z.array(z.string().min(1)).optional()
 })
 
 export type WorkspaceState = z.infer<typeof workspaceStateSchema>
@@ -120,6 +123,16 @@ export const createSessionRequestSchema = z.strictObject({
 
 export const sessionIdRequestSchema = z.strictObject({
   sessionId: z.string().min(1)
+})
+
+export const renameSessionRequestSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  title: z.string().trim().min(1).max(200)
+})
+
+export const setSessionArchivedRequestSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  archived: z.boolean()
 })
 
 export const projectIdRequestSchema = z.strictObject({
