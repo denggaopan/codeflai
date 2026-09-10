@@ -17,6 +17,32 @@ type SessionRowProps = {
   onRowHidden: () => void
 }
 
+function PencilGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-rename"
+      fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z" />
+    </svg>
+  )
+}
+
+function StopGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-stop">
+      <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+    </svg>
+  )
+}
+
+function TrashGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-delete"
+      fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
 export default function SessionRow({ session, active, onActivate, onRequestStop, onRequestDelete, onRowHidden }: SessionRowProps) {
   const { t } = useTranslation()
   const agentIdle = useAppStore((state) => state.idleAgentSessionIds[session.id] === true)
@@ -149,15 +175,15 @@ export default function SessionRow({ session, active, onActivate, onRequestStop,
           }}>
           <button type="button" role="menuitem" className="project-options-menu-item" onClick={() => {
             closeMenu(false); setDraft(session.title); setInvalid(false); setEditing(true)
-          }}>{t('sidebar.renameSession')}</button>
+          }}><PencilGlyph />{t('sidebar.renameSession')}</button>
           <button type="button" role="menuitem" className="project-options-menu-item"
             disabled={session.status !== 'running' && session.status !== 'creating'}
             onClick={() => {
               closeMenu(); if (triggerRef.current) onRequestStop(triggerRef.current)
-            }}>{t('sidebar.stopSession')}</button>
+            }}><StopGlyph />{t('sidebar.stopSession')}</button>
           <button type="button" role="menuitem" className="project-options-menu-item" onClick={() => {
             closeMenu(); if (triggerRef.current) onRequestDelete(triggerRef.current)
-          }}>{t('common.delete')}</button>
+          }}><TrashGlyph />{t('common.delete')}</button>
         </div>, document.body
       )}
     </li>

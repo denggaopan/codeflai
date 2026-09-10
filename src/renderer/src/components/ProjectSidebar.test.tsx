@@ -199,6 +199,18 @@ describe('session organization controls', () => {
     expect(screen.getByRole('button', { name: 'Search sessions' })).toHaveFocus()
   })
 
+  it('gives every session menu item a decorative icon without changing its name', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+
+    for (const name of ['Rename', 'Stop', 'Delete']) {
+      const glyph = screen.getByRole('menuitem', { name }).querySelector('svg')
+      expect(glyph).not.toBeNull()
+      expect(glyph).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
+
   it('confirms before stopping a running session', async () => {
     const user = userEvent.setup()
     render(<ProjectSidebar />)
