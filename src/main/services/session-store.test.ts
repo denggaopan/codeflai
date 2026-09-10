@@ -50,6 +50,16 @@ describe('SessionStore', () => {
     await expect(new SessionStore(filePath).load()).resolves.toEqual({ version: 1, projects: [], sessions: [] })
   })
 
+  it('strips the retired archived field while keeping the rest of a 0.23.x record', async () => {
+    const legacy = { ...stateWith([]), sessions: [{ ...stoppedSession, status: 'running', archived: true }] }
+    await writeFile(filePath, JSON.stringify(legacy), 'utf8')
+
+    const loaded = await new SessionStore(filePath).load()
+
+    expect(loaded.sessions[0]).not.toHaveProperty('archived')
+    expect(loaded.sessions[0]).toMatchObject({ id: 's1', title: 'Terminal', status: 'running' })
+  })
+
   it('round-trips a valid stopped session', async () => {
     const store = new SessionStore(filePath)
     const state = stateWith()

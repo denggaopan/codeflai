@@ -50,6 +50,10 @@ const commonSessionRecordShape = {
   title: z.string().min(1),
   titleState: titleStateSchema,
   titleManuallySet: z.boolean().optional(),
+  // Retired: sessions are stopped, not archived. Still accepted because both branches of
+  // sessionRecordSchema are strictObject, so dropping it outright would make every
+  // state.json written by 0.23.x fail validation and fall into the recovery path.
+  // SessionStore strips it on load, so it disappears after one startup.
   archived: z.boolean().optional(),
   createdAt: z.string().datetime(),
   launchPath: z.string().min(1),
@@ -128,11 +132,6 @@ export const sessionIdRequestSchema = z.strictObject({
 export const renameSessionRequestSchema = z.strictObject({
   sessionId: z.string().min(1),
   title: z.string().trim().min(1).max(200)
-})
-
-export const setSessionArchivedRequestSchema = z.strictObject({
-  sessionId: z.string().min(1),
-  archived: z.boolean()
 })
 
 export const projectIdRequestSchema = z.strictObject({

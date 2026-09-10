@@ -76,7 +76,7 @@ const createFakeApi = () => {
     createSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     restoreSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     renameSession: vi.fn(async (_id: string, title: string): Promise<SessionRecord> => ({ ...claudeSession, title })),
-    setSessionArchived: vi.fn(async (_id: string, archived: boolean): Promise<SessionRecord> => ({ ...claudeSession, archived })),
+    stopSession: vi.fn(async (_sessionId: string): Promise<void> => undefined),
     reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
     deleteSession: vi.fn(async (): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
     submitFirstInput: vi.fn(async (): Promise<void> => undefined),
@@ -157,23 +157,24 @@ describe('session organization', () => {
     expect(useAppStore.getState().notice?.message).toBe('disk full')
   })
 
-  it('clears the selected session after archiving and does not launch it on unarchive', async () => {
-    useAppStore.getState().setActiveSession(claudeSession.id)
-    expect(await useAppStore.getState().setSessionArchived(claudeSession.id, true)).toBe(true)
-    expect(useAppStore.getState().activeSessionId).toBeNull()
-    expect(useAppStore.getState().appState.sessions[0]?.archived).toBe(true)
-    await useAppStore.getState().setSessionArchived(claudeSession.id, false)
-    expect(useAppStore.getState().activeSessionId).toBeNull()
+  it('stops a session, clearing its unread marker', async () => {
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'output' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+
+    await useAppStore.getState().stopSession(powershellSession.id)
+
+    expect(api.stopSession).toHaveBeenCalledWith(powershellSession.id)
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
     expect(api.restoreSession).not.toHaveBeenCalled()
     expect(api.deleteSession).not.toHaveBeenCalled()
   })
 
-  it('preserves selection and metadata when archiving fails', async () => {
-    useAppStore.getState().setActiveSession(claudeSession.id)
-    api.setSessionArchived.mockRejectedValueOnce(new Error('cannot save'))
-    expect(await useAppStore.getState().setSessionArchived(claudeSession.id, true)).toBe(false)
-    expect(useAppStore.getState().activeSessionId).toBe(claudeSession.id)
-    expect(useAppStore.getState().appState.sessions[0]?.archived).not.toBe(true)
+  it('reports a stop failure as a notice', async () => {
+    api.stopSession.mockRejectedValueOnce(new Error('cannot save'))
+
+    await useAppStore.getState().stopSession(claudeSession.id)
+
+    expect(useAppStore.getState().notice).toEqual({ message: 'cannot save', tone: 'error' })
   })
 })
 

@@ -16,7 +16,6 @@ import {
   storedSessionKindPreferencesSchema,
   DEFAULT_SESSION_KIND_PREFERENCES,
   setAutoLaunchRequestSchema,
-  setSessionArchivedRequestSchema,
   setThemeRequestSchema,
   setWindowPinnedRequestSchema,
   terminalWriteRequestSchema,
@@ -27,7 +26,7 @@ import type { SessionRecord } from './contracts'
 import { IPC } from './ipc'
 
 describe('shared contracts', () => {
-  it('keeps legacy sessions readable and accepts optional archive and manual-title metadata', () => {
+  it('keeps legacy sessions readable, still accepting the retired archive flag and manual-title metadata', () => {
     expect(sessionRecordSchema.parse(validWorktreeSession)).toEqual(validWorktreeSession)
     for (const session of [validWorktreeSession, { ...validWorktreeSession, mode: 'ordinary' }]) {
       const updated = { ...session, archived: true, titleManuallySet: true }
@@ -48,18 +47,6 @@ describe('shared contracts', () => {
       { sessionId: 's1', title: 'Title', extra: true }
     ]) {
       expect(renameSessionRequestSchema.safeParse(invalid).success).toBe(false)
-    }
-  })
-
-  it('requires an explicit boolean archive flag and a nonempty session id', () => {
-    for (const archived of [true, false]) {
-      expect(setSessionArchivedRequestSchema.parse({ sessionId: 's1', archived })).toEqual({ sessionId: 's1', archived })
-    }
-    for (const invalid of [
-      {}, { sessionId: '', archived: true }, { sessionId: 's1' },
-      { sessionId: 's1', archived: 'true' }, { sessionId: 's1', archived: true, extra: true }
-    ]) {
-      expect(setSessionArchivedRequestSchema.safeParse(invalid).success).toBe(false)
     }
   })
 
@@ -328,7 +315,7 @@ describe('shared contracts', () => {
       sessionCreate: 'session:create',
       sessionRestore: 'session:restore',
       sessionRename: 'session:rename',
-      sessionSetArchived: 'session:set-archived',
+      sessionStop: 'session:stop',
       sessionDelete: 'session:delete',
       sessionFirstInput: 'session:first-input',
       themeSet: 'theme:set',

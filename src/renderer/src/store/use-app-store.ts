@@ -111,7 +111,7 @@ export type AppStore = {
   setActiveSession: (sessionId: string, projectId?: string) => void
   restoreSession: (sessionId: string) => Promise<void>
   renameSession: (sessionId: string, title: string) => Promise<boolean>
-  setSessionArchived: (sessionId: string, archived: boolean) => Promise<boolean>
+  stopSession: (sessionId: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResult | undefined>
 
   setSearchQuery: (query: string) => void
@@ -956,18 +956,19 @@ export const useAppStore = create<AppStore>()((set, get) => {
       }
     },
 
-    setSessionArchived: async (sessionId, archived) => {
+    stopSession: async (sessionId) => {
       try {
-        const session = await window.codeflai.setSessionArchived(sessionId, archived)
+        await window.codeflai.stopSession(sessionId)
+        // The stopped record itself arrives via onStateChanged, the durable source of truth.
+        // Only renderer-local activity bookkeeping needs clearing here: the process is gone,
+        // so a retained unread marker or activity snapshot is stale.
+        forgetAgentActivity(sessionId)
         set((state) => ({
-          appState: upsertSession(state.appState, session),
-          activeSessionId: archived && state.activeSessionId === sessionId ? null : state.activeSessionId,
+          unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
           notice: null
         }))
-        return true
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
-        return false
       }
     },
 

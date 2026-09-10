@@ -22,7 +22,6 @@ import {
   renameSessionRequestSchema,
   sessionIdRequestSchema,
   setAutoLaunchRequestSchema,
-  setSessionArchivedRequestSchema,
   setThemeRequestSchema,
   setWindowPinnedRequestSchema,
   terminalResizeRequestSchema,
@@ -212,10 +211,10 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ],
 
     [
-      IPC.sessionSetArchived,
-      async (_event, payload): Promise<SessionRecord> => {
-        const { sessionId, archived } = setSessionArchivedRequestSchema.parse(payload)
-        return coordinator.setArchived(sessionId, archived)
+      IPC.sessionStop,
+      async (_event, payload): Promise<void> => {
+        const { sessionId } = sessionIdRequestSchema.parse(payload)
+        await coordinator.stop(sessionId)
       }
     ],
 

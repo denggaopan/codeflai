@@ -62,6 +62,7 @@ export default function ProjectSidebar() {
   const reorderProjects = useAppStore((state) => state.reorderProjects)
   const setActiveSession = useAppStore((state) => state.setActiveSession)
   const restoreSession = useAppStore((state) => state.restoreSession)
+  const stopSession = useAppStore((state) => state.stopSession)
   const deleteSession = useAppStore((state) => state.deleteSession)
   const openProjectInVSCode = useAppStore((state) => state.openProjectInVSCode)
   const openProjectFolder = useAppStore((state) => state.openProjectFolder)
@@ -75,6 +76,7 @@ export default function ProjectSidebar() {
   const closeLauncher = useAppStore((state) => state.closeLauncher)
 
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
+  const [pendingStop, setPendingStop] = useState<SessionRecord | null>(null)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
   const [archiveFilter, setArchiveFilter] = useState<SessionArchiveFilter>('active')
   const [addProjectOpen, setAddProjectOpen] = useState(false)
@@ -243,6 +245,7 @@ export default function ProjectSidebar() {
   // completed/failed delete that leaves the row in place), instead of being dropped to
   // <body>.
   const pendingDeleteTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const pendingStopTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const handleRowActivate = (session: SessionRecord): void => {
     if (isSessionRestartable(session)) {
@@ -250,6 +253,29 @@ export default function ProjectSidebar() {
     } else {
       setActiveSession(session.id, session.projectId)
     }
+  }
+
+  const handleRequestStop = (session: SessionRecord, trigger: HTMLButtonElement): void => {
+    pendingStopTriggerRef.current = trigger
+    setPendingStop(session)
+  }
+
+  const restoreStopTriggerFocus = (): void => {
+    pendingStopTriggerRef.current?.focus()
+    pendingStopTriggerRef.current = null
+  }
+
+  const handleConfirmStop = async (): Promise<void> => {
+    if (!pendingStop) return
+    const session = pendingStop
+    setPendingStop(null)
+    await stopSession(session.id)
+    restoreStopTriggerFocus()
+  }
+
+  const handleCancelStop = (): void => {
+    setPendingStop(null)
+    restoreStopTriggerFocus()
   }
 
   const handleRequestDelete = (session: SessionRecord, trigger: HTMLButtonElement): void => {
@@ -706,6 +732,7 @@ export default function ProjectSidebar() {
                       session={session}
                       active={session.id === activeSessionId}
                       onActivate={() => handleRowActivate(session)}
+                      onRequestStop={(trigger) => handleRequestStop(session, trigger)}
                       onRequestDelete={(trigger) => handleRequestDelete(session, trigger)}
                       onRowHidden={() => searchTriggerRef.current?.focus()}
                     />
@@ -746,6 +773,18 @@ export default function ProjectSidebar() {
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {addProjectOpen && <AddProjectDialog onClose={() => setAddProjectOpen(false)} />}
+
+      {/* Deliberately not `destructive`: Stop is reversible — restoring resumes the same
+          conversation and the worktree is untouched — so Confirm keeps initial focus and
+          Cancel-first focus stays reserved for Delete. */}
+      <ConfirmDialog
+        open={pendingStop !== null}
+        title={t('sidebar.stopSessionTitle')}
+        description={pendingStop ? t('sidebar.stopSessionPrompt', { title: pendingStop.title }) : undefined}
+        confirmLabel={t('sidebar.stopSession')}
+        onConfirm={() => void handleConfirmStop()}
+        onCancel={handleCancelStop}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

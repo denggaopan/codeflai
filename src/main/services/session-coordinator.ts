@@ -193,13 +193,6 @@ export class SessionCoordinator {
     })
   }
 
-  async setArchived(sessionId: string, archived: boolean): Promise<SessionRecord> {
-    return this.withLock(`session:${sessionId}`, async () => {
-      const updated = await this.updateSession(sessionId, (existing) => ({ ...existing, archived }), true)
-      return updated!
-    })
-  }
-
   /**
    * The body of `restore()`, callable by `reconcile()` while it already holds the session lock
    * (withLock is not reentrant). `adoptStaleRunning` exists because `running` is now intent

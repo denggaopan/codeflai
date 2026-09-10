@@ -55,7 +55,7 @@ const createFakeApi = (): FakeApi => ({
   }),
   deleteSession: vi.fn(async (_sessionId: string): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
   renameSession: vi.fn(async (_sessionId: string, title: string): Promise<SessionRecord> => ({ ...runningWorktreeSession, title })),
-  setSessionArchived: vi.fn(async (_sessionId: string, archived: boolean): Promise<SessionRecord> => ({ ...runningWorktreeSession, archived })),
+  stopSession: vi.fn(async (_sessionId: string): Promise<void> => undefined),
   submitFirstInput: vi.fn(async () => undefined),
   setTheme: vi.fn(async (): Promise<void> => undefined),
   setWindowPinned: vi.fn(async (pinned: boolean): Promise<boolean> => pinned),
@@ -199,37 +199,49 @@ describe('session organization controls', () => {
     expect(screen.getByRole('button', { name: 'Search sessions' })).toHaveFocus()
   })
 
-  it('archives without deleting and finds archived sessions through the filter form', async () => {
+  it('confirms before stopping a running session', async () => {
     const user = userEvent.setup()
     render(<ProjectSidebar />)
     await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Archive' }))
-    await waitFor(() => expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument())
-    expect(api.setSessionArchived).toHaveBeenCalledWith(runningWorktreeSession.id, true)
+    await user.click(screen.getByRole('menuitem', { name: 'Stop' }))
+
+    const dialog = screen.getByRole('alertdialog', { name: 'Stop session' })
+    expect(api.stopSession).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: 'Stop' }))
+
+    expect(api.stopSession).toHaveBeenCalledWith(runningWorktreeSession.id)
     expect(api.deleteSession).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'archived')
-    await user.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(screen.getByText('Fix login bug')).toBeVisible()
-    expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Unarchive' }))
-    await waitFor(() => expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument())
-    expect(api.setSessionArchived).toHaveBeenLastCalledWith(runningWorktreeSession.id, false)
     expect(api.restoreSession).not.toHaveBeenCalled()
   })
 
-  it('combines archive scope with search and status and discards unapplied scope changes', async () => {
+  it('abandons a stop when the confirmation is dismissed', async () => {
     const user = userEvent.setup()
-    useAppStore.setState({ appState: { version: 1, projects: [project1], sessions: [{ ...runningWorktreeSession, archived: true }, stoppedSession] } })
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Session options for Fix login bug' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Stop' }))
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('alertdialog', { name: 'Stop session' })).not.toBeInTheDocument()
+    expect(api.stopSession).not.toHaveBeenCalled()
+  })
+
+  it('disables Stop for a session that is already stopped', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: `Session options for ${stoppedSession.title}` }))
+
+    expect(screen.getByRole('menuitem', { name: 'Stop' })).toBeDisabled()
+  })
+
+  it('combines status with search and discards unapplied filter changes', async () => {
+    const user = userEvent.setup()
     render(<ProjectSidebar />)
     await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'all')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'stopped')
     await user.keyboard('{Escape}')
-    expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument()
+    expect(screen.getByText('Fix login bug')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
-    expect(screen.getByRole('combobox', { name: 'Session visibility' })).toHaveValue('active')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Session visibility' }), 'all')
+    expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('all')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     act(() => useAppStore.getState().setSearchQuery('login'))
@@ -237,7 +249,7 @@ describe('session organization controls', () => {
     expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
     await user.click(screen.getByRole('button', { name: 'Reset' }))
-    expect(screen.getByRole('combobox', { name: 'Session visibility' })).toHaveValue('active')
+    expect(screen.getByRole('combobox', { name: 'Session status' })).toHaveValue('all')
   })
 
   it('describes unread sessions and shows project counts without duplicating status dots', () => {

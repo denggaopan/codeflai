@@ -42,7 +42,9 @@ const cloneState = (state: AppState): AppState => appStateSchema.parse(structure
 const normalizeRuntimeStatuses = (state: AppState): AppState => ({
   ...state,
   projects: [...state.projects],
-  sessions: state.sessions.map((session) =>
+  // `archived` is retired (see contracts.ts): dropping it here is the whole migration —
+  // the next write simply no longer contains it.
+  sessions: state.sessions.map(({ archived: _retired, ...session }) =>
     session.status === 'creating' ? { ...session, status: 'stopped' } : { ...session }
   )
 })

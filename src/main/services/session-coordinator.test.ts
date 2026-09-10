@@ -429,7 +429,7 @@ describe('SessionCoordinator.restore', () => {
 
 describe('SessionCoordinator session metadata', () => {
   it('persists a trimmed manual title before broadcasting the updated record', async () => {
-    const session = runningSession({ archived: true })
+    const session = runningSession()
     const { store, coordinator } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
     const seen: AppState[] = []
     const persistedWhenEmitted: Promise<AppState>[] = []
@@ -467,14 +467,14 @@ describe('SessionCoordinator session metadata', () => {
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it.each(['running', 'stopped'] as const)('archives and unarchives a %s worktree without changing its runtime or location', async (status) => {
+  it('stops the PTY and persists stopped without touching the worktree', async () => {
     const session = runningSession({
       mode: 'worktree',
       launchPath: worktreeLocation.launchPath,
       worktreeName: worktreeLocation.worktreeName,
       worktreePath: worktreeLocation.worktreePath,
       branchName: worktreeLocation.branchName,
-      status
+      status: 'running'
     })
     const { store, coordinator, terminalService, worktreeService, titleService } = buildHarness({
       initial: { ...emptyState(), sessions: [session] }
@@ -482,50 +482,27 @@ describe('SessionCoordinator session metadata', () => {
     const seen: AppState[] = []
     coordinator.onStateChanged((state) => seen.push(state))
 
-    for (const archived of [true, false]) {
-      const updated = await coordinator.setArchived(session.id, archived)
-      expect(updated).toEqual({ ...session, archived })
-      expect((await store.load()).sessions).toEqual([updated])
-      expect(seen.at(-1)?.sessions).toEqual([updated])
-    }
+    await coordinator.stop(session.id)
 
-    expect(seen).toHaveLength(2)
-    expect(terminalService.start).not.toHaveBeenCalled()
-    expect(terminalService.stop).not.toHaveBeenCalled()
-    expect(terminalService.stopAll).not.toHaveBeenCalled()
-    expect(worktreeService.create).not.toHaveBeenCalled()
+    expect(terminalService.stop).toHaveBeenCalledWith(session.id)
+    expect((await store.load()).sessions).toEqual([{ ...session, status: 'stopped' }])
+    expect(seen.at(-1)?.sessions).toEqual([{ ...session, status: 'stopped' }])
     expect(worktreeService.remove).not.toHaveBeenCalled()
     expect(worktreeService.rollback).not.toHaveBeenCalled()
     expect(titleService.cancel).not.toHaveBeenCalled()
   })
-
-  it('leaves metadata unchanged and emits nothing when archiving cannot persist', async () => {
-    const session = runningSession()
-    const { store, coordinator, terminalService } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
-    const listener = vi.fn()
-    coordinator.onStateChanged(listener)
-    store.update.mockRejectedValueOnce(new Error('disk full'))
-
-    await expect(coordinator.setArchived(session.id, true)).rejects.toThrow('disk full')
-
-    expect((await store.load()).sessions).toEqual([session])
-    expect(listener).not.toHaveBeenCalled()
-    expect(terminalService.stop).not.toHaveBeenCalled()
-  })
-
   it('rejects metadata changes for unknown sessions', async () => {
     const { coordinator } = buildHarness()
     const listener = vi.fn()
     coordinator.onStateChanged(listener)
 
     await expect(coordinator.rename('unknown', 'Title')).rejects.toBeInstanceOf(SessionNotFoundError)
-    await expect(coordinator.setArchived('unknown', true)).rejects.toBeInstanceOf(SessionNotFoundError)
 
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it('keeps archive and manual-title metadata when restoring a stopped session', async () => {
-    const session = runningSession({ status: 'stopped', archived: true, title: 'Manual title', titleManuallySet: true, titleState: 'complete' })
+  it('keeps manual-title metadata when restoring a stopped session', async () => {
+    const session = runningSession({ status: 'stopped', title: 'Manual title', titleManuallySet: true, titleState: 'complete' })
     const { coordinator, store } = buildHarness({ initial: { ...emptyState(), sessions: [session] } })
 
     const restored = await coordinator.restore(session.id)
@@ -543,15 +520,16 @@ describe('SessionCoordinator session metadata', () => {
     await vi.waitFor(() => expect(terminalService.start).toHaveBeenCalledOnce())
 
     const renaming = coordinator.rename(session.id, 'Manual title')
-    const archiving = coordinator.setArchived(session.id, true)
+    const stopping = coordinator.stop(session.id)
     await Promise.resolve()
     expect(store.update).not.toHaveBeenCalled()
 
     finishStart()
-    await Promise.all([restoring, renaming, archiving])
+    await Promise.all([restoring, renaming, stopping])
 
-    expect((await store.load()).sessions[0]).toMatchObject({ status: 'running', archived: true, title: 'Manual title', titleManuallySet: true })
+    expect((await store.load()).sessions[0]).toMatchObject({ status: 'stopped', title: 'Manual title', titleManuallySet: true })
     expect(terminalService.start).toHaveBeenCalledOnce()
+    expect(terminalService.stop).toHaveBeenCalledWith(session.id)
   })
 })
 

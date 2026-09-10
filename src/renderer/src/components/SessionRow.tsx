@@ -12,16 +12,16 @@ type SessionRowProps = {
   session: SessionRecord
   active: boolean
   onActivate: () => void
+  onRequestStop: (trigger: HTMLButtonElement) => void
   onRequestDelete: (trigger: HTMLButtonElement) => void
   onRowHidden: () => void
 }
 
-export default function SessionRow({ session, active, onActivate, onRequestDelete, onRowHidden }: SessionRowProps) {
+export default function SessionRow({ session, active, onActivate, onRequestStop, onRequestDelete, onRowHidden }: SessionRowProps) {
   const { t } = useTranslation()
   const agentIdle = useAppStore((state) => state.idleAgentSessionIds[session.id] === true)
   const unread = useAppStore((state) => state.unreadSessionIds.includes(session.id))
   const renameSession = useAppStore((state) => state.renameSession)
-  const setSessionArchived = useAppStore((state) => state.setSessionArchived)
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
@@ -107,7 +107,7 @@ export default function SessionRow({ session, active, onActivate, onRequestDelet
   }
 
   return (
-    <li className="session-row" data-active={active ? 'true' : undefined} data-archived={session.archived ? 'true' : undefined} data-unread={unread ? 'true' : undefined}>
+    <li className="session-row" data-active={active ? 'true' : undefined} data-unread={unread ? 'true' : undefined}>
       {editing ? (
         <form className="session-rename" onSubmit={(event) => { event.preventDefault(); void saveRename() }} onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelRename() }
@@ -127,7 +127,7 @@ export default function SessionRow({ session, active, onActivate, onRequestDelet
             <span className="session-status-dot" data-status={isAgentDone(session, agentIdle) ? 'done' : session.status} role="img" aria-label={statusLabel} title={statusLabel}>&bull;</span>
           </span>
           <span className="session-title" title={session.title}>{session.title}</span>
-          <span className="session-secondary" title={secondary}>{session.archived ? `${t('sidebar.archivedSession')} - ${secondary}` : secondary}</span>
+          <span className="session-secondary" title={secondary}>{secondary}</span>
         </button>
       )}
       <button ref={triggerRef} type="button" className="session-options-trigger" aria-label={t('sidebar.sessionOptions', { title: session.title })}
@@ -150,14 +150,11 @@ export default function SessionRow({ session, active, onActivate, onRequestDelet
           <button type="button" role="menuitem" className="project-options-menu-item" onClick={() => {
             closeMenu(false); setDraft(session.title); setInvalid(false); setEditing(true)
           }}>{t('sidebar.renameSession')}</button>
-          <button type="button" role="menuitem" className="project-options-menu-item" onClick={() => {
-            closeMenu(); setBusy(true)
-            void setSessionArchived(session.id, !session.archived).then((saved) => {
-              restoreFocusRef.current = true
-              setBusy(false)
-              if (saved && !triggerRef.current?.isConnected) onRowHidden()
-            })
-          }}>{t(session.archived ? 'sidebar.unarchiveSession' : 'sidebar.archiveSession')}</button>
+          <button type="button" role="menuitem" className="project-options-menu-item"
+            disabled={session.status !== 'running' && session.status !== 'creating'}
+            onClick={() => {
+              closeMenu(); if (triggerRef.current) onRequestStop(triggerRef.current)
+            }}>{t('sidebar.stopSession')}</button>
           <button type="button" role="menuitem" className="project-options-menu-item" onClick={() => {
             closeMenu(); if (triggerRef.current) onRequestDelete(triggerRef.current)
           }}>{t('common.delete')}</button>

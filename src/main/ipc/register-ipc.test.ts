@@ -86,7 +86,7 @@ class FakeCoordinator {
   readonly create = vi.fn()
   readonly restore = vi.fn()
   readonly rename = vi.fn()
-  readonly setArchived = vi.fn()
+  readonly stop = vi.fn(async () => undefined)
   readonly delete = vi.fn()
   readonly removeProject = vi.fn(async () => undefined)
   readonly submitFirstInput = vi.fn()
@@ -583,13 +583,11 @@ describe('registerIpc: session metadata', () => {
     expect(coordinator.rename).toHaveBeenCalledWith(session.id, 'My task')
   })
 
-  it.each([true, false])('forwards archived=%s and returns the updated session', async (archived) => {
+  it('parses the stop request and stops the session', async () => {
     const { ipcMain, coordinator } = buildHarness()
-    const updated = { ...session, archived }
-    coordinator.setArchived.mockResolvedValue(updated)
 
-    await expect(ipcMain.invoke(IPC.sessionSetArchived, { sessionId: session.id, archived })).resolves.toEqual(updated)
-    expect(coordinator.setArchived).toHaveBeenCalledWith(session.id, archived)
+    await expect(ipcMain.invoke(IPC.sessionStop, { sessionId: session.id })).resolves.toBeUndefined()
+    expect(coordinator.stop).toHaveBeenCalledWith(session.id)
   })
 
   it('rejects invalid rename requests before touching the coordinator', async () => {
@@ -603,34 +601,33 @@ describe('registerIpc: session metadata', () => {
     expect(coordinator.rename).not.toHaveBeenCalled()
   })
 
-  it('rejects invalid archive requests before touching the coordinator', async () => {
+  it('rejects invalid stop requests before touching the coordinator', async () => {
     const { ipcMain, coordinator } = buildHarness()
     for (const invalid of [
-      {}, { sessionId: '', archived: true }, { sessionId: session.id },
-      { sessionId: session.id, archived: 'true' }, { sessionId: session.id, archived: true, deleteBranch: true }
+      {}, { sessionId: '' }, { sessionId: session.id, archived: true }
     ]) {
-      await expect(ipcMain.invoke(IPC.sessionSetArchived, invalid)).rejects.toBeInstanceOf(z.ZodError)
+      await expect(ipcMain.invoke(IPC.sessionStop, invalid)).rejects.toBeInstanceOf(z.ZodError)
     }
-    expect(coordinator.setArchived).not.toHaveBeenCalled()
+    expect(coordinator.stop).not.toHaveBeenCalled()
   })
 
   it('rejects both metadata requests from another window', async () => {
     const { ipcMain, coordinator } = buildHarness()
 
     await expect(ipcMain.invokeFrom({}, IPC.sessionRename, { sessionId: session.id, title: 'Title' })).rejects.toThrow(/unauthorized ipc sender/i)
-    await expect(ipcMain.invokeFrom({}, IPC.sessionSetArchived, { sessionId: session.id, archived: true })).rejects.toThrow(/unauthorized ipc sender/i)
+    await expect(ipcMain.invokeFrom({}, IPC.sessionStop, { sessionId: session.id })).rejects.toThrow(/unauthorized ipc sender/i)
 
     expect(coordinator.rename).not.toHaveBeenCalled()
-    expect(coordinator.setArchived).not.toHaveBeenCalled()
+    expect(coordinator.stop).not.toHaveBeenCalled()
   })
 
   it('propagates unknown session failures from both metadata operations', async () => {
     const { ipcMain, coordinator } = buildHarness()
     coordinator.rename.mockRejectedValue(new SessionNotFoundError('missing'))
-    coordinator.setArchived.mockRejectedValue(new SessionNotFoundError('missing'))
+    coordinator.stop.mockRejectedValue(new SessionNotFoundError('missing'))
 
     await expect(ipcMain.invoke(IPC.sessionRename, { sessionId: 'missing', title: 'Title' })).rejects.toBeInstanceOf(SessionNotFoundError)
-    await expect(ipcMain.invoke(IPC.sessionSetArchived, { sessionId: 'missing', archived: true })).rejects.toBeInstanceOf(SessionNotFoundError)
+    await expect(ipcMain.invoke(IPC.sessionStop, { sessionId: 'missing' })).rejects.toBeInstanceOf(SessionNotFoundError)
   })
 })
 
