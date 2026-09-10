@@ -24,6 +24,8 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 
 注意：在新建的 git worktree 里 `npm install` 后若报 "Electron failed to install correctly"，运行 `node node_modules/electron/install.js` 补下二进制。
 
+**从 Electron 应用内的终端跑这些命令时先清掉 `ELECTRON_RUN_AS_NODE`**（`env -u ELECTRON_RUN_AS_NODE npm run test:e2e`，PowerShell 里 `Remove-Item Env:ELECTRON_RUN_AS_NODE`）。这个变量本是 pty-host 用来把 `electron.exe` 当 Node 运行的开关（见 PtyHostLauncher），但集成终端（Claude Code、VS Code 等本身就是 Electron 应用）会把它继承给子 shell，于是 `npm run dev` / `test:e2e` / `package:win` 启动的 Electron 都变成纯 Node 进程——报的错是 `SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'`，e2e 那边则是**每个用例**都 `Process failed to launch!`。看起来像代码坏了，其实一行都没坏。
+
 ## 架构
 
 ### 四进程布局与依赖注入
