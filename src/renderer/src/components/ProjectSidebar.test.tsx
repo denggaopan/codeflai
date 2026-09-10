@@ -246,6 +246,54 @@ describe('session organization controls', () => {
     expect(screen.getByRole('menuitem', { name: 'Stop' })).toBeDisabled()
   })
 
+  const fakeDataTransfer = () => {
+    const values = new Map<string, string>()
+    return {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: (type: string, value: string) => { values.set(type, value) },
+      getData: (type: string) => values.get(type) ?? ''
+    }
+  }
+
+  it('reorders sessions within a project by dragging', async () => {
+    render(<ProjectSidebar />)
+    const rows = screen.getAllByRole('listitem')
+    expect(rows[0]).toHaveAttribute('draggable', 'true')
+
+    fireEvent.dragStart(rows[0]!, { dataTransfer: fakeDataTransfer() })
+    fireEvent.dragOver(rows[1]!, { dataTransfer: fakeDataTransfer(), clientY: 500 })
+    fireEvent.drop(rows[1]!, { dataTransfer: fakeDataTransfer(), clientY: 500 })
+
+    expect(api.reorderSessions).toHaveBeenCalledWith([stoppedSession.id, runningWorktreeSession.id])
+  })
+
+  it('does not offer a drop target in another project', async () => {
+    const otherProject: ProjectRecord = { ...project1, id: 'project-2', name: 'Other', path: 'C:\other' }
+    seedStore({
+      version: 1,
+      projects: [project1, otherProject],
+      sessions: [runningWorktreeSession, { ...stoppedSession, projectId: otherProject.id }]
+    })
+    render(<ProjectSidebar />)
+    const rows = screen.getAllByRole('listitem')
+
+    fireEvent.dragStart(rows[0]!, { dataTransfer: fakeDataTransfer() })
+    fireEvent.drop(rows[1]!, { dataTransfer: fakeDataTransfer(), clientY: 500 })
+
+    expect(api.reorderSessions).not.toHaveBeenCalled()
+  })
+
+  it('disables session dragging while a filter is active', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'running')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(screen.getAllByRole('listitem')[0]).toHaveAttribute('draggable', 'false')
+  })
+
   it('offers only a status filter, with stopped covering put-away sessions', async () => {
     const user = userEvent.setup()
     render(<ProjectSidebar />)

@@ -781,6 +781,21 @@ body[data-sidebar-resizing='true'] .app-main {
   box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
+.session-row[data-dragging='true'] {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+/* Insertion indicator while dragging a session row, matching the project rows above. The
+   attribute is data-drop-position (what useDragSort emits), not the project rows' data-drop. */
+.session-row[data-drop-position='before'] {
+  box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.session-row[data-drop-position='after'] {
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
 .project-group {
   border-bottom: 1px solid var(--color-border-subtle);
 }

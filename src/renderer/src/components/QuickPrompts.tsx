@@ -12,7 +12,7 @@ import {
   type QuickPromptPlacement
 } from '../quick-prompts'
 import { useAppStore } from '../store/use-app-store'
-import { useQuickPromptSort } from './use-quick-prompt-sort'
+import { useDragSort } from './use-drag-sort'
 
 type QuickPromptsProps = {
   sessionId: string | null
@@ -43,7 +43,7 @@ function StarredPromptBar({ prompts, running, insertedId, onInsert, onBrowse, ex
   onInsert: (prompt: QuickPrompt) => void
   onBrowse: () => void
   expanded: boolean
-  sorting: ReturnType<typeof useQuickPromptSort>
+  sorting: ReturnType<typeof useDragSort>
 }) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -139,7 +139,7 @@ export default function QuickPrompts({ sessionId, running, onInsert, onFocusTerm
     const index = next.findIndex((prompt) => prompt.id === sourceId)
     setSortAnnouncement(t('quickPrompts.reordered', { name: quickPromptPreview(next[index].content), position: index + 1, count: next.length }))
   }
-  const sorting = useQuickPromptSort(reorder)
+  const sorting = useDragSort('application/x-codeflai-quick-prompt', reorder)
 
   useEffect(() => { sorting.cancel() }, [sessionId, enabled, view, query, prompts, sorting.cancel])
 

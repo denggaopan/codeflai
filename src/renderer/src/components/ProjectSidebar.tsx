@@ -18,6 +18,7 @@ import SessionSearch from './SessionSearch'
 import SettingsDialog from './SettingsDialog'
 import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
 import SessionRow from './SessionRow'
+import { useDragSort, type DropPlacement } from './use-drag-sort'
 
 const PROJECT_OPTIONS_GAP = 6
 
@@ -62,6 +63,7 @@ export default function ProjectSidebar() {
   const reorderProjects = useAppStore((state) => state.reorderProjects)
   const setActiveSession = useAppStore((state) => state.setActiveSession)
   const restoreSession = useAppStore((state) => state.restoreSession)
+  const reorderSessions = useAppStore((state) => state.reorderSessions)
   const stopSession = useAppStore((state) => state.stopSession)
   const deleteSession = useAppStore((state) => state.deleteSession)
   const openProjectInVSCode = useAppStore((state) => state.openProjectInVSCode)
@@ -253,6 +255,19 @@ export default function ProjectSidebar() {
       setActiveSession(session.id, session.projectId)
     }
   }
+
+  // The hook reports a single move; the IPC takes the complete order, so the move is replayed
+  // against the persisted list. Sessions in other projects keep their positions, and the drag
+  // surface has already confined source and target to the same project.
+  const handleSessionMove = (sourceId: string, targetId: string, placement: DropPlacement): void => {
+    const orderedIds = appState.sessions.map((session) => session.id).filter((id) => id !== sourceId)
+    const targetIndex = orderedIds.indexOf(targetId)
+    if (targetIndex === -1) return
+    orderedIds.splice(placement === 'before' ? targetIndex : targetIndex + 1, 0, sourceId)
+    if (orderedIds.some((id, index) => appState.sessions[index]?.id !== id)) void reorderSessions(orderedIds)
+  }
+
+  const sessionSorting = useDragSort('application/x-codeflai-session', handleSessionMove)
 
   const handleRequestStop = (session: SessionRecord, trigger: HTMLButtonElement): void => {
     pendingStopTriggerRef.current = trigger
@@ -519,7 +534,7 @@ export default function ProjectSidebar() {
         </div>
       )}
 
-      <div className="project-groups" ref={projectGroupsRef}>
+      <div className="project-groups" ref={projectGroupsRef} {...sessionSorting.rootProps}>
         {filtering && filteredSessions.length === 0 && (
           <div className="session-filter-empty">
             <p role="status">{t('sidebar.noMatchingSessions')}</p>
@@ -730,6 +745,10 @@ export default function ProjectSidebar() {
                       session={session}
                       active={session.id === activeSessionId}
                       onActivate={() => handleRowActivate(session)}
+                      dragProps={{
+                        ...sessionSorting.sourceProps(session.id, project.id, dragEnabled),
+                        ...sessionSorting.targetProps(session.id, project.id, dragEnabled)
+                      }}
                       onRequestStop={(trigger) => handleRequestStop(session, trigger)}
                       onRequestDelete={(trigger) => handleRequestDelete(session, trigger)}
                       onRowHidden={() => searchTriggerRef.current?.focus()}

@@ -12,6 +12,7 @@ type SessionRowProps = {
   session: SessionRecord
   active: boolean
   onActivate: () => void
+  dragProps: Record<string, unknown>
   onRequestStop: (trigger: HTMLButtonElement) => void
   onRequestDelete: (trigger: HTMLButtonElement) => void
   onRowHidden: () => void
@@ -43,7 +44,7 @@ function TrashGlyph() {
   )
 }
 
-export default function SessionRow({ session, active, onActivate, onRequestStop, onRequestDelete, onRowHidden }: SessionRowProps) {
+export default function SessionRow({ session, active, onActivate, dragProps, onRequestStop, onRequestDelete, onRowHidden }: SessionRowProps) {
   const { t } = useTranslation()
   const agentIdle = useAppStore((state) => state.idleAgentSessionIds[session.id] === true)
   const unread = useAppStore((state) => state.unreadSessionIds.includes(session.id))
@@ -133,7 +134,7 @@ export default function SessionRow({ session, active, onActivate, onRequestStop,
   }
 
   return (
-    <li className="session-row" data-active={active ? 'true' : undefined} data-unread={unread ? 'true' : undefined}>
+    <li className="session-row" {...dragProps} data-active={active ? 'true' : undefined} data-unread={unread ? 'true' : undefined}>
       {editing ? (
         <form className="session-rename" onSubmit={(event) => { event.preventDefault(); void saveRename() }} onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelRename() }

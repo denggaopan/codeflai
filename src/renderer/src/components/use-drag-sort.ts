@@ -1,12 +1,24 @@
 import { useCallback, useRef, useState, type DragEvent, type MouseEvent } from 'react'
 
-import type { QuickPromptPlacement } from '../quick-prompts'
+export type DropPlacement = 'before' | 'after'
 
-type Surface = 'bar' | 'manage'
-type DragSource = { id: string; surface: Surface }
-type DropTarget = DragSource & { placement: QuickPromptPlacement }
+type DragSource = { id: string; surface: string }
+type DropTarget = DragSource & { placement: DropPlacement }
 
-export function useQuickPromptSort(onMove: (sourceId: string, targetId: string, placement: QuickPromptPlacement) => void) {
+/**
+ * Drag-to-reorder for a list, shared by quick prompts and session rows.
+ *
+ * `surface` scopes a drag: a source can only be dropped on a target declaring the same
+ * surface, which is how session rows stay inside their own project without a separate check.
+ * `mimeType` must be caller-specific and must never be text/plain — dropping a row onto xterm
+ * has to be inert rather than pasting itself as a command. The click that would otherwise fire
+ * at the end of a drag is suppressed through rootProps, which for a session row would
+ * otherwise switch terminals.
+ */
+export function useDragSort(
+  mimeType: string,
+  onMove: (sourceId: string, targetId: string, placement: DropPlacement) => void
+) {
   const activeRef = useRef<DragSource | null>(null)
   const suppressClickRef = useRef(false)
   const [source, setSource] = useState<DragSource | null>(null)
@@ -18,7 +30,7 @@ export function useQuickPromptSort(onMove: (sourceId: string, targetId: string, 
     setTarget(null)
   }, [])
 
-  const sourceProps = (id: string, surface: Surface, enabled: boolean) => ({
+  const sourceProps = (id: string, surface: string, enabled: boolean) => ({
     draggable: enabled,
     'data-dragging': source?.id === id && source.surface === surface ? 'true' : undefined,
     onDragStart: (event: DragEvent<HTMLElement>) => {
@@ -27,8 +39,8 @@ export function useQuickPromptSort(onMove: (sourceId: string, targetId: string, 
         return
       }
       event.stopPropagation()
-      // Never offer text/plain: dropping a prompt on xterm must not paste a command.
-      event.dataTransfer.setData('application/x-codeflai-quick-prompt', id)
+      // Never offer text/plain: dropping a row on xterm must not paste a command.
+      event.dataTransfer.setData(mimeType, id)
       event.dataTransfer.effectAllowed = 'move'
       activeRef.current = { id, surface }
       suppressClickRef.current = true
@@ -38,7 +50,7 @@ export function useQuickPromptSort(onMove: (sourceId: string, targetId: string, 
     onDragEnd: cancel
   })
 
-  const targetProps = (id: string, surface: Surface, enabled: boolean) => {
+  const targetProps = (id: string, surface: string, enabled: boolean) => {
     const destination = (event: DragEvent<HTMLElement>): DropTarget | null => {
       const active = activeRef.current
       if (!enabled || !active || active.surface !== surface || active.id === id) return null
