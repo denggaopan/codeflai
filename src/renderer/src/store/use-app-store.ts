@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
+import { AGENT_KINDS, isAgentKind, type AgentKind } from '../../../shared/agent-kinds'
 import { AgentActivityTracker } from '../../../shared/agent-activity'
 import type { TerminalDataEvent } from '../../../shared/pty-protocol'
 import type {
@@ -360,9 +360,19 @@ export const useAppStore = create<AppStore>()((set, get) => {
   // Any PTY output from an agent session restarts its quiet window; the session is marked
   // idle (Done) only when that window elapses with no further output. Shells and unknown
   // session ids (data can arrive before the snapshot loads) are ignored entirely.
-  const noteAgentOutput = (sessionId: string, data: string, replay = false): void => {
+  //
+  // `onIdle` is how unread activity is raised: the Done edge — not the arrival of bytes — is
+  // what the user actually wants to be told about, since agent TUIs repaint spinners and
+  // elapsed-time counters continuously. It fires only for a timer armed by live output, so
+  // replaying the retained tail on startup can never fabricate unread activity.
+  const noteAgentOutput = (
+    sessionId: string,
+    data: string,
+    replay = false,
+    onIdle?: (sessionId: string) => void
+  ): void => {
     const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
-    if (!session || session.status !== 'running' || (session.kind !== 'claude' && session.kind !== 'codex')) return
+    if (!session || session.status !== 'running' || !isAgentKind(session.kind)) return
 
     let activity = agentActivities.get(sessionId)
     if (!activity) {
@@ -380,6 +390,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         if (agentActivities.get(sessionId) !== activity || activity.running === true ||
           !get().appState.sessions.some((candidate) => candidate.id === sessionId && candidate.status === 'running')) return
         set((state) => ({ idleAgentSessionIds: { ...state.idleAgentSessionIds, [sessionId]: true } }))
+        if (!replay) onIdle?.(sessionId)
       }, AGENT_IDLE_MS)
     )
   }
@@ -444,10 +455,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (disposed || pendingActivity.get(sessionId) !== pending) return
           pendingActivity.delete(sessionId)
           if (activityEpoch !== epoch) return
-          if (replay?.data) noteAgentOutput(sessionId, replay.data, true)
+          if (replay?.data) noteAgentOutput(sessionId, replay.data, true, recordUnread)
           for (const event of pending) {
             if (replay && event.sequence !== undefined && event.sequence <= replay.throughSequence) continue
-            noteAgentOutput(sessionId, event.data)
+            noteAgentOutput(sessionId, event.data, false, recordUnread)
           }
         })
       }
@@ -530,15 +541,19 @@ export const useAppStore = create<AppStore>()((set, get) => {
           hydratingWorkspace = false
           snapshotLoaded = true
           markViewedSessionRead()
-          for (const sessionId of pendingUnread) noteUnreadOutput(sessionId)
+          for (const sessionId of pendingUnread) {
+            const queued = appState.sessions.find((candidate) => candidate.id === sessionId)
+            if (queued && isAgentKind(queued.kind)) continue
+            noteUnreadOutput(sessionId)
+          }
           pendingUnread.clear()
           startupRead.clear()
           for (const sessionId of pendingActivity.keys()) {
             if (!appState.sessions.some((session) => session.id === sessionId && session.status === 'running' &&
-              (session.kind === 'claude' || session.kind === 'codex'))) pendingActivity.delete(sessionId)
+              isAgentKind(session.kind))) pendingActivity.delete(sessionId)
           }
           for (const session of appState.sessions) {
-            if (session.status === 'running' && (session.kind === 'claude' || session.kind === 'codex')) hydrateActivity(session.id)
+            if (session.status === 'running' && isAgentKind(session.kind)) hydrateActivity(session.id)
           }
           persistWorkspace()
         })
@@ -562,21 +577,24 @@ export const useAppStore = create<AppStore>()((set, get) => {
           }
         }
         if (snapshotLoaded) for (const session of state.sessions) {
-          if (session.status === 'running' && (session.kind === 'claude' || session.kind === 'codex') &&
+          if (session.status === 'running' && isAgentKind(session.kind) &&
             !previousSessions.some((previous) => previous.id === session.id && previous.status === 'running')) hydrateActivity(session.id)
         }
       })
       const disposeData = window.codeflai.onTerminalData((event) => {
-        if (event.data.length > 0) {
-          recordUnread(event.sessionId)
-        }
+        // Shells do not repaint themselves, so for them any output really is new content.
+        // Agent sessions are reported at the Done edge inside noteAgentOutput instead.
+        // Before the snapshot loads the kind is unknown, so the id is queued and filtered
+        // once the session records arrive.
+        const session = get().appState.sessions.find((candidate) => candidate.id === event.sessionId)
+        if (event.data.length > 0 && !(session && isAgentKind(session.kind))) recordUnread(event.sessionId)
         if (!snapshotLoaded || pendingActivity.has(event.sessionId)) {
           const pending = pendingActivity.get(event.sessionId) ?? []
           pending.push(event)
           pendingActivity.set(event.sessionId, pending)
           return
         }
-        noteAgentOutput(event.sessionId, event.data)
+        noteAgentOutput(event.sessionId, event.data, false, recordUnread)
       })
       const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
         recordUnread(sessionId)

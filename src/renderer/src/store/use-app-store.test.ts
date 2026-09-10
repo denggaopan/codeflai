@@ -183,40 +183,61 @@ describe('unread session activity', () => {
     window.dispatchEvent(new Event('focus'))
   })
 
-  it('marks background live output once, persists it, and clears it on selection', () => {
+  it('marks an agent session unread only once its turn finishes', async () => {
     useAppStore.getState().setActiveSession(powershellSession.id)
     api.saveWorkspace.mockClear()
-    api.emitTerminalData({ sessionId: claudeSession.id, data: 'new output' })
-    api.emitTerminalData({ sessionId: claudeSession.id, data: 'more output' })
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'thinking...' })
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'still working' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
-    expect(api.saveWorkspace).toHaveBeenCalledTimes(1)
     expect(api.saveWorkspace.mock.calls.at(-1)?.[0].unreadSessionIds).toEqual([claudeSession.id])
     useAppStore.getState().setActiveSession(claudeSession.id)
     expect(useAppStore.getState().unreadSessionIds).toEqual([])
     expect(api.saveWorkspace.mock.calls.at(-1)?.[0].unreadSessionIds ?? []).toEqual([])
-    api.emitTerminalData({ sessionId: claudeSession.id, data: 'viewed output' })
-    expect(useAppStore.getState().unreadSessionIds).toEqual([])
   })
 
-  it('marks selected session output while unfocused and clears it when focus returns', () => {
+  it('marks a shell session unread on any output', () => {
+    useAppStore.getState().setActiveSession(claudeSession.id)
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'PS C:\> ' })
+    expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+  })
+
+  it('marks the selected agent session unread while unfocused and clears it when focus returns', async () => {
     useAppStore.getState().setActiveSession(claudeSession.id)
     vi.mocked(document.hasFocus).mockReturnValue(false)
     window.dispatchEvent(new Event('blur'))
     api.emitTerminalData({ sessionId: claudeSession.id, data: 'background output' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
     vi.mocked(document.hasFocus).mockReturnValue(true)
     window.dispatchEvent(new Event('focus'))
     expect(useAppStore.getState().unreadSessionIds).toEqual([])
   })
 
-  it('keeps hidden-window output unread until the selected terminal is visible', () => {
+  it('keeps hidden-window agent output unread until the selected terminal is visible', async () => {
     useAppStore.getState().setActiveSession(claudeSession.id)
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
     document.dispatchEvent(new Event('visibilitychange'))
     api.emitTerminalData({ sessionId: claudeSession.id, data: 'while hidden' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(useAppStore.getState().unreadSessionIds).toEqual([claudeSession.id])
     visibility.mockReturnValue('visible')
     document.dispatchEvent(new Event('visibilitychange'))
+    expect(useAppStore.getState().unreadSessionIds).toEqual([])
+  })
+
+  it('never marks replayed history unread even after the quiet window elapses', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    const project: ProjectRecord = { id: 'project-1', name: 'Project', path: 'C:\project', createdAt: claudeSession.createdAt }
+    api.getSnapshot.mockResolvedValue({ platform: 'win32', capabilities: defaultCapabilities(), state: {
+      ...seededState, projects: [project], workspace: { activeProjectId: project.id, activeSessionId: null, collapsedProjectIds: [] }
+    } })
+    api.replayTerminal.mockResolvedValue({ data: 'old output', cols: 80, rows: 24, throughSequence: 7 })
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(useAppStore.getState().unreadSessionIds).toEqual([])
   })
 
