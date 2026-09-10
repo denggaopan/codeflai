@@ -18,6 +18,13 @@ export class SessionNotFoundError extends Error {
   }
 }
 
+export class SessionOrderMismatchError extends Error {
+  constructor() {
+    super('The session order does not match the sessions on record.')
+    this.name = 'SessionOrderMismatchError'
+  }
+}
+
 // Placeholder titles shown until the first input produces a real one. English regardless of
 // the renderer's locale: these are persisted into AppState, not UI copy, so they must not
 // change meaning when the user switches language.
@@ -191,6 +198,28 @@ export class SessionCoordinator {
       }), true)
       return updated!
     })
+  }
+
+  /**
+   * Persists a new display order for the sessions. The order must be an exact permutation of
+   * the sessions persisted at commit time — validated inside the update transaction, so a
+   * session created concurrently (after the renderer read its now-stale list) is never
+   * silently dropped. Mirrors ProjectService.reorder.
+   */
+  async reorder(orderedSessionIds: readonly string[]): Promise<SessionRecord[]> {
+    let reordered: SessionRecord[] = []
+    await this.store.update((latest) => {
+      const byId = new Map(latest.sessions.map((session) => [session.id, session]))
+      const isPermutation =
+        orderedSessionIds.length === byId.size &&
+        new Set(orderedSessionIds).size === orderedSessionIds.length &&
+        orderedSessionIds.every((id) => byId.has(id))
+      if (!isPermutation) throw new SessionOrderMismatchError()
+
+      reordered = orderedSessionIds.map((id) => byId.get(id)!)
+      return { ...latest, sessions: reordered }
+    })
+    return reordered
   }
 
   /**

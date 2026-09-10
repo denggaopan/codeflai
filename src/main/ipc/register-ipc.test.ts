@@ -87,6 +87,7 @@ class FakeCoordinator {
   readonly restore = vi.fn()
   readonly rename = vi.fn()
   readonly stop = vi.fn(async () => undefined)
+  readonly reorder = vi.fn(async (): Promise<SessionRecord[]> => [])
   readonly delete = vi.fn()
   readonly removeProject = vi.fn(async () => undefined)
   readonly submitFirstInput = vi.fn()
@@ -628,6 +629,34 @@ describe('registerIpc: session metadata', () => {
 
     await expect(ipcMain.invoke(IPC.sessionRename, { sessionId: 'missing', title: 'Title' })).rejects.toBeInstanceOf(SessionNotFoundError)
     await expect(ipcMain.invoke(IPC.sessionStop, { sessionId: 'missing' })).rejects.toBeInstanceOf(SessionNotFoundError)
+  })
+})
+
+describe('registerIpc: session:reorder', () => {
+  it('parses the request and returns the reordered sessions from the coordinator', async () => {
+    const { ipcMain, coordinator } = buildHarness()
+    coordinator.reorder.mockResolvedValue([session])
+
+    await expect(ipcMain.invoke(IPC.sessionReorder, { orderedSessionIds: ['b', 'a'] })).resolves.toEqual([session])
+    expect(coordinator.reorder).toHaveBeenCalledWith(['b', 'a'])
+  })
+
+  it('rejects invalid reorder requests before touching the coordinator', async () => {
+    const { ipcMain, coordinator } = buildHarness()
+    for (const invalid of [
+      {}, { orderedSessionIds: [] }, { orderedSessionIds: [''] },
+      { orderedSessionIds: ['a'], extra: true }, { orderedSessionIds: 'a' }
+    ]) {
+      await expect(ipcMain.invoke(IPC.sessionReorder, invalid)).rejects.toBeInstanceOf(z.ZodError)
+    }
+    expect(coordinator.reorder).not.toHaveBeenCalled()
+  })
+
+  it('rejects a reorder request from another window', async () => {
+    const { ipcMain, coordinator } = buildHarness()
+
+    await expect(ipcMain.invokeFrom({}, IPC.sessionReorder, { orderedSessionIds: ['a'] })).rejects.toThrow(/unauthorized ipc sender/i)
+    expect(coordinator.reorder).not.toHaveBeenCalled()
   })
 })
 

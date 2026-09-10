@@ -40,6 +40,7 @@ export type CodeflaiApi = {
   restoreSession(sessionId: string): Promise<SessionRecord>
   renameSession(sessionId: string, title: string): Promise<SessionRecord>
   stopSession(sessionId: string): Promise<void>
+  reorderSessions(orderedSessionIds: readonly string[]): Promise<SessionRecord[]>
   deleteSession(sessionId: string): Promise<DeleteSessionResult>
   submitFirstInput(sessionId: string, text: string): Promise<void>
   setTheme(theme: ThemePreference): Promise<void>
@@ -87,6 +88,7 @@ const api: CodeflaiApi = {
   restoreSession: (sessionId) => ipcRenderer.invoke(IPC.sessionRestore, { sessionId }),
   renameSession: (sessionId, title) => ipcRenderer.invoke(IPC.sessionRename, { sessionId, title }),
   stopSession: (sessionId) => ipcRenderer.invoke(IPC.sessionStop, { sessionId }),
+  reorderSessions: (orderedSessionIds) => ipcRenderer.invoke(IPC.sessionReorder, { orderedSessionIds: [...orderedSessionIds] }),
   deleteSession: (sessionId) => ipcRenderer.invoke(IPC.sessionDelete, { sessionId }),
   submitFirstInput: (sessionId, text) => ipcRenderer.invoke(IPC.sessionFirstInput, { sessionId, text }),
   setTheme: (theme) => ipcRenderer.invoke(IPC.themeSet, { theme }),

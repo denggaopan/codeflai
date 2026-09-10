@@ -6,7 +6,7 @@ import type { SessionStore } from './session-store'
 import type { RemoveWorktreeResult, SessionLocation, WorktreeService } from './worktree-service'
 import type { TerminalEventMap } from './terminal-service'
 import type { TitleService } from './title-service'
-import { SessionCoordinator, SessionNotFoundError, type SessionTerminal } from './session-coordinator'
+import { SessionCoordinator, SessionNotFoundError, SessionOrderMismatchError, type SessionTerminal } from './session-coordinator'
 
 const emptyState = (): AppState => ({ version: 1, projects: [], sessions: [] })
 
@@ -530,6 +530,32 @@ describe('SessionCoordinator session metadata', () => {
     expect((await store.load()).sessions[0]).toMatchObject({ status: 'stopped', title: 'Manual title', titleManuallySet: true })
     expect(terminalService.start).toHaveBeenCalledOnce()
     expect(terminalService.stop).toHaveBeenCalledWith(session.id)
+  })
+})
+
+describe('SessionCoordinator.reorder', () => {
+  const twoSessions = (): AppState => ({
+    ...emptyState(),
+    sessions: [runningSession({ id: 'session-a' }), runningSession({ id: 'session-b' })]
+  })
+
+  it('persists an exact permutation of the session order', async () => {
+    const { store, coordinator } = buildHarness({ initial: twoSessions() })
+
+    const reordered = await coordinator.reorder(['session-b', 'session-a'])
+
+    expect(reordered.map((session) => session.id)).toEqual(['session-b', 'session-a'])
+    expect((await store.load()).sessions.map((session) => session.id)).toEqual(['session-b', 'session-a'])
+  })
+
+  it('rejects an order that is not an exact permutation', async () => {
+    const { store, coordinator } = buildHarness({ initial: twoSessions() })
+
+    await expect(coordinator.reorder(['session-a'])).rejects.toBeInstanceOf(SessionOrderMismatchError)
+    await expect(coordinator.reorder(['session-a', 'session-a'])).rejects.toBeInstanceOf(SessionOrderMismatchError)
+    await expect(coordinator.reorder(['session-a', 'session-c'])).rejects.toBeInstanceOf(SessionOrderMismatchError)
+
+    expect((await store.load()).sessions.map((session) => session.id)).toEqual(['session-a', 'session-b'])
   })
 })
 

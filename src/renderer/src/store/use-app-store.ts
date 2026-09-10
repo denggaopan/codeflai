@@ -112,6 +112,7 @@ export type AppStore = {
   restoreSession: (sessionId: string) => Promise<void>
   renameSession: (sessionId: string, title: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
+  reorderSessions: (orderedSessionIds: readonly string[]) => Promise<void>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResult | undefined>
 
   setSearchQuery: (query: string) => void
@@ -953,6 +954,15 @@ export const useAppStore = create<AppStore>()((set, get) => {
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         return false
+      }
+    },
+
+    reorderSessions: async (orderedSessionIds) => {
+      try {
+        const sessions = await window.codeflai.reorderSessions(orderedSessionIds)
+        set((state) => ({ appState: { ...state.appState, sessions } }))
+      } catch (error) {
+        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
     },
 

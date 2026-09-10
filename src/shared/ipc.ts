@@ -15,6 +15,7 @@ export const IPC = {
   sessionRestore: 'session:restore',
   sessionRename: 'session:rename',
   sessionStop: 'session:stop',
+  sessionReorder: 'session:reorder',
   sessionDelete: 'session:delete',
   sessionFirstInput: 'session:first-input',
   themeSet: 'theme:set',

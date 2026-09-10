@@ -151,6 +151,12 @@ export const reorderProjectsRequestSchema = z.strictObject({
   orderedProjectIds: z.array(z.string().min(1)).min(1)
 })
 
+// The full ordered id list (not a moved-id/index pair) so the request is idempotent and the
+// coordinator can verify it is an exact permutation of the currently persisted sessions.
+export const reorderSessionsRequestSchema = z.strictObject({
+  orderedSessionIds: z.array(z.string().min(1)).min(1)
+})
+
 export const terminalWriteRequestSchema = z.strictObject({
   sessionId: z.string().min(1),
   data: z.string().max(65536)

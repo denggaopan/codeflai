@@ -56,6 +56,7 @@ const createFakeApi = (): FakeApi => ({
   deleteSession: vi.fn(async (_sessionId: string): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
   renameSession: vi.fn(async (_sessionId: string, title: string): Promise<SessionRecord> => ({ ...runningWorktreeSession, title })),
   stopSession: vi.fn(async (_sessionId: string): Promise<void> => undefined),
+  reorderSessions: vi.fn(async (): Promise<SessionRecord[]> => []),
   submitFirstInput: vi.fn(async () => undefined),
   setTheme: vi.fn(async (): Promise<void> => undefined),
   setWindowPinned: vi.fn(async (pinned: boolean): Promise<boolean> => pinned),

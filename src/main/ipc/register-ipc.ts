@@ -19,6 +19,7 @@ import {
   openExternalLinkRequestSchema,
   projectIdRequestSchema,
   reorderProjectsRequestSchema,
+  reorderSessionsRequestSchema,
   renameSessionRequestSchema,
   sessionIdRequestSchema,
   setAutoLaunchRequestSchema,
@@ -215,6 +216,14 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
       async (_event, payload): Promise<void> => {
         const { sessionId } = sessionIdRequestSchema.parse(payload)
         await coordinator.stop(sessionId)
+      }
+    ],
+
+    [
+      IPC.sessionReorder,
+      async (_event, payload): Promise<SessionRecord[]> => {
+        const { orderedSessionIds } = reorderSessionsRequestSchema.parse(payload)
+        return coordinator.reorder(orderedSessionIds)
       }
     ],
 

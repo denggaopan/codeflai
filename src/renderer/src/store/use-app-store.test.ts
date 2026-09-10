@@ -77,6 +77,7 @@ const createFakeApi = () => {
     restoreSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     renameSession: vi.fn(async (_id: string, title: string): Promise<SessionRecord> => ({ ...claudeSession, title })),
     stopSession: vi.fn(async (_sessionId: string): Promise<void> => undefined),
+    reorderSessions: vi.fn(async (): Promise<SessionRecord[]> => []),
     reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
     deleteSession: vi.fn(async (): Promise<DeleteSessionResult> => ({ status: 'deleted' })),
     submitFirstInput: vi.fn(async (): Promise<void> => undefined),
@@ -167,6 +168,26 @@ describe('session organization', () => {
     expect(useAppStore.getState().unreadSessionIds).toEqual([])
     expect(api.restoreSession).not.toHaveBeenCalled()
     expect(api.deleteSession).not.toHaveBeenCalled()
+  })
+
+  it('merges the reordered sessions returned by the main process', async () => {
+    api.reorderSessions.mockResolvedValueOnce([powershellSession, claudeSession])
+
+    await useAppStore.getState().reorderSessions([powershellSession.id, claudeSession.id])
+
+    expect(api.reorderSessions).toHaveBeenCalledWith([powershellSession.id, claudeSession.id])
+    expect(useAppStore.getState().appState.sessions.map((session) => session.id))
+      .toEqual([powershellSession.id, claudeSession.id])
+  })
+
+  it('reports a reorder failure as a notice and leaves the order alone', async () => {
+    api.reorderSessions.mockRejectedValueOnce(new Error('order changed'))
+
+    await useAppStore.getState().reorderSessions([powershellSession.id, claudeSession.id])
+
+    expect(useAppStore.getState().notice).toEqual({ message: 'order changed', tone: 'error' })
+    expect(useAppStore.getState().appState.sessions.map((session) => session.id))
+      .toEqual([claudeSession.id, powershellSession.id])
   })
 
   it('reports a stop failure as a notice', async () => {
