@@ -16,7 +16,7 @@ import AddProjectDialog from './AddProjectDialog'
 import SessionLauncher from './SessionLauncher'
 import SessionSearch from './SessionSearch'
 import SettingsDialog from './SettingsDialog'
-import SessionFilters, { type SessionArchiveFilter, type SessionStatusFilter } from './SessionFilters'
+import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
 import SessionRow from './SessionRow'
 
 const PROJECT_OPTIONS_GAP = 6
@@ -78,7 +78,6 @@ export default function ProjectSidebar() {
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
   const [pendingStop, setPendingStop] = useState<SessionRecord | null>(null)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>('all')
-  const [archiveFilter, setArchiveFilter] = useState<SessionArchiveFilter>('active')
   const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
@@ -332,17 +331,16 @@ export default function ProjectSidebar() {
     : undefined
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
-  const filtering = normalizedQuery !== '' || statusFilter !== 'all' || archiveFilter !== 'active'
-  const [resultFolds, setResultFolds] = useState<{ query: string; status: SessionStatusFilter; archive: SessionArchiveFilter; ids: string[] }>({
-    query: normalizedQuery, status: statusFilter, archive: archiveFilter, ids: []
+  const filtering = normalizedQuery !== '' || statusFilter !== 'all'
+  const [resultFolds, setResultFolds] = useState<{ query: string; status: SessionStatusFilter; ids: string[] }>({
+    query: normalizedQuery, status: statusFilter, ids: []
   })
   // New criteria reveal matches; folding results never overwrites saved workspace folds.
-  if (resultFolds.query !== normalizedQuery || resultFolds.status !== statusFilter || resultFolds.archive !== archiveFilter) {
-    setResultFolds({ query: normalizedQuery, status: statusFilter, archive: archiveFilter, ids: [] })
+  if (resultFolds.query !== normalizedQuery || resultFolds.status !== statusFilter) {
+    setResultFolds({ query: normalizedQuery, status: statusFilter, ids: [] })
   }
   const dragEnabled = !filtering
   const filteredSessions = appState.sessions.filter((session) => {
-    if (archiveFilter !== 'all' && (session.archived === true) !== (archiveFilter === 'archived')) return false
     const status = isAgentDone(session, idleAgentSessionIds[session.id] === true) ? 'done' : session.status
     return (statusFilter === 'all' || status === statusFilter) && session.title.toLowerCase().includes(normalizedQuery)
   })
@@ -485,7 +483,7 @@ export default function ProjectSidebar() {
           <span aria-hidden="true" className="add-project-icon" style={{ maskImage: `url("${newFolderIconUrl}")` }} />
         </button>
         <SessionSearch value={searchQuery} onChange={setSearchQuery} triggerRef={searchTriggerRef} />
-        <SessionFilters value={statusFilter} onChange={setStatusFilter} archiveValue={archiveFilter} onArchiveChange={setArchiveFilter} />
+        <SessionFilters value={statusFilter} onChange={setStatusFilter} />
         <button
           type="button"
           className="project-fold-toggle"
@@ -525,7 +523,7 @@ export default function ProjectSidebar() {
         {filtering && filteredSessions.length === 0 && (
           <div className="session-filter-empty">
             <p role="status">{t('sidebar.noMatchingSessions')}</p>
-            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setArchiveFilter('active'); searchTriggerRef.current?.focus() }}>
+            <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); searchTriggerRef.current?.focus() }}>
               {t('sidebar.clearFilters')}
             </button>
           </div>

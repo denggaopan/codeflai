@@ -4,27 +4,22 @@ import type { SessionRecord } from '../../../shared/contracts'
 import { useTranslation } from '../i18n/use-translation'
 
 export type SessionStatusFilter = 'all' | 'done' | SessionRecord['status']
-export type SessionArchiveFilter = 'active' | 'archived' | 'all'
 
 type SessionFiltersProps = {
   value: SessionStatusFilter
   onChange: (value: SessionStatusFilter) => void
-  archiveValue: SessionArchiveFilter
-  onArchiveChange: (value: SessionArchiveFilter) => void
 }
 
-export default function SessionFilters({ value, onChange, archiveValue, onArchiveChange }: SessionFiltersProps) {
+export default function SessionFilters({ value, onChange }: SessionFiltersProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [draftStatus, setDraftStatus] = useState(value)
-  const [draftArchive, setDraftArchive] = useState(archiveValue)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const selectRef = useRef<HTMLSelectElement>(null)
   const dialogId = useId()
   const statusLabel = value === 'all' ? t('sidebar.allStatuses') : value === 'stopped' ? t('sidebar.stoppedStatus') : t(`status.${value}`)
-  const active = value !== 'all' || archiveValue !== 'active'
-  const archiveLabel = t(archiveValue === 'all' ? 'sidebar.allSessions' : archiveValue === 'archived' ? 'sidebar.archivedSessions' : 'sidebar.activeSessions')
+  const active = value !== 'all'
 
   const close = () => {
     setOpen(false)
@@ -65,10 +60,9 @@ export default function SessionFilters({ value, onChange, archiveValue, onArchiv
         aria-expanded={open}
         aria-controls={open ? dialogId : undefined}
         data-active={active ? 'true' : undefined}
-        title={`${t('sidebar.sessionStatus')}: ${statusLabel}${archiveValue === 'active' ? '' : `; ${archiveLabel}`}`}
+        title={`${t('sidebar.sessionStatus')}: ${statusLabel}`}
         onClick={() => {
           setDraftStatus(value)
-          setDraftArchive(archiveValue)
           setOpen(!open)
         }}
       >
@@ -82,11 +76,10 @@ export default function SessionFilters({ value, onChange, archiveValue, onArchiv
           className="session-filter-popover"
           role="dialog"
           aria-label={t('sidebar.filterSessions')}
-          onReset={() => { setDraftStatus('all'); setDraftArchive('active') }}
+          onReset={() => setDraftStatus('all')}
           onSubmit={(event) => {
             event.preventDefault()
             onChange(draftStatus)
-            onArchiveChange(draftArchive)
             close()
           }}
         >
@@ -108,12 +101,6 @@ export default function SessionFilters({ value, onChange, archiveValue, onArchiv
             <option value="creating">{t('status.creating')}</option>
             <option value="missing">{t('status.missing')}</option>
             <option value="error">{t('status.error')}</option>
-          </select>
-          <select className="session-filter-field" aria-label={t('sidebar.sessionVisibility')} value={draftArchive}
-            onChange={(event) => setDraftArchive(event.target.value as SessionArchiveFilter)}>
-            <option value="active">{t('sidebar.activeSessions')}</option>
-            <option value="archived">{t('sidebar.archivedSessions')}</option>
-            <option value="all">{t('sidebar.allSessions')}</option>
           </select>
           <div className="session-filter-actions">
             <button type="reset">{t('sidebar.resetFilters')}</button>

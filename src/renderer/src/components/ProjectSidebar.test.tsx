@@ -245,6 +245,19 @@ describe('session organization controls', () => {
     expect(screen.getByRole('menuitem', { name: 'Stop' })).toBeDisabled()
   })
 
+  it('offers only a status filter, with stopped covering put-away sessions', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+
+    expect(screen.queryByRole('combobox', { name: 'Session visibility' })).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Session status' }), 'stopped')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(screen.getByText(stoppedSession.title)).toBeVisible()
+    expect(screen.queryByText('Fix login bug')).not.toBeInTheDocument()
+  })
+
   it('combines status with search and discards unapplied filter changes', async () => {
     const user = userEvent.setup()
     render(<ProjectSidebar />)
