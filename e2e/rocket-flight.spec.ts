@@ -137,7 +137,9 @@ test('consecutive logo clicks launch independent straight flights and reset afte
     })
     await expect(page.locator('.rocket-flight')).toHaveCount(2)
     await page.screenshot({ path: testInfo.outputPath('paired-rockets.png') })
-    await page.locator('.title-bar-action').first().click()
+    // Settings lives in the sidebar footer, not the title bar: the point here is that a
+    // modal opens over the rockets while they are still in flight.
+    await page.locator('.sidebar-settings').click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.keyboard.press('Escape')
     await restoreAnimations.evaluate((restore) => restore())

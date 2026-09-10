@@ -158,6 +158,9 @@ export const en = {
 
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
+  'settings.sections': 'Settings sections',
+  'settings.sectionGeneral': 'General',
+  'settings.sectionUpdates': 'Updates',
   'settings.launchAtLogin': 'Launch at startup',
   'settings.launchAtLoginFailed': 'Could not change the startup setting: {reason}',
   'settings.sessionKinds': 'Session kinds',

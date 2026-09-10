@@ -158,6 +158,9 @@ export const zhCN: Translations = {
 
   'settings.title': '设置',
   'settings.close': '关闭设置',
+  'settings.sections': '设置分类',
+  'settings.sectionGeneral': '通用',
+  'settings.sectionUpdates': '更新',
   'settings.launchAtLogin': '开机自动启动',
   'settings.launchAtLoginFailed': '无法修改开机启动设置：{reason}',
   'settings.sessionKinds': '会话类型',

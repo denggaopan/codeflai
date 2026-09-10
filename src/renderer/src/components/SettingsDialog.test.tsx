@@ -50,6 +50,48 @@ describe('SettingsDialog', () => {
     window.localStorage.clear()
   })
 
+  // The menu is an anchor list into one scrolling pane, not a tab bar: every section stays
+  // mounted, so a setting is still reachable by scrolling past the entry the user picked.
+  it('anchors a menu entry to every section and keeps all of them mounted', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' })
+    expect(within(nav).getAllByRole('button').map((item) => item.textContent)).toEqual([
+      'General',
+      'Session kinds',
+      'Updates',
+      'About Codeflai'
+    ])
+    expect(within(nav).getByRole('button', { name: 'General' })).toHaveAttribute('aria-current', 'true')
+
+    await user.click(within(nav).getByRole('button', { name: 'About Codeflai' }))
+
+    expect(within(nav).getByRole('button', { name: 'About Codeflai' })).toHaveAttribute('aria-current', 'true')
+    expect(within(nav).getByRole('button', { name: 'General' })).not.toHaveAttribute('aria-current')
+    // Still one document: the section that was jumped away from is untouched, not unmounted.
+    expect(screen.getByRole('switch', { name: 'Launch at startup' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeInTheDocument()
+  })
+
+  // The pane unmounts with the dialog and comes back scrolled to the top, so a highlight left
+  // on the section the user jumped to last time would point at the wrong place.
+  it('reopens with the menu back on the first section', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    window.codeflai = createFakeApi() as unknown as typeof window.codeflai
+    const view = render(<SettingsDialog open onClose={onClose} />)
+    const nav = () => screen.getByRole('navigation', { name: 'Settings sections' })
+
+    await user.click(within(nav()).getByRole('button', { name: 'Updates' }))
+    expect(within(nav()).getByRole('button', { name: 'Updates' })).toHaveAttribute('aria-current', 'true')
+
+    view.rerender(<SettingsDialog open={false} onClose={onClose} />)
+    view.rerender(<SettingsDialog open onClose={onClose} />)
+
+    expect(within(nav()).getByRole('button', { name: 'General' })).toHaveAttribute('aria-current', 'true')
+  })
+
   it('shows the startup switch first, reflecting the value the main process reports', async () => {
     const api = renderDialog()
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { AppInfo, UpdateCheckResult } from '../../../shared/contracts'
@@ -6,6 +6,7 @@ import type { ExternalLinkTarget } from '../../../shared/links'
 import { LOCALES, type TranslationKey, type Translator } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
 import { sessionKindOptions, type SessionKindOption } from '../session-kind-options'
+import { resolveActiveSection, SETTINGS_SECTIONS, type SettingsSectionId } from '../settings-sections'
 import { useAppStore } from '../store/use-app-store'
 
 type SettingsDialogProps = {
@@ -22,6 +23,11 @@ const LINK_ITEMS: ReadonlyArray<{ target: ExternalLinkTarget; labelKey: Translat
   { target: 'changelog', labelKey: 'settings.linkChangelog' },
   { target: 'download', labelKey: 'settings.linkDownload' }
 ]
+
+// Breathing room left above a section the menu jumped to, so its heading is not flush against
+// the pane's edge. Stays under ACTIVE_SECTION_MARGIN or the jump would land short of its own
+// highlight line and light up the previous entry.
+const SCROLL_TARGET_INSET = 12
 
 type UpdateState = { phase: 'idle' } | { phase: 'checking' } | { phase: 'done'; result: UpdateCheckResult }
 
@@ -45,10 +51,14 @@ const failureReason = (error: unknown, fallback: string): string => (error insta
  * `open` is false. Follows ConfirmDialog's modal conventions: fixed full-window backdrop
  * (click closes), Escape closes, and clicks inside the panel never bubble to the backdrop.
  *
- * Sections, in order: startup behaviour (a system-level setting, so it leads), the
- * presentation preferences that live in the app store (theme, language), the installed
- * version with its update check, the per-kind session switches that decide which entries the
- * New session launcher offers, and the About links. Everything the main process owns —
+ * Laid out as an anchor menu beside a single scrolling pane: every section is always mounted
+ * and reachable by scrolling, and the menu is a shortcut to one of them rather than a tab bar
+ * that swaps the content — so a setting the user is looking for can be found by scrolling even
+ * when they guess the wrong menu entry.
+ *
+ * Sections, in order: general preferences (startup, theme, language, prompt bar), the per-kind
+ * session switches that decide which entries the New session launcher offers, the installed
+ * version with its update check, and the About links. Everything the main process owns —
  * version, update check, startup flag, link opening — is read lazily when the dialog opens
  * rather than kept in the app store, since none of it is needed until the user looks.
  */
@@ -73,6 +83,14 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [autoLaunchError, setAutoLaunchError] = useState<string | null>(null)
   const [updateState, setUpdateState] = useState<UpdateState>({ phase: 'idle' })
   const [moreKindsExpanded, setMoreKindsExpanded] = useState(false)
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('general')
+
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const sectionRefs = useRef<Partial<Record<SettingsSectionId, HTMLElement | null>>>({})
+  // The section a menu click is scrolling towards. Smooth scrolling walks past every section
+  // in between, and letting those light up in turn reads as flicker, so intermediate scroll
+  // positions are ignored until the destination is reached.
+  const pendingSectionRef = useRef<SettingsSectionId | null>(null)
 
   useEffect(() => {
     if (!open) return undefined
@@ -123,8 +141,12 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // one caret click away rather than pushing the rest of the dialog down on every visit.
   // Collapsed here — while hidden — rather than in the "every open" effect above: an effect
   // runs after the reopened dialog has painted, so the user would catch one expanded frame.
+  // The menu highlight is reset the same way and for the same reason: the pane unmounts with
+  // the dialog, so it comes back scrolled to the top and must not claim otherwise.
   if (!open) {
     if (moreKindsExpanded) setMoreKindsExpanded(false)
+    if (activeSection !== 'general') setActiveSection('general')
+    pendingSectionRef.current = null
     return null
   }
 
@@ -163,6 +185,41 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     beginUpdate(version, true)
     void startUpdateDownload()
     onClose()
+  }
+
+  const registerSection =
+    (id: SettingsSectionId) =>
+    (element: HTMLElement | null): void => {
+      sectionRefs.current[id] = element
+    }
+
+  // Only the scroll position moves; the highlight follows from it via the scroll handler, so
+  // the menu can never disagree with what is actually on screen. Assigning `scrollTop` (rather
+  // than calling scrollIntoView) keeps the smooth easing in CSS, where it can be turned off.
+  const jumpToSection = (id: SettingsSectionId): void => {
+    const container = contentRef.current
+    const target = sectionRefs.current[id]
+    if (!container || !target) return
+
+    pendingSectionRef.current = id
+    setActiveSection(id)
+    container.scrollTop = Math.max(0, target.offsetTop - SCROLL_TARGET_INSET)
+  }
+
+  const handleContentScroll = (event: React.UIEvent<HTMLDivElement>): void => {
+    const container = event.currentTarget
+    const offsets = SETTINGS_SECTIONS.flatMap((section) => {
+      const element = sectionRefs.current[section.id]
+      return element ? [{ id: section.id, top: element.offsetTop }] : []
+    })
+    const resolved = resolveActiveSection(container, offsets)
+    if (!resolved) return
+
+    if (pendingSectionRef.current !== null) {
+      if (resolved !== pendingSectionRef.current) return
+      pendingSectionRef.current = null
+    }
+    setActiveSection(resolved)
   }
 
   const kindOptions = sessionKindOptions(platform)
@@ -228,173 +285,219 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </button>
         </div>
 
-        <div className="settings-dialog-section">
-          <span className="settings-dialog-label" id="settings-startup-label">
-            {t('settings.launchAtLogin')}
-          </span>
-          <button
-            type="button"
-            className="settings-switch"
-            role="switch"
-            aria-checked={autoLaunch === true}
-            aria-labelledby="settings-startup-label"
-            disabled={autoLaunch === null}
-            onClick={() => void handleAutoLaunchToggle()}
-          >
-            <span className="settings-switch-thumb" aria-hidden="true" />
-          </button>
-        </div>
-        {autoLaunchError && (
-          <p className="settings-dialog-error" role="alert">
-            {autoLaunchError}
-          </p>
-        )}
+        <div className="settings-dialog-body">
+          <nav className="settings-nav" aria-label={t('settings.sections')}>
+            <ul className="settings-nav-list">
+              {SETTINGS_SECTIONS.map((section) => (
+                <li key={section.id}>
+                  <button
+                    type="button"
+                    className="settings-nav-item"
+                    // aria-current rather than aria-selected: these are links into one
+                    // document, not tabs over separate panels.
+                    aria-current={activeSection === section.id ? 'true' : undefined}
+                    onClick={() => jumpToSection(section.id)}
+                  >
+                    {t(section.labelKey)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-        <div className="settings-dialog-section">
-          <span className="settings-dialog-label" id="settings-theme-label">
-            {t('settings.theme')}
-          </span>
-          <div className="settings-theme-toggle" role="group" aria-labelledby="settings-theme-label">
-            <button type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}>
-              {t('settings.themeDark')}
-            </button>
-            <button type="button" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}>
-              {t('settings.themeLight')}
-            </button>
-          </div>
-        </div>
+          <div className="settings-dialog-content" ref={contentRef} onScroll={handleContentScroll}>
+            <section className="settings-section" ref={registerSection('general')} aria-labelledby="settings-section-general">
+              <h3 className="settings-section-title" id="settings-section-general">
+                {t('settings.sectionGeneral')}
+              </h3>
 
-        <div className="settings-dialog-section">
-          <span className="settings-dialog-label" id="settings-language-label">
-            {t('settings.language')}
-          </span>
-          <div className="settings-theme-toggle" role="group" aria-labelledby="settings-language-label">
-            {LOCALES.map((option) => (
-              <button key={option.value} type="button" aria-pressed={locale === option.value} onClick={() => setLocale(option.value)}>
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-dialog-section">
-          <span className="settings-dialog-label" id="settings-quick-prompts-label">
-            {t('settings.showQuickPrompts')}
-          </span>
-          <button
-            type="button"
-            className="settings-switch"
-            role="switch"
-            aria-checked={showQuickPrompts}
-            aria-labelledby="settings-quick-prompts-label"
-            onClick={() => setShowQuickPrompts(!showQuickPrompts)}
-          >
-            <span className="settings-switch-thumb" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="settings-dialog-section">
-          <span className="settings-dialog-label">
-            {t('settings.version')}
-            <span className="settings-version-value">{appInfo?.version ?? t('settings.versionUnknown')}</span>
-          </span>
-          <button
-            type="button"
-            className="settings-update-button"
-            disabled={updateState.phase === 'checking'}
-            onClick={() => void handleCheckForUpdates()}
-          >
-            {updateState.phase === 'checking' ? t('settings.checking') : t('settings.checkForUpdates')}
-          </button>
-        </div>
-        {updateState.phase === 'done' && (
-          <p className="settings-update-status" role="status" data-status={updateState.result.status}>
-            {updateMessage(updateState.result, t)}
-            {/* Only a release with an installer supported by this platform can be downloaded
-                in-app; otherwise the Releases page stays the only thing to offer. */}
-            {downloadableUpdate && (
-              <button type="button" className="settings-inline-action" onClick={() => handleUpdateNow(downloadableUpdate.latestVersion)}>
-                {t('settings.updateNow')}
-              </button>
-            )}
-            {updateState.result.status === 'available' && (
-              <button type="button" className="settings-inline-link" onClick={() => openLink('download')}>
-                {t('settings.linkDownload')}
-              </button>
-            )}
-          </p>
-        )}
-
-        <div className="settings-dialog-group">
-          <span className="settings-dialog-label" id="settings-session-kinds-label">
-            {t('settings.sessionKinds')}
-          </span>
-          <p className="settings-dialog-hint">{t('settings.sessionKindsHint')}</p>
-          <ul className="settings-kind-list" aria-labelledby="settings-session-kinds-label">
-            {/* Column captions only: each switch below carries its own full accessible name
-                ("Enable Claude", "New worktree for Claude"), so these are decorative. */}
-            <li className="settings-kind-row settings-kind-head" aria-hidden="true">
-              <span />
-              <span>{t('settings.columnEnabled')}</span>
-              <span>{t('settings.columnWorktree')}</span>
-            </li>
-            {primaryKinds.map(renderKindRow)}
-          </ul>
-          {/* The opt-in agent CLIs are all switched off by default, so listing them next to
-              the four that are on would bury them in a ten-row wall. They are removed from
-              the page while collapsed rather than dimmed: a row the user cannot act on yet
-              is noise, and the disclosure says how many are waiting. */}
-          {additionalKinds.length > 0 && (
-            <>
-              <button
-                type="button"
-                id="settings-more-kinds-toggle"
-                className="settings-kind-more-toggle"
-                aria-expanded={moreKindsExpanded}
-                onClick={() => setMoreKindsExpanded((expanded) => !expanded)}
-              >
-                {t('settings.moreSessionKinds', { count: additionalKinds.length })}
-              </button>
-              {moreKindsExpanded && (
-                <ul className="settings-kind-list" aria-labelledby="settings-more-kinds-toggle">
-                  {additionalKinds.map(renderKindRow)}
-                </ul>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="settings-dialog-about">
-          <span className="settings-dialog-label">{t('settings.about')}</span>
-          <ul className="settings-link-list">
-            {LINK_ITEMS.map((item) => (
-              <li key={item.target}>
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-startup-label">
+                  {t('settings.launchAtLogin')}
+                </span>
                 <button
                   type="button"
-                  className="settings-link"
-                  title={appInfo?.links[item.target]}
-                  onClick={() => openLink(item.target)}
+                  className="settings-switch"
+                  role="switch"
+                  aria-checked={autoLaunch === true}
+                  aria-labelledby="settings-startup-label"
+                  disabled={autoLaunch === null}
+                  onClick={() => void handleAutoLaunchToggle()}
                 >
-                  <span className="settings-link-label">{t(item.labelKey)}</span>
-                  <svg
-                    className="settings-link-icon"
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>
+                  <span className="settings-switch-thumb" aria-hidden="true" />
                 </button>
-              </li>
-            ))}
-          </ul>
+              </div>
+              {autoLaunchError && (
+                <p className="settings-dialog-error" role="alert">
+                  {autoLaunchError}
+                </p>
+              )}
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-theme-label">
+                  {t('settings.theme')}
+                </span>
+                <div className="settings-theme-toggle" role="group" aria-labelledby="settings-theme-label">
+                  <button type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}>
+                    {t('settings.themeDark')}
+                  </button>
+                  <button type="button" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}>
+                    {t('settings.themeLight')}
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-language-label">
+                  {t('settings.language')}
+                </span>
+                <div className="settings-theme-toggle" role="group" aria-labelledby="settings-language-label">
+                  {LOCALES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={locale === option.value}
+                      onClick={() => setLocale(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-quick-prompts-label">
+                  {t('settings.showQuickPrompts')}
+                </span>
+                <button
+                  type="button"
+                  className="settings-switch"
+                  role="switch"
+                  aria-checked={showQuickPrompts}
+                  aria-labelledby="settings-quick-prompts-label"
+                  onClick={() => setShowQuickPrompts(!showQuickPrompts)}
+                >
+                  <span className="settings-switch-thumb" aria-hidden="true" />
+                </button>
+              </div>
+            </section>
+
+            <section className="settings-section" ref={registerSection('sessionKinds')} aria-labelledby="settings-session-kinds-label">
+              <h3 className="settings-section-title" id="settings-session-kinds-label">
+                {t('settings.sessionKinds')}
+              </h3>
+              <p className="settings-dialog-hint">{t('settings.sessionKindsHint')}</p>
+              <ul className="settings-kind-list" aria-labelledby="settings-session-kinds-label">
+                {/* Column captions only: each switch below carries its own full accessible name
+                    ("Enable Claude", "New worktree for Claude"), so these are decorative. */}
+                <li className="settings-kind-row settings-kind-head" aria-hidden="true">
+                  <span />
+                  <span>{t('settings.columnEnabled')}</span>
+                  <span>{t('settings.columnWorktree')}</span>
+                </li>
+                {primaryKinds.map(renderKindRow)}
+              </ul>
+              {/* The opt-in agent CLIs are all switched off by default, so listing them next to
+                  the four that are on would bury them in a ten-row wall. They are removed from
+                  the page while collapsed rather than dimmed: a row the user cannot act on yet
+                  is noise, and the disclosure says how many are waiting. */}
+              {additionalKinds.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    id="settings-more-kinds-toggle"
+                    className="settings-kind-more-toggle"
+                    aria-expanded={moreKindsExpanded}
+                    onClick={() => setMoreKindsExpanded((expanded) => !expanded)}
+                  >
+                    {t('settings.moreSessionKinds', { count: additionalKinds.length })}
+                  </button>
+                  {moreKindsExpanded && (
+                    <ul className="settings-kind-list" aria-labelledby="settings-more-kinds-toggle">
+                      {additionalKinds.map(renderKindRow)}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className="settings-section" ref={registerSection('updates')} aria-labelledby="settings-section-updates">
+              <h3 className="settings-section-title" id="settings-section-updates">
+                {t('settings.sectionUpdates')}
+              </h3>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label">
+                  {t('settings.version')}
+                  <span className="settings-version-value">{appInfo?.version ?? t('settings.versionUnknown')}</span>
+                </span>
+                <button
+                  type="button"
+                  className="settings-update-button"
+                  disabled={updateState.phase === 'checking'}
+                  onClick={() => void handleCheckForUpdates()}
+                >
+                  {updateState.phase === 'checking' ? t('settings.checking') : t('settings.checkForUpdates')}
+                </button>
+              </div>
+              {updateState.phase === 'done' && (
+                <p className="settings-update-status" role="status" data-status={updateState.result.status}>
+                  {updateMessage(updateState.result, t)}
+                  {/* Only a release with an installer supported by this platform can be downloaded
+                      in-app; otherwise the Releases page stays the only thing to offer. */}
+                  {downloadableUpdate && (
+                    <button
+                      type="button"
+                      className="settings-inline-action"
+                      onClick={() => handleUpdateNow(downloadableUpdate.latestVersion)}
+                    >
+                      {t('settings.updateNow')}
+                    </button>
+                  )}
+                  {updateState.result.status === 'available' && (
+                    <button type="button" className="settings-inline-link" onClick={() => openLink('download')}>
+                      {t('settings.linkDownload')}
+                    </button>
+                  )}
+                </p>
+              )}
+            </section>
+
+            <section className="settings-section" ref={registerSection('about')} aria-labelledby="settings-section-about">
+              <h3 className="settings-section-title" id="settings-section-about">
+                {t('settings.about')}
+              </h3>
+              <ul className="settings-link-list">
+                {LINK_ITEMS.map((item) => (
+                  <li key={item.target}>
+                    <button
+                      type="button"
+                      className="settings-link"
+                      title={appInfo?.links[item.target]}
+                      onClick={() => openLink(item.target)}
+                    >
+                      <span className="settings-link-label">{t(item.labelKey)}</span>
+                      <svg
+                        className="settings-link-icon"
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
         </div>
       </div>
     </div>,

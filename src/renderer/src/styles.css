@@ -762,9 +762,12 @@ body[data-sidebar-resizing='true'] .app-main {
   line-height: 1;
 }
 
+/* Hover stays neutral: the accent ring made a permanent sidebar control look like it was
+   about to do something irreversible, and the rest of the sidebar's icon buttons answer a
+   hover with a quiet lift too. */
 .sidebar-settings:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-border);
+  background: var(--color-panel);
 }
 
 .project-row[data-dragging='true'] {
@@ -1875,7 +1878,12 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .settings-dialog {
-  width: min(440px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  width: min(820px, calc(100vw - 32px));
+  /* The pane below scrolls, so the panel takes a fixed height instead of growing: the anchor
+     menu has to stay put while the content moves under it. */
+  height: min(560px, calc(100vh - 72px));
   padding: 18px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -1889,6 +1897,135 @@ body[data-sidebar-resizing='true'] .app-main {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+/* Anchor menu beside one scrolling pane. Both columns share the panel's remaining height;
+   only the right one scrolls. */
+.settings-dialog-body {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 18px;
+  min-height: 0;
+  flex: 1;
+}
+
+.settings-nav {
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  padding-right: 10px;
+}
+
+.settings-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-nav-item {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: var(--color-panel);
+  color: var(--color-text);
+}
+
+.settings-nav-item[aria-current='true'] {
+  background: var(--color-panel);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.settings-nav-item:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.settings-dialog-content {
+  position: relative;
+  overflow-y: auto;
+  /* Section offsets are measured against this box, and jumps only assign scrollTop — the
+     easing lives here so `prefers-reduced-motion` can drop it without touching the JS. */
+  scroll-behavior: smooth;
+  padding-right: 6px;
+}
+
+/* Same treatment as the sidebar's project list, against the elevated panel this dialog sits
+   on: styling ::-webkit-scrollbar opts out of the native bar, and the legacy fallback paints
+   a white gutter that glares in the dark theme, so the track needs an explicit fill rather
+   than `transparent`. */
+.settings-nav::-webkit-scrollbar,
+.settings-dialog-content::-webkit-scrollbar {
+  width: 10px;
+  background: var(--color-panel-elevated);
+}
+
+.settings-nav::-webkit-scrollbar-track,
+.settings-dialog-content::-webkit-scrollbar-track {
+  background: var(--color-panel-elevated);
+}
+
+/* The anchor menu says which sections exist; the bar says how much of the current one is
+   still below the fold — so it earns its place even next to the menu. It just does not need
+   to be loud about it: the thumb is invisible until the pointer is over the dialog, leaving
+   the gutter as plain panel colour the rest of the time. */
+.settings-nav::-webkit-scrollbar-thumb,
+.settings-dialog-content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  /* padding-box keeps that border transparent, insetting the thumb into a slim pill. */
+  background: transparent padding-box;
+  border-radius: 999px;
+}
+
+.settings-dialog:hover .settings-nav::-webkit-scrollbar-thumb,
+.settings-dialog:hover .settings-dialog-content::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb) padding-box;
+}
+
+.settings-nav::-webkit-scrollbar-thumb:hover,
+.settings-dialog-content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-thumb-hover) padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog-content {
+    scroll-behavior: auto;
+  }
+}
+
+/* Lets the last (short) section still scroll up to the top of the pane, so its menu entry is
+   not the one anchor that can never be reached. */
+.settings-dialog-content::after {
+  content: '';
+  display: block;
+  height: 40%;
+}
+
+.settings-section + .settings-section {
+  margin-top: 22px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 18px;
+}
+
+.settings-section-title {
+  margin: 0 0 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 .settings-dialog-title {
@@ -2122,12 +2259,6 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-text);
 }
 
-/* A settings block whose control is a LIST rather than a single trailing widget: the label
-   and its hint stack above the rows instead of sitting opposite one control. */
-.settings-dialog-group {
-  margin-top: 14px;
-}
-
 .settings-kind-list {
   list-style: none;
   margin: 8px 0 0;
@@ -2330,12 +2461,6 @@ body[data-sidebar-resizing='true'] .app-main {
 /* About: each row reads as a hyperlink — label plus a chain glyph marking it as a link out.
    The destination stays in the tooltip only, so the list keeps to one tidy line per entry;
    the pages open in the system browser. */
-.settings-dialog-about {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border);
-}
-
 .settings-link-list {
   display: flex;
   flex-direction: column;
