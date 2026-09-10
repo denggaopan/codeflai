@@ -55,11 +55,6 @@ test('organizes sessions and reconnects distinct same-directory PTYs after UI re
     await expect.poll(() => { try { process.kill(pid, 0); return true } catch { return false } }).toBe(false)
     app = undefined
   }
-  const scope = async (value: string): Promise<void> => {
-    await page.getByRole('button', { name: 'Filter sessions', exact: true }).click()
-    await page.getByRole('combobox', { name: 'Session visibility', exact: true }).selectOption(value)
-    await page.getByRole('button', { name: 'Apply', exact: true }).click()
-  }
   const row = (title: string): Locator => page.locator('.session-row').filter({ has: page.locator('.session-title', { hasText: title }) })
 
   try {
@@ -73,7 +68,8 @@ test('organizes sessions and reconnects distinct same-directory PTYs after UI re
     await page.keyboard.press('Enter')
     await expect.poll(() => terminalText(alpha())).toContain('MARKER_ALPHA')
     await page.evaluate(() => window.codeflai.writeTerminal('beta', 'MARKER_BETA\r'))
-    await expect(row('beta task')).toHaveAttribute('data-unread', 'true')
+    // Unread is raised at the agent Done edge (three quiet seconds), not on arrival.
+    await expect(row('beta task')).toHaveAttribute('data-unread', 'true', { timeout: 15_000 })
     await expect(row('beta task').locator('.session-title')).toHaveCSS('font-weight', '600')
     await expect(row('beta task').locator('.session-row-content')).toHaveAccessibleDescription('Unread output')
     await expect(row('beta task').getByRole('img')).toHaveCount(1)
@@ -105,31 +101,47 @@ test('organizes sessions and reconnects distinct same-directory PTYs after UI re
     expect(menuBounds.y + menuBounds.height).toBeLessThanOrEqual(viewport.height)
     expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(viewport.width)
     await page.screenshot({ path: testInfo.outputPath('session-options.png') })
-    await page.getByRole('menuitem', { name: 'Archive', exact: true }).click()
-    await expect(row('Renamed alpha')).toHaveCount(0)
-    const archived = await page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.id === 'alpha'))
-    expect(archived).toMatchObject({ archived: true, status: 'running', title: 'Renamed alpha', titleManuallySet: true })
-    await expect(alpha()).toBeHidden()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menu', { name: 'Session options for Renamed alpha', exact: true })).toHaveCount(0)
 
-    await scope('archived')
+    // Manual ordering: drag the first session below the second, and it stays there.
+    const order = (): Promise<string[]> => page.locator('.session-row .session-title').allInnerTexts()
+    expect(await order()).toEqual(['Renamed alpha', 'beta task'])
+    await page.locator('.session-row').first().dragTo(page.locator('.session-row').last())
+    await expect.poll(order).toEqual(['beta task', 'Renamed alpha'])
+
+    // Stop terminates the PTY behind a confirmation, leaving a restorable stopped row.
+    await page.getByRole('button', { name: 'Session options for Renamed alpha', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Stop', exact: true }).click()
+    const stopDialog = page.getByRole('alertdialog', { name: 'Stop session', exact: true })
+    await stopDialog.getByRole('button', { name: 'Stop', exact: true }).click()
+    await expect(stopDialog).toHaveCount(0)
+    await expect.poll(() => page.evaluate(async () =>
+      (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.id === 'alpha')?.status
+    )).toBe('stopped')
+    const stopped = await page.evaluate(async () =>
+      (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.id === 'alpha'))
+    expect(stopped).toMatchObject({ status: 'stopped', title: 'Renamed alpha', titleManuallySet: true })
+    expect(stopped).not.toHaveProperty('archived')
     await expect(row('Renamed alpha')).toBeVisible()
-    await expect(row('beta task')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('archived-session.png') })
+    await expect(row('Renamed alpha').locator('.session-status-dot')).toHaveAttribute('data-status', 'stopped')
+    await page.screenshot({ path: testInfo.outputPath('stopped-session.png') })
+
     const hostIdentity = readFileSync(hostLog, 'utf8')
     await closeUi()
     await launch()
-    await expect(row('Renamed alpha')).toHaveCount(0)
+    // The stopped session is never auto-resumed, the running one survived in the host, and
+    // the manual order outlives the restart.
+    expect(await order()).toEqual(['beta task', 'Renamed alpha'])
+    await expect(row('Renamed alpha').locator('.session-status-dot')).toHaveAttribute('data-status', 'stopped')
     await expect(row('beta task')).toHaveAttribute('data-unread', 'true')
     expect(readFileSync(hostLog, 'utf8')).toBe(hostIdentity)
 
-    await scope('archived')
-    await page.getByRole('button', { name: 'Session options for Renamed alpha', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Unarchive', exact: true }).click()
-    await expect(row('Renamed alpha')).toHaveCount(0)
-    await scope('active')
+    // Clicking a stopped row restarts it; that is a fresh PTY, so the pre-stop output is gone.
     await row('Renamed alpha').locator('.session-row-content').click()
-    await expect.poll(() => terminalText(alpha())).toContain('MARKER_ALPHA')
-    expect(await terminalText(alpha())).not.toContain('MARKER_BETA')
+    await expect.poll(() => page.evaluate(async () =>
+      (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.id === 'alpha')?.status
+    )).toBe('running')
     await row('beta task').locator('.session-row-content').click()
     await expect(row('beta task')).not.toHaveAttribute('data-unread', 'true')
     await expect(row('beta task').locator('.session-title')).not.toHaveCSS('font-weight', '600')

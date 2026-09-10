@@ -119,7 +119,8 @@ a query is active; reopen it to edit the query or use **Clear**.
 A project name toggles just that project's session list; switching sessions never re-folds anything. Searching temporarily reveals matching sessions
 across every project, and clearing the search puts each project's fold state back. Each
 project row has a ⋯ button for its [options menu](#the-project-options-menu), and each
-session row has an options menu for renaming, archiving, and deleting.
+session row has an options menu for renaming, stopping, and deleting, and rows can be
+dragged into any order within their project.
 
 Click the small gray filter icon beside the search icon to open the filter form. Choose
 **All statuses**, **Running**, **Done**, **Stopped**, **Starting…**, **Path missing**, or
@@ -381,28 +382,38 @@ already-running title request. Renaming leaves the process and branch unchanged.
 
 ## Organizing sessions
 
-The options button on each session row offers **Rename**, **Archive** (or
-**Unarchive**), and **Delete**. Deleting a session opens a confirmation dialog.
+The options button on each session row offers **Rename**, **Stop**, and
+**Delete**, each with a leading icon. Deleting a session opens a confirmation
+dialog.
 
-**Archive** hides a session from the default list and saves that choice immediately.
-Its process keeps running, and its worktree and branch stay in place. Archiving
-the selected session clears the terminal selection. **Unarchive** puts the record
-back in the normal list; it does not restart a stopped process.
+**Stop** ends the session's process and records it as stopped. It always asks for
+confirmation, because it interrupts whatever turn the agent is running. Nothing
+on disk is touched: the worktree stays, the branch is never deleted, and the
+record stays in the list — click the row to restore it, which relaunches with the
+vendor's resume argument and continues the same conversation. Stop is offered only
+while a session is running or still being created. Because stopping a session
+records it as stopped, the status filter's **Stopped** entry is how you narrow the
+list to sessions you have put away.
 
-Open the sidebar filter and choose **Active sessions**, **Archived sessions**, or
-**All sessions**, then **Apply**. Here "active" means not archived; it includes
-stopped sessions. Visibility combines with title search and status filtering.
-Reset restores the draft to all statuses and active sessions. Reopening the
-window resets the filter to active sessions without changing saved archives.
+Drag a session row to reorder it inside its project. The order is saved
+immediately and survives reopening the window; stopping or restoring a session
+never rearranges it. A session cannot be dragged into a different project, since
+its worktree lives in the one it belongs to, and dragging is disabled while a
+search or status filter is active — a filtered list is not the full order.
 
-Bold titles mark sessions that receive live terminal output or
-an exit event while you are viewing another session or the window is unfocused.
+Bold titles mark sessions with unread activity. For an agent session that means
+its turn finished — three quiet seconds with no pending background agent — so the
+spinners and elapsed-time counters an agent TUI repaints continuously no longer
+compete for your attention. For a shell session, which does not repaint itself,
+any output counts. An exit event always counts. Unread is only raised while you
+are viewing another session or the window is unfocused.
+
 The project shows the number of unread sessions in the current filter results.
 The row exposes an **Unread output** description to screen readers. Viewing a
 session in the focused window restores normal title weight. Existing unread flags
 survive reopening the window; replaying old terminal output does not create new
-ones. Unread activity is tracked while the window is connected and does not mean
-that an agent completed its task successfully.
+ones. Unread activity does not mean that an agent completed its task
+successfully.
 
 ## The project options menu
 
