@@ -1,5 +1,6 @@
 .superpowers/
 .worktrees/
+.claude/worktrees/
 node_modules/
 out/
 release/
