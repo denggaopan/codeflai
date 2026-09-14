@@ -19,6 +19,14 @@ import type {
 } from '../../../shared/contracts'
 import { DEFAULT_SESSION_KIND_PREFERENCES, storedSessionKindPreferencesSchema } from '../../../shared/contracts'
 import { emptyWorkspace, reconcileWorkspace } from '../../../shared/workspace-state'
+import {
+  DEFAULT_AUTO_SHUTDOWN,
+  SHUTDOWN_COUNTDOWN_SECONDS,
+  hasRunningSessions,
+  isAutoShutdownInterval,
+  parseStoredAutoShutdown,
+  type AutoShutdownPreference
+} from '../auto-shutdown'
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { defaultSessionKindPreferences } from '../session-kind-options'
@@ -64,6 +72,10 @@ export type AppStore = {
   locale: Locale
   /** Whether the window is kept above every other window (the title bar's pin button). */
   windowPinned: boolean
+  /** The title bar's auto-shutdown switch and how often it checks for running sessions. */
+  autoShutdown: AutoShutdownPreference
+  /** Seconds left on the shutdown countdown, or null when no countdown is running. */
+  shutdownCountdown: number | null
   /** Which kinds the New session launcher lists, and which of them offer a worktree entry. */
   sessionKindPreferences: SessionKindPreferences
   /** Project sidebar width in CSS pixels, already clamped (see sidebar-width.ts). */
@@ -86,6 +98,12 @@ export type AppStore = {
   setTheme: (theme: ThemePreference) => void
   setLocale: (locale: Locale) => void
   setWindowPinned: (pinned: boolean) => void
+  setAutoShutdownEnabled: (enabled: boolean) => void
+  setAutoShutdownInterval: (intervalMs: number) => void
+  /** Stops the countdown and switches auto shutdown off, which is what "Cancel" means here. */
+  cancelAutoShutdown: () => void
+  /** Skips the rest of the countdown and shuts the machine down now. */
+  shutdownNow: () => Promise<void>
   setSessionKindPreference: (kind: SessionKind, change: Partial<SessionKindPreference>) => void
   /** Clamps to the current viewport before storing, so callers can pass raw pointer maths. */
   setSidebarWidth: (width: number) => void
@@ -143,6 +161,7 @@ export const SESSION_KINDS_STORAGE_KEY = 'codeflai.sessionKinds'
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'codeflai.sidebarWidth'
 export const WINDOW_PINNED_STORAGE_KEY = 'codeflai.windowPinned'
 export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
+export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -225,6 +244,26 @@ const applyWindowPinnedEffects = (pinned: boolean): Promise<boolean> => {
   return window.codeflai.setWindowPinned(pinned).catch(() => pinned)
 }
 
+// Auto shutdown is renderer-owned (localStorage) like the theme and the pin: the preference
+// configures a renderer-side watcher, and all that ever crosses IPC is the shutdown request
+// itself. Unreadable storage means the defaults, which are "switched off" — the only safe
+// direction for a preference that powers the machine down.
+const readStoredAutoShutdown = (): AutoShutdownPreference => {
+  try {
+    return parseStoredAutoShutdown(readMigratedStorage(AUTO_SHUTDOWN_STORAGE_KEY))
+  } catch {
+    return { ...DEFAULT_AUTO_SHUTDOWN }
+  }
+}
+
+const persistAutoShutdown = (preference: AutoShutdownPreference): void => {
+  try {
+    window.localStorage.setItem(AUTO_SHUTDOWN_STORAGE_KEY, JSON.stringify(preference))
+  } catch {
+    // localStorage unavailable: the preference just won't survive a restart.
+  }
+}
+
 // The per-kind launcher preferences are renderer-owned (localStorage) for the same reasons as
 // the theme and locale: they configure the launcher menu rather than any persisted session,
 // and the actual worktree decision crosses IPC explicitly with every create request. Stored
@@ -296,6 +335,20 @@ const clearIdleTimer = (sessionId: string): void => {
   if (timer === undefined) return
   clearTimeout(timer)
   idleTimers.delete(sessionId)
+}
+
+// The auto-shutdown watcher's two timers, module-level for the same reason the idle timers
+// are: they are bookkeeping for the store's state, not renderable state themselves. Only one
+// of them ever runs — the periodic check is stopped while the countdown is on screen, so a
+// second countdown can never be armed on top of the first.
+let autoShutdownTimer: ReturnType<typeof setInterval> | undefined
+let shutdownCountdownTimer: ReturnType<typeof setInterval> | undefined
+
+const clearAutoShutdownTimers = (): void => {
+  if (autoShutdownTimer !== undefined) clearInterval(autoShutdownTimer)
+  if (shutdownCountdownTimer !== undefined) clearInterval(shutdownCountdownTimer)
+  autoShutdownTimer = undefined
+  shutdownCountdownTimer = undefined
 }
 
 const clearAllIdleTimers = (): void => {
@@ -396,6 +449,64 @@ export const useAppStore = create<AppStore>()((set, get) => {
     )
   }
 
+  /**
+   * Powers the machine off. Never rejects: a refusal comes back from the main process as an
+   * `error` result, and a rejected invoke is treated the same way.
+   *
+   * A failed shutdown also switches auto shutdown off. Whatever stopped the command — no
+   * permission, a policy — will stop the next one too, and the alternative is a dialog that
+   * reappears every interval forever. The user is told why in a notice.
+   */
+  const performShutdown = async (): Promise<void> => {
+    clearAutoShutdownTimers()
+    set({ shutdownCountdown: null })
+    try {
+      const result = await window.codeflai.shutdownSystem()
+      if (result.status !== 'error') return
+      get().setAutoShutdownEnabled(false)
+      set({ notice: { message: translate(get().locale, 'notice.shutdownFailed', { reason: result.message }), tone: 'error' } })
+    } catch (error) {
+      get().setAutoShutdownEnabled(false)
+      set({ notice: { message: translate(get().locale, 'notice.shutdownFailed', { reason: errorMessage(error, get().locale) }), tone: 'error' } })
+    }
+  }
+
+  // Opens the countdown dialog and stops the periodic check: from here the only outcomes are
+  // the user cancelling, the user shutting down now, or the countdown reaching zero.
+  const startShutdownCountdown = (): void => {
+    clearAutoShutdownTimers()
+    set({ shutdownCountdown: SHUTDOWN_COUNTDOWN_SECONDS })
+    shutdownCountdownTimer = setInterval(() => {
+      const remaining = (get().shutdownCountdown ?? 0) - 1
+      if (remaining > 0) {
+        set({ shutdownCountdown: remaining })
+        return
+      }
+      void performShutdown()
+    }, 1_000)
+  }
+
+  // One tick of the watcher: anything still running buys the machine another interval.
+  const runAutoShutdownCheck = (): void => {
+    if (get().shutdownCountdown !== null) return
+    if (hasRunningSessions(get().appState.sessions)) return
+    startShutdownCountdown()
+  }
+
+  /**
+   * Restarts the periodic check from the preference in state. Called on every change to the
+   * switch and the frequency, which deliberately restarts the countdown clock too: picking
+   * "1m" should mean a minute from now, not a minute from whenever the last timer started.
+   * The first check is always a full interval away — an immediate one would shut an idle
+   * machine down the instant the switch was flicked.
+   */
+  const restartAutoShutdownWatcher = (): void => {
+    clearAutoShutdownTimers()
+    const { enabled, intervalMs } = get().autoShutdown
+    if (!enabled) return
+    autoShutdownTimer = setInterval(runAutoShutdownCheck, intervalMs)
+  }
+
   return {
     platform: 'win32',
     appState: emptyAppState(),
@@ -413,6 +524,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
     theme: 'dark',
     locale: DEFAULT_LOCALE,
     windowPinned: false,
+    autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
+    shutdownCountdown: null,
     sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     quickPrompts: [],
@@ -513,6 +626,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // Re-applied on every startup (even for the dark default) so the main process's
       // nativeTheme/overlay colors always converge with the renderer preference.
       applyThemeEffects(storedTheme)
+
+      const storedAutoShutdown = readStoredAutoShutdown()
+      set({ autoShutdown: storedAutoShutdown })
+      // Armed from the stored preference, so a machine left with auto shutdown on keeps
+      // powering itself off after a restart. The first check is one full interval away.
+      restartAutoShutdownWatcher()
 
       const storedPinned = readStoredWindowPinned()
       set({ windowPinned: storedPinned })
@@ -637,6 +756,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         disposeExit()
         disposeUpdateProgress()
         clearAllIdleTimers()
+        clearAutoShutdownTimers()
         pendingActivity.clear()
         pendingUnread.clear()
         startupRead.clear()
@@ -648,6 +768,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     reset: () => {
       clearAllIdleTimers()
+      clearAutoShutdownTimers()
       set({
         platform: 'win32',
         appState: emptyAppState(),
@@ -665,6 +786,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         theme: 'dark',
         locale: DEFAULT_LOCALE,
         windowPinned: false,
+        autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
+        shutdownCountdown: null,
         sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
         sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
         quickPrompts: [],
@@ -765,6 +888,40 @@ export const useAppStore = create<AppStore>()((set, get) => {
         // a late reply from an older request must not undo a newer click.
         if (actual !== pinned && get().windowPinned === pinned) set({ windowPinned: actual })
       })
+    },
+
+    /**
+     * Switching auto shutdown off also takes down any countdown already on screen: the
+     * switch and the dialog describe the same intention, so leaving a countdown running
+     * after the feature was switched off would shut the machine down against the user's
+     * last instruction.
+     */
+    setAutoShutdownEnabled: (enabled) => {
+      const next = { ...get().autoShutdown, enabled }
+      set({ autoShutdown: next, shutdownCountdown: null })
+      persistAutoShutdown(next)
+      restartAutoShutdownWatcher()
+    },
+
+    setAutoShutdownInterval: (intervalMs) => {
+      // Guards against a value no dropdown offers (a future build's preference, a hand-edited
+      // localStorage entry): an interval of 0 or NaN would turn the watcher into a busy loop.
+      if (!isAutoShutdownInterval(intervalMs)) return
+      const next = { ...get().autoShutdown, intervalMs }
+      set({ autoShutdown: next })
+      persistAutoShutdown(next)
+      restartAutoShutdownWatcher()
+    },
+
+    // "Cancel shutdown" is the user saying the machine is in use, so it switches the whole
+    // feature off rather than just skipping this round — otherwise the dialog would be back
+    // one interval later, which is exactly what someone who just cancelled does not want.
+    cancelAutoShutdown: () => {
+      get().setAutoShutdownEnabled(false)
+    },
+
+    shutdownNow: async () => {
+      await performShutdown()
     },
 
     setSessionKindPreference: (kind, change) => {

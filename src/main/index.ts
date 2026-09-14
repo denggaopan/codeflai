@@ -23,6 +23,7 @@ import { completeLegacyHostMigration, isLegacyUiRunning, prepareBrandMigration, 
 import { ExternalAppService } from './services/external-app-service'
 import { ProjectService } from './services/project-service'
 import { migrateWindowsLoginItem } from './services/login-item-migration'
+import { PowerService } from './services/power-service'
 import { PtyHostClient } from './services/pty-host-client'
 import { PtyHostLauncher } from './services/pty-host-launcher'
 import { PtyHostRuntime } from './services/pty-host-runtime'
@@ -309,6 +310,24 @@ const buildE2EUpdaterService = (fixture: E2EReleaseFixture | undefined, platform
   )
 }
 
+/**
+ * A PowerService that cannot power the machine off. The auto-shutdown watcher is renderer
+ * state and stays switched off by default, so the suite never asks for a shutdown — but the
+ * one command in this application that would end the test run has to be unreachable from E2E
+ * whatever a spec does, so the runner underneath it is replaced by one that only records.
+ */
+const buildE2EPowerService = (platform: HostPlatform): PowerService =>
+  new PowerService(
+    {
+      run: async (file, args) => {
+        const logPath = process.env.CODEFLAI_E2E_SHUTDOWN_LOG
+        if (logPath) writeFileSync(logPath, [file, ...args].join(' '), 'utf8')
+        return { stdout: '', stderr: '', exitCode: 0 }
+      }
+    },
+    platform
+  )
+
 const buildE2EDialog = (projectPath: string | undefined): Dialog =>
   ({
     showOpenDialog: async () =>
@@ -476,6 +495,7 @@ app.whenReady().then(() => {
   const updaterService = isE2E
     ? buildE2EUpdaterService(e2eReleaseFixture, runtimePlatform)
     : new UpdaterService(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
+  const powerService = isE2E ? buildE2EPowerService(runtimePlatform) : new PowerService(undefined, runtimePlatform)
   const dialogForIpc = isE2E ? buildE2EDialog(process.env.CODEFLAI_E2E_PROJECT) : dialog
 
   /**
@@ -538,6 +558,7 @@ app.whenReady().then(() => {
     externalAppService,
     appInfoService,
     updaterService,
+    powerService,
     terminalService: terminal,
     saveWorkspace: (workspace) => store.saveWorkspace(workspace),
     getSnapshot: buildGetSnapshot(

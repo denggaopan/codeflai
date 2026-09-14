@@ -6,6 +6,7 @@ import type {
   DeleteSessionResult,
   ProjectRecord,
   SessionRecord,
+  ShutdownResult,
   ThemePreference,
   UpdateCheckResult,
   UpdateDownloadResult,
@@ -32,6 +33,7 @@ import {
 import { IPC } from '../../shared/ipc'
 import type { AppInfoService } from '../services/app-info-service'
 import type { ExternalAppService } from '../services/external-app-service'
+import type { PowerService } from '../services/power-service'
 import type { ProjectService } from '../services/project-service'
 import type { SessionCoordinator } from '../services/session-coordinator'
 import type { TerminalService } from '../services/terminal-service'
@@ -61,6 +63,7 @@ export type RegisterIpcDependencies = {
   externalAppService: ExternalAppService
   appInfoService: AppInfoService
   updaterService: UpdaterService
+  powerService: PowerService
   terminalService: IpcTerminal
   getSnapshot: () => Promise<AppSnapshot>
   saveWorkspace: (workspace: WorkspaceState) => Promise<void>
@@ -94,6 +97,7 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     externalAppService,
     appInfoService,
     updaterService,
+    powerService,
     terminalService,
     getSnapshot,
     saveWorkspace,
@@ -300,6 +304,12 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ],
 
     [IPC.appAutoLaunchGet, async (): Promise<boolean> => appInfoService.autoLaunch()],
+
+    // Carries no payload for the same reason the update commands do not: the command that
+    // shuts the machine down lives in PowerService, so the renderer asks for *the* shutdown
+    // and can never name what runs. The ten-second countdown the user can cancel happens in
+    // the renderer before this is ever called (see the app store's auto-shutdown watcher).
+    [IPC.systemShutdown, async (): Promise<ShutdownResult> => powerService.shutdown()],
 
     [
       IPC.appAutoLaunchSet,

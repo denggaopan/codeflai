@@ -9,6 +9,7 @@ import type {
   DeleteSessionResult,
   ProjectRecord,
   SessionRecord,
+  ShutdownResult,
   ToolAvailability,
   UpdateCheckResult,
   UpdateDownloadProgress,
@@ -21,6 +22,7 @@ import { ProjectNotFoundError, type ProjectService } from '../services/project-s
 import { SessionNotFoundError, type SessionCoordinator } from '../services/session-coordinator'
 import type { AppInfoService } from '../services/app-info-service'
 import type { ExternalAppService } from '../services/external-app-service'
+import type { PowerService } from '../services/power-service'
 import type { TerminalService } from '../services/terminal-service'
 import type { UpdaterService } from '../services/updater-service'
 import { registerIpc } from './register-ipc'
@@ -219,6 +221,7 @@ type Harness = {
     setAutoLaunch: ReturnType<typeof vi.fn>
   }
   updaterService: FakeUpdaterService
+  powerService: { shutdown: ReturnType<typeof vi.fn> }
   terminalService: FakeTerminalService
   getSnapshot: ReturnType<typeof vi.fn>
   saveWorkspace: ReturnType<typeof vi.fn>
@@ -252,6 +255,7 @@ const buildHarness = (options: {
     setAutoLaunch: vi.fn((enabled: boolean) => enabled)
   }
   const updaterService = new FakeUpdaterService()
+  const powerService = { shutdown: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })) }
   const terminalService = new FakeTerminalService(options.terminalCanReplay ?? true)
   const getSnapshot = vi.fn(async (): Promise<AppSnapshot> => ({ platform: 'win32', state: emptyState(), capabilities: capabilities() }))
   const applyTheme = vi.fn()
@@ -267,6 +271,7 @@ const buildHarness = (options: {
     externalAppService: externalAppService as unknown as ExternalAppService,
     appInfoService: appInfoService as unknown as AppInfoService,
     updaterService: updaterService as unknown as UpdaterService,
+    powerService: powerService as unknown as PowerService,
     terminalService: terminalService as unknown as TerminalService,
     getSnapshot,
     applyTheme,
@@ -283,6 +288,7 @@ const buildHarness = (options: {
     externalAppService,
     appInfoService,
     updaterService,
+    powerService,
     terminalService,
     getSnapshot,
     applyTheme,

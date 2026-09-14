@@ -9,6 +9,7 @@ import type {
   ProjectRecord,
   SessionKind,
   SessionRecord,
+  ShutdownResult,
   ThemePreference,
   UpdateCheckResult,
   UpdateDownloadProgress,
@@ -56,6 +57,10 @@ export type CodeflaiApi = {
   openExternalLink(target: ExternalLinkTarget): Promise<void>
   getAutoLaunch(): Promise<boolean>
   setAutoLaunch(enabled: boolean): Promise<boolean>
+  // No parameters, for the same reason downloadUpdate() has none: the command that shuts the
+  // machine down lives in the main process, so the renderer asks for a shutdown and can never
+  // name what actually runs. Never rejects — a refusal comes back as an `error` result.
+  shutdownSystem(): Promise<ShutdownResult>
   writeTerminal(sessionId: string, data: string): void
   resizeTerminal(sessionId: string, cols: number, rows: number): void
   // Answers `undefined` — never rejects — for a session the pty-host is not holding, which is
@@ -101,6 +106,7 @@ const api: CodeflaiApi = {
   openExternalLink: (target) => ipcRenderer.invoke(IPC.appOpenLink, { target }),
   getAutoLaunch: () => ipcRenderer.invoke(IPC.appAutoLaunchGet),
   setAutoLaunch: (enabled) => ipcRenderer.invoke(IPC.appAutoLaunchSet, { enabled }),
+  shutdownSystem: () => ipcRenderer.invoke(IPC.systemShutdown),
 
   writeTerminal: (sessionId, data) => {
     ipcRenderer.send(IPC.terminalWrite, { sessionId, data })

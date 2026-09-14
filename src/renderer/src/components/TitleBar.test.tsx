@@ -106,14 +106,65 @@ describe('TitleBar', () => {
     expect(document.querySelector('.title-bar-drag-area')).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Keep window on top' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: /^Auto shutdown: off\./ })).not.toBeNull()
   })
 
-  it('offers the pin unpressed as the title bar action', () => {
+  it('puts the auto-shutdown switch left of the pin, both unpressed', () => {
     render(<TitleBar />)
 
     const pin = screen.getByRole('button', { name: 'Keep window on top' })
+    const power = screen.getByRole('button', { name: /^Auto shutdown: off\./ })
     expect(pin).toHaveAttribute('aria-pressed', 'false')
-    expect(pin.previousElementSibling).toBeNull()
+    expect(power).toHaveAttribute('aria-pressed', 'false')
+    expect(pin.previousElementSibling).toBe(power)
+    // Nothing precedes the switch while it is off: the frequency dropdown only appears once
+    // there is a watcher for it to configure.
+    expect(power.previousElementSibling).toBeNull()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('reveals the frequency dropdown once auto shutdown is switched on', async () => {
+    render(<TitleBar />)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Auto shutdown: off\./ }))
+
+    expect(useAppStore.getState().autoShutdown.enabled).toBe(true)
+    const power = screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 5m whether any session is running/ })
+    expect(power).toHaveAttribute('aria-pressed', 'true')
+    const frequency = screen.getByRole('combobox', { name: 'How often to check for running sessions' })
+    expect(frequency.nextElementSibling).toBe(power)
+    expect(frequency).toHaveValue(String(5 * 60_000))
+    expect([...frequency.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      '1m',
+      '2m',
+      '3m',
+      '4m',
+      '5m',
+      '10m',
+      '15m',
+      '30m',
+      '1h'
+    ])
+  })
+
+  it('changes the check frequency from the dropdown', async () => {
+    useAppStore.setState({ autoShutdown: { enabled: true, intervalMs: 5 * 60_000 } })
+    render(<TitleBar />)
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'How often to check for running sessions' }), String(30 * 60_000))
+
+    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: true, intervalMs: 30 * 60_000 })
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 30m whether any session is running/ })).toBeInTheDocument()
+  })
+
+  it('switches auto shutdown back off and takes the dropdown with it', async () => {
+    useAppStore.setState({ autoShutdown: { enabled: true, intervalMs: 60 * 60_000 } })
+    render(<TitleBar />)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 1h whether any session is running/ }))
+
+    expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
   it('shows the pressed pin and the undo label while the window is pinned', () => {

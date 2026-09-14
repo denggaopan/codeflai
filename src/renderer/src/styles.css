@@ -291,6 +291,36 @@ html[data-platform='darwin'] .title-bar {
   color: var(--color-text);
 }
 
+/* Auto shutdown. The switch brightens from muted to the ordinary text colour once it is
+   armed, the same restraint the pin shows: the accent purple reads as an alert on a strip
+   this quiet, and the armed state already announces itself by revealing the frequency
+   dropdown next to it (see TitleBar.tsx). */
+.title-bar-power--on {
+  color: var(--color-text);
+}
+
+.title-bar-interval {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-panel);
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+}
+
+.title-bar-interval:hover {
+  color: var(--color-text);
+}
+
+/* The countdown reuses the confirm dialog's shell but outranks every other modal: it is the
+   only one whose own timer ends the session for the whole machine. */
+.shutdown-dialog-backdrop {
+  z-index: 110;
+}
+
 /* Rocket easter egg (see RocketFlight.tsx). Portalled to document.body and anchored at the
    launch point with left/top, because `transform` belongs entirely to the flight animation;
    the body's negative margins are what put the rocket's centre on that anchor. Above every

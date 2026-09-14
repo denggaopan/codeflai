@@ -322,3 +322,9 @@ export type UpdateDownloadResult =
 // `launched` means the installer process was handed to the OS and Codeflai is quitting; the
 // renderer will not get another turn, so there is nothing to report on success beyond that.
 export type UpdateInstallResult = { status: 'launched' } | { status: 'error'; message: string }
+
+// `launched` means the OS accepted the shutdown request and the machine is going down; like
+// the installer above, the renderer never gets another turn, so there is nothing more to
+// report on success. Failures (no permission, a policy that blocks the command) come back as
+// a message instead of a rejection — the auto-shutdown watcher folds them into a notice.
+export type ShutdownResult = { status: 'launched' } | { status: 'error'; message: string }

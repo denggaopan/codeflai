@@ -329,6 +329,7 @@ describe('shared contracts', () => {
       appOpenLink: 'app:open-link',
       appAutoLaunchGet: 'app:auto-launch-get',
       appAutoLaunchSet: 'app:auto-launch-set',
+      systemShutdown: 'system:shutdown',
       terminalWrite: 'terminal:write',
       terminalResize: 'terminal:resize',
       terminalReplay: 'terminal:replay',

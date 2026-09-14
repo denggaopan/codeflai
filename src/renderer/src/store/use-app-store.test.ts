@@ -9,6 +9,7 @@ import type {
   DeleteSessionResult,
   ProjectRecord,
   SessionRecord,
+  ShutdownResult,
   UpdateCheckResult,
   UpdateDownloadProgress,
   UpdateDownloadResult,
@@ -19,7 +20,14 @@ import { EXTERNAL_LINKS } from '../../../shared/links'
 import type { TerminalDataEvent, TerminalReplay } from '../../../shared/pty-protocol'
 import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
 import { DEFAULT_SESSION_KIND_PREFERENCES } from '../../../shared/contracts'
-import { AGENT_IDLE_MS, SESSION_KINDS_STORAGE_KEY, WINDOW_PINNED_STORAGE_KEY, useAppStore } from './use-app-store'
+import { DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS, SHUTDOWN_COUNTDOWN_SECONDS } from '../auto-shutdown'
+import {
+  AGENT_IDLE_MS,
+  AUTO_SHUTDOWN_STORAGE_KEY,
+  SESSION_KINDS_STORAGE_KEY,
+  WINDOW_PINNED_STORAGE_KEY,
+  useAppStore
+} from './use-app-store'
 
 const defaultCapabilities = (): CapabilityState => ({
   ...(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, { available: true, detail: '' }])) as Record<
@@ -89,6 +97,7 @@ const createFakeApi = () => {
     openExternalLink: vi.fn(async (): Promise<void> => undefined),
     getAutoLaunch: vi.fn(async (): Promise<boolean> => false),
     setAutoLaunch: vi.fn(async (enabled: boolean): Promise<boolean> => enabled),
+    shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
@@ -1118,5 +1127,194 @@ describe('useAppStore window pinning', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(useAppStore.getState().windowPinned).toBe(true)
+  })
+})
+
+// Auto shutdown is renderer-owned like the pin: the store keeps the preference and runs the
+// watcher, and the only thing that ever crosses IPC is the shutdown request itself.
+describe('useAppStore auto shutdown', () => {
+  const idleSessions = (): void => {
+    useAppStore.setState({
+      appState: { version: 1, projects: [], sessions: [{ ...claudeSession, status: 'stopped' }] }
+    })
+  }
+
+  it('starts switched off and never shuts the machine down while nobody asked for it', async () => {
+    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: false, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
+    idleSessions()
+
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+  })
+
+  it('leaves an idle machine alone for a full interval before it counts down', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    // Switching it on must not shut the machine down on the spot.
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS - 1)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
+      JSON.stringify({ enabled: true, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
+    )
+  })
+
+  it('counts down to zero and then shuts the machine down', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS - 1)
+
+    await vi.advanceTimersByTimeAsync((SHUTDOWN_COUNTDOWN_SECONDS - 1) * 1_000)
+
+    expect(api.shutdownSystem).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+  })
+
+  it('holds off entirely while a session is still running', async () => {
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 3)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+  })
+
+  it('counts a session that is still being created as running', async () => {
+    useAppStore.setState({
+      appState: { version: 1, projects: [], sessions: [{ ...claudeSession, status: 'creating' }] }
+    })
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+  })
+
+  it('switches the whole feature off when the user cancels the shutdown', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+
+    useAppStore.getState().cancelAutoShutdown()
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
+    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
+      JSON.stringify({ enabled: false, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
+    )
+
+    // Neither the rest of this countdown nor a later check may bring it back.
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 3)
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+  })
+
+  it('shuts down immediately when the user skips the rest of the countdown', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    await useAppStore.getState().shutdownNow()
+
+    expect(api.shutdownSystem).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+
+    // The countdown timer is gone with it: no second request once its last second elapses.
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_COUNTDOWN_SECONDS * 1_000)
+    expect(api.shutdownSystem).toHaveBeenCalledTimes(1)
+  })
+
+  it('restarts the clock on a new frequency and persists it', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS - 1_000)
+
+    useAppStore.getState().setAutoShutdownInterval(60_000)
+
+    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
+      JSON.stringify({ enabled: true, intervalMs: 60_000 })
+    )
+    // The old timer is gone, so the moment it would have fired passes quietly.
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  it('ignores a frequency no dropdown offers', () => {
+    useAppStore.getState().setAutoShutdownInterval(7_000)
+
+    expect(useAppStore.getState().autoShutdown.intervalMs).toBe(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+  })
+
+  it('reports a refused shutdown and switches itself off rather than retrying forever', async () => {
+    api.shutdownSystem.mockResolvedValueOnce({ status: 'error', message: 'Access is denied.' })
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    await useAppStore.getState().shutdownNow()
+
+    expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
+    expect(useAppStore.getState().notice?.tone).toBe('error')
+    expect(useAppStore.getState().notice?.message).toContain('Access is denied.')
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 3)
+    expect(api.shutdownSystem).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats an unreachable main process the same as a refusal', async () => {
+    api.shutdownSystem.mockRejectedValueOnce(new Error('window gone'))
+    idleSessions()
+
+    await useAppStore.getState().shutdownNow()
+
+    expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
+    expect(useAppStore.getState().notice?.message).toContain('window gone')
+  })
+
+  it('arms the watcher from a stored preference at startup', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    window.localStorage.setItem(AUTO_SHUTDOWN_STORAGE_KEY, JSON.stringify({ enabled: true, intervalMs: 60_000 }))
+    api = createFakeApi()
+    api.getSnapshot.mockResolvedValue({
+      platform: 'win32',
+      state: { version: 1, projects: [], sessions: [{ ...claudeSession, status: 'stopped' }] },
+      capabilities: defaultCapabilities()
+    })
+    window.codeflai = api
+
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: true, intervalMs: 60_000 })
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  it('stops every timer when the store is torn down', async () => {
+    idleSessions()
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    dispose()
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 2)
+
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+    // afterEach calls dispose() again; a second call has to stay harmless.
+    dispose = () => undefined
   })
 })

@@ -38,6 +38,7 @@ CLI credentials.**
 - [Session titles](#session-titles)
 - [Organizing sessions](#organizing-sessions)
 - [The project options menu](#the-project-options-menu)
+- [Shutting the computer down when nothing is running](#shutting-the-computer-down-when-nothing-is-running)
 - [Keeping the window on top](#keeping-the-window-on-top)
 - [Settings](#settings)
 - [Updates](#updates)
@@ -107,8 +108,9 @@ one tells you what it is doing. Closing the window does **not** stop them.
 
 ## The window
 
-**Title bar** — the logo and **Codeflai** wordmark, the pin button that
-[keeps the window above everything else](#keeping-the-window-on-top).
+**Title bar** — the logo and **Codeflai** wordmark, the power button that
+[shuts the computer down once nothing is running](#shutting-the-computer-down-when-nothing-is-running),
+and the pin button that [keeps the window above everything else](#keeping-the-window-on-top).
 
 **Sidebar** — **Add Project**, **Search sessions**, filter, and fold icons at the top,
 your projects below them, and the [Settings](#settings) gear at the bottom. Click the search
@@ -438,6 +440,37 @@ folds the row.
   directory, its worktrees, and their branches stay exactly as they are. Add the folder
   again later and you start with an empty session list.
 
+## Shutting the computer down when nothing is running
+
+The power button in the title bar — left of the pin — switches **auto shutdown** on. While it
+is on, Codeflai checks on a fixed schedule whether any session is still running, and when
+none is, it shuts this computer down. It is meant for the long unattended run: leave a few
+agents working overnight and the machine powers itself off once the last one is finished
+rather than idling until morning.
+
+A dropdown appears beside the button while it is on, and sets how often that check happens:
+**1m**, **2m**, **3m**, **4m**, **5m** (the default), **10m**, **15m**, **30m**, or **1h**.
+Changing it restarts the clock, so picking **1m** means a minute from now. The first check is
+always a full interval away — switching auto shutdown on never shuts the machine down on the
+spot. Sessions that are still starting count as running, exactly like running ones.
+
+When a check finds nothing running, a dialog says so and counts down from ten seconds:
+
+- **Cancel shutdown** stops it *and switches auto shutdown off*, so it does not simply come
+  back one interval later. Escape and a click outside the dialog do the same thing — with a
+  shutdown pending, every way out of the dialog has to be the safe one.
+- **Shut down now** skips the rest of the countdown.
+- Doing nothing shuts the computer down when the count runs out.
+
+The shutdown is a forced one: on Windows `shutdown /s /f /t 0`, which closes applications
+without waiting for them; on macOS it goes through System Events, the same route as the Apple
+menu's **Shut Down…**, so applications there may still put up their own save prompts. If the
+command is refused — no permission, a policy that blocks it — Codeflai says so in a notice and
+switches auto shutdown off rather than asking again every interval.
+
+The switch and the frequency are remembered, so a machine left with auto shutdown on keeps
+powering itself off after a restart. Both are stored per window profile, like the theme.
+
 ## Keeping the window on top
 
 The pin button in the title bar keeps Codeflai above every other window — which is what you
@@ -517,7 +550,7 @@ sessions and had no window connected for a minute. On Windows it shows up in Tas
 
 Your projects, your sessions and their titles, quick prompts, and workspace preferences —
 which projects were folded, which session was active, the sidebar width, theme, language,
-session kinds. Saved on every change, so an unexpected exit does not lose them.
+session kinds, and the auto-shutdown switch and its frequency. Saved on every change, so an unexpected exit does not lose them.
 
 **Not stored, ever:** API keys, CLI credentials, or terminal scrollback.
 

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type MouseEvent } from 'react'
 
 import logoUrl from '../assets/logo.svg'
+import { AUTO_SHUTDOWN_INTERVAL_OPTIONS, formatAutoShutdownInterval } from '../auto-shutdown'
 import { useTranslation } from '../i18n/use-translation'
 import { recordRocketClick, type RocketClickStreak } from '../rocket-click-streak'
 import type { Point } from '../rocket-flight'
@@ -22,6 +23,9 @@ export default function TitleBar() {
   const { t } = useTranslation()
   const pinned = useAppStore((state) => state.windowPinned)
   const setWindowPinned = useAppStore((state) => state.setWindowPinned)
+  const autoShutdown = useAppStore((state) => state.autoShutdown)
+  const setAutoShutdownEnabled = useAppStore((state) => state.setAutoShutdownEnabled)
+  const setAutoShutdownInterval = useAppStore((state) => state.setAutoShutdownInterval)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
   const clickStreak = useRef<RocketClickStreak>({ clicks: [], rocketCount: 1 })
@@ -47,6 +51,12 @@ export default function TitleBar() {
   // One label per state rather than a fixed name plus aria-pressed alone: the tooltip is
   // where most users read what the button will do next.
   const pinLabel = pinned ? t('titleBar.unpinWindow') : t('titleBar.pinWindow')
+  // The frequency only appears once the feature is on: an interval nothing acts on would be
+  // a permanent control in a strip that has room for two buttons, and switching it on is
+  // what makes the number mean anything.
+  const autoShutdownLabel = autoShutdown.enabled
+    ? t('titleBar.autoShutdownOn', { interval: formatAutoShutdownInterval(autoShutdown.intervalMs) })
+    : t('titleBar.autoShutdownOff')
 
   return (
     <header className="title-bar">
@@ -58,6 +68,45 @@ export default function TitleBar() {
           without this the window would have almost no grab area left. */}
       <span className="title-bar-drag-area" aria-hidden="true" />
       <div className="title-bar-actions">
+        {autoShutdown.enabled && (
+          <select
+            className="title-bar-interval"
+            aria-label={t('titleBar.autoShutdownInterval')}
+            title={t('titleBar.autoShutdownInterval')}
+            value={autoShutdown.intervalMs}
+            onChange={(event) => setAutoShutdownInterval(Number(event.target.value))}
+          >
+            {AUTO_SHUTDOWN_INTERVAL_OPTIONS.map((intervalMs) => (
+              <option key={intervalMs} value={intervalMs}>
+                {formatAutoShutdownInterval(intervalMs)}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className={autoShutdown.enabled ? 'title-bar-action title-bar-power title-bar-power--on' : 'title-bar-action title-bar-power'}
+          aria-label={autoShutdownLabel}
+          title={autoShutdownLabel}
+          aria-pressed={autoShutdown.enabled}
+          onClick={() => setAutoShutdownEnabled(!autoShutdown.enabled)}
+        >
+          <svg
+            className="icon"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+            <line x1="12" y1="2" x2="12" y2="12" />
+          </svg>
+        </button>
         <button
           type="button"
           className="title-bar-action title-bar-pin"

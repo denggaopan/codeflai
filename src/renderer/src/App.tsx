@@ -1,6 +1,7 @@
 import { useEffect, type CSSProperties } from 'react'
 
 import ProjectSidebar from './components/ProjectSidebar'
+import ShutdownCountdownDialog from './components/ShutdownCountdownDialog'
 import SidebarResizer from './components/SidebarResizer'
 import TerminalWorkspace from './components/TerminalWorkspace'
 import TitleBar from './components/TitleBar'
@@ -33,6 +34,9 @@ export default function App() {
       {/* Portals to document.body, and stays idle (renders nothing) unless an update is
           actually pending — see the app store's `updater` state. */}
       <UpdateDialog />
+      {/* Portals to document.body like UpdateDialog, and renders nothing unless the
+          auto-shutdown watcher has actually started a countdown. */}
+      <ShutdownCountdownDialog />
     </div>
   )
 }

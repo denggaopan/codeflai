@@ -12,6 +12,12 @@ export const en = {
 
   'titleBar.settings': 'Settings',
   'titleBar.launchRocket': 'Codeflai — launch a rocket',
+  // Both labels spell the whole rule out: the button is a power icon in a strip with no room
+  // for body text, so its tooltip is the only place the user can read what switching it on
+  // will actually do to their machine.
+  'titleBar.autoShutdownOff': 'Auto shutdown: off. Switch on to check for running sessions and shut this computer down when there are none.',
+  'titleBar.autoShutdownOn': 'Auto shutdown: on. Checks every {interval} whether any session is running, and shuts this computer down when none is.',
+  'titleBar.autoShutdownInterval': 'How often to check for running sessions',
   'titleBar.pinWindow': 'Keep window on top',
   'titleBar.unpinWindow': 'Stop keeping window on top',
 
@@ -153,6 +159,7 @@ export const en = {
   'quickPrompts.saveFailed': 'Could not save your prompts. Your changes are still here; try saving again.',
   'quickPrompts.limit': 'You can save up to {count} prompts. Edit or delete an existing prompt to make room.',
 
+  'notice.shutdownFailed': 'Could not shut the computer down: {reason}. Auto shutdown has been switched off.',
   'notice.genericError': 'Something went wrong.',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',
 
@@ -189,6 +196,13 @@ export const en = {
   'settings.linkRepository': 'Project repository',
   'settings.linkChangelog': 'Changelog',
   'settings.linkDownload': 'Downloads',
+
+  // Auto shutdown's countdown dialog. It powers the machine off on its own when the count
+  // runs out, so the copy has to say that plainly rather than reading like a question.
+  'shutdown.title': 'No sessions are running',
+  'shutdown.countdown': 'This computer shuts down in {seconds} second(s). Cancelling also switches auto shutdown off.',
+  'shutdown.cancel': 'Cancel shutdown',
+  'shutdown.now': 'Shut down now',
 
   'update.availableTitle': 'Version {version} is available',
   'update.availableBody': 'Codeflai can download the installer for you and install it when you are ready.',

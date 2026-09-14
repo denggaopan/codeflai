@@ -13,6 +13,9 @@ export const zhCN: Translations = {
 
   'titleBar.settings': '设置',
   'titleBar.launchRocket': 'Codeflai — 发射一枚火箭',
+  'titleBar.autoShutdownOff': '自动关机：已关闭。开启后会定期检查是否有运行中的会话，没有就关闭这台电脑。',
+  'titleBar.autoShutdownOn': '自动关机：已开启。每 {interval} 检查一次是否有运行中的会话，没有就关闭这台电脑。',
+  'titleBar.autoShutdownInterval': '检查运行中会话的频率',
   'titleBar.pinWindow': '窗口置顶',
   'titleBar.unpinWindow': '取消窗口置顶',
 
@@ -153,6 +156,7 @@ export const zhCN: Translations = {
   'quickPrompts.saveFailed': '无法保存提示词。编辑内容仍然保留，请重试保存。',
   'quickPrompts.limit': '最多可保存 {count} 条提示词，请编辑或删除已有提示词后再添加。',
 
+  'notice.shutdownFailed': '无法关机：{reason}。自动关机已关闭。',
   'notice.genericError': '出错了。',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',
 
@@ -189,6 +193,11 @@ export const zhCN: Translations = {
   'settings.linkRepository': '项目地址',
   'settings.linkChangelog': '更新日志',
   'settings.linkDownload': '下载地址',
+
+  'shutdown.title': '当前没有运行中的会话',
+  'shutdown.countdown': '这台电脑将在 {seconds} 秒后关机。取消关机同时会关闭自动关机。',
+  'shutdown.cancel': '取消关机',
+  'shutdown.now': '立即关机',
 
   'update.availableTitle': '新版本 {version} 可用',
   'update.availableBody': 'Codeflai 可以为你下载安装包，待你准备好后再安装。',
