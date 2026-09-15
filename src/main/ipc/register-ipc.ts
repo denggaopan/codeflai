@@ -70,6 +70,11 @@ export type RegisterIpcDependencies = {
   applyTheme: (theme: ThemePreference) => void
   /** Returns the flag the window actually ended up with, which the renderer renders. */
   applyPinned: (pinned: boolean) => boolean
+  /**
+   * Writes text to the system clipboard. Injected rather than imported so tests never touch
+   * the real clipboard; production wiring hands over Electron's `clipboard.writeText`.
+   */
+  copyText: (text: string) => void
 }
 
 type InvokeHandler = (event: IpcMainInvokeEvent, payload?: unknown) => unknown
@@ -102,7 +107,8 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     getSnapshot,
     saveWorkspace,
     applyTheme,
-    applyPinned
+    applyPinned,
+    copyText
   } = deps
 
   const invokeHandlers: ReadonlyArray<readonly [string, InvokeHandler]> = [
@@ -180,6 +186,19 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
         const { projectId } = projectIdRequestSchema.parse(payload)
         const project = await projectService.get(projectId)
         await externalAppService.openRepository(project)
+      }
+    ],
+
+    [
+      IPC.projectCopyPath,
+      async (_event, payload): Promise<string> => {
+        // Only the project id crosses IPC, exactly as for the open-folder actions: the path
+        // that reaches the clipboard is the one the main process has on record.
+        const { projectId } = projectIdRequestSchema.parse(payload)
+        const project = await projectService.get(projectId)
+        copyText(project.path)
+        // Handed back so the renderer can name the copied path in its confirmation notice.
+        return project.path
       }
     ],
 

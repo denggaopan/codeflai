@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,7 @@ import { createRepo } from './create-repo'
  * file, worktree lifecycle) is the real production implementation. Production builds
  * without CODEFLAI_E2E never exercise any of this file's env-driven wiring.
  *
- * The 18 tests below run in one serial journey against one fixture repository/project so
+ * The 19 tests below run in one serial journey against one fixture repository/project so
  * that worktree sequence numbers, title generation, restart persistence, and deletion all
  * build on realistic prior state, the same way a user would experience them. Test 6
  * (relaunch) closes and re-opens the Electron app in the middle of the journey while keeping
@@ -481,12 +481,13 @@ test('keeps the terminal workflow usable at the 900 by 600 minimum window size',
   await expect(visibleBypassWarnings()).toHaveText([BYPASS_WARNING_TEXT])
 
   const optionsMenu = await openProjectOptions()
-  // Five entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
-  // action is offered (with the GitHub mark) between the folder action and removal.
+  // Six entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
+  // action is offered (with the GitHub mark) between the copy-path action and removal.
   await expect(optionsMenu.getByRole('menuitem')).toHaveText([
     'New session',
     'Open project in VS Code',
     'Open project folder',
+    'Copy project path',
     'Open Git repository',
     'Remove from list'
   ])
@@ -876,6 +877,25 @@ test('mocked VS Code, Explorer, and repository project-row actions do not toggle
   await expect(window.locator('.sidebar-notice')).toHaveCount(0)
   await expect(window.locator('.session-row')).toHaveCount(sessionRowCount)
   await expect(window.locator('.session-row-content[aria-current="true"] .session-kind-icon')).toHaveAttribute('data-kind', activeKindBefore!)
+})
+
+test('copies the project path to the system clipboard and names it in a notice', async () => {
+  const menu = await openProjectOptions()
+  await menu.getByRole('menuitem', { name: 'Copy project path' }).click()
+
+  // ProjectService records the realpath of the picked directory, which on Windows is the
+  // long-name form of the 8.3-shortened temp path `mkdtemp` may hand back.
+  const projectPath = realpathSync(repoPath)
+  const notice = window.locator('.sidebar-notice')
+  await expect(notice).toContainText(`Project path copied: ${projectPath}`)
+
+  // The renderer only names the project: the text that reaches the real system clipboard is
+  // written in the main process from the path it has on record.
+  expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toBe(projectPath)
+
+  // The notice stays until dismissed, and later tests assert on an empty notice area.
+  await notice.getByRole('button', { name: 'Dismiss notice' }).click()
+  await expect(notice).toHaveCount(0)
 })
 
 test('blocks deleting a dirty worktree, then deletes cleanly and retains the branch', async () => {

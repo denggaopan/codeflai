@@ -47,6 +47,7 @@ const createFakeApi = (): FakeApi => ({
   openProjectInVSCode: vi.fn(async (_projectId: string): Promise<void> => undefined),
   openProjectFolder: vi.fn(async (_projectId: string): Promise<void> => undefined),
   openProjectRepository: vi.fn(async (_projectId: string): Promise<void> => undefined),
+  copyProjectPath: vi.fn(async (_projectId: string): Promise<string> => 'E:\projects\app'),
   removeProject: vi.fn(async (_projectId: string): Promise<void> => undefined),
   createSession: vi.fn(async () => {
     throw new Error('createSession not stubbed for this test')
@@ -999,6 +1000,7 @@ describe('ProjectSidebar', () => {
       'New session',
       'Open project in VS Code',
       'Open project folder',
+      'Copy project path',
       'Remove from list'
     ])
 
@@ -1035,6 +1037,7 @@ describe('ProjectSidebar', () => {
       'New session',
       'Open project in VS Code',
       'Open project folder',
+      'Copy project path',
       'Open Git repository',
       'Remove from list'
     ])
@@ -1133,6 +1136,7 @@ describe('ProjectSidebar', () => {
       '新建会话',
       '在 VS Code 中打开项目',
       '打开项目文件夹',
+      '复制项目目录地址',
       '从列表中移除'
     ])
   })
@@ -1416,12 +1420,16 @@ describe('ProjectSidebar', () => {
     const menu = await openProjectOptions(user)
     const newSession = within(menu).getByRole('menuitem', { name: 'New session' })
     const folder = within(menu).getByRole('menuitem', { name: 'Open project folder' })
+    const copyPath = within(menu).getByRole('menuitem', { name: 'Copy project path' })
     const remove = within(menu).getByRole('menuitem', { name: 'Remove from list' })
     expect(newSession).toHaveFocus()
 
-    // The disabled VS Code entry is skipped; the enabled ring is New session → folder → remove.
+    // The disabled VS Code entry is skipped; the enabled ring is
+    // New session → folder → copy path → remove.
     await user.keyboard('{ArrowDown}')
     expect(folder).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(copyPath).toHaveFocus()
     await user.keyboard('{ArrowDown}')
     expect(remove).toHaveFocus()
     await user.keyboard('{ArrowDown}')
@@ -1680,6 +1688,22 @@ describe('ProjectSidebar', () => {
     expect(api.restoreSession).not.toHaveBeenCalled()
     expect(useAppStore.getState().activeProjectId).toBeNull()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('copies the project path through the main process and confirms it in a notice', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [stoppedSession] })
+    render(<ProjectSidebar />)
+
+    await openProjectOptions(user)
+    await user.click(screen.getByRole('menuitem', { name: 'Copy project path' }))
+
+    // Only the project id crosses IPC; the path in the notice is the one the main process copied.
+    expect(api.copyProjectPath).toHaveBeenCalledWith('project-1')
+    expect(api.restoreSession).not.toHaveBeenCalled()
+    expect(useAppStore.getState().activeProjectId).toBeNull()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(await screen.findByText('Project path copied: E:\projects\app')).toBeInTheDocument()
   })
 
   it('does not start a project drag from the options trigger, menu, or launcher', async () => {

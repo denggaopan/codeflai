@@ -42,6 +42,7 @@ export const zhCN: Translations = {
   'sidebar.newSession': '新建会话',
   'sidebar.openInVSCode': '在 VS Code 中打开项目',
   'sidebar.openProjectFolder': '打开项目文件夹',
+  'sidebar.copyProjectPath': '复制项目目录地址',
   'sidebar.openRepository': '打开 Git 仓库',
   'sidebar.removeProject': '从列表中移除',
   'sidebar.removeProjectTitle': '移除项目',
@@ -158,6 +159,7 @@ export const zhCN: Translations = {
 
   'notice.shutdownFailed': '无法关机：{reason}。自动关机已关闭。',
   'notice.genericError': '出错了。',
+  'notice.projectPathCopied': '已复制项目目录地址：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',
 
   'settings.title': '设置',

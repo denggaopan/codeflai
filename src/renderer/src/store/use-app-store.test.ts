@@ -80,6 +80,7 @@ const createFakeApi = () => {
     openProjectInVSCode: vi.fn(async (): Promise<void> => undefined),
     openProjectFolder: vi.fn(async (): Promise<void> => undefined),
     openProjectRepository: vi.fn(async (): Promise<void> => undefined),
+    copyProjectPath: vi.fn(async (): Promise<string> => 'E:\projects\app'),
     removeProject: vi.fn(async (): Promise<void> => undefined),
     createSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     restoreSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
@@ -557,6 +558,26 @@ describe('useAppStore.openProjectRepository', () => {
       message: 'Could not open https://github.com/me/app in the default browser: boom',
       tone: 'error'
     })
+  })
+})
+
+describe('useAppStore.copyProjectPath', () => {
+  it('names only the project over IPC and confirms the copied path with an info notice', async () => {
+    await useAppStore.getState().copyProjectPath('project-1')
+
+    expect(api.copyProjectPath).toHaveBeenCalledWith('project-1')
+    expect(useAppStore.getState().notice).toEqual({
+      message: 'Project path copied: E:\projects\app',
+      tone: 'info'
+    })
+  })
+
+  it('surfaces a rejection as an error notice', async () => {
+    api.copyProjectPath.mockRejectedValue(new Error('Project not found: ghost'))
+
+    await useAppStore.getState().copyProjectPath('ghost')
+
+    expect(useAppStore.getState().notice).toEqual({ message: 'Project not found: ghost', tone: 'error' })
   })
 })
 

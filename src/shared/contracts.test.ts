@@ -310,6 +310,7 @@ describe('shared contracts', () => {
       projectOpenVSCode: 'project:open-vscode',
       projectOpenFolder: 'project:open-folder',
       projectOpenRepository: 'project:open-repository',
+      projectCopyPath: 'project:copy-path',
       projectRemove: 'project:remove',
       projectReorder: 'project:reorder',
       sessionCreate: 'session:create',

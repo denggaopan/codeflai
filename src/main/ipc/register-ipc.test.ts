@@ -227,6 +227,7 @@ type Harness = {
   saveWorkspace: ReturnType<typeof vi.fn>
   applyTheme: ReturnType<typeof vi.fn>
   applyPinned: ReturnType<typeof vi.fn>
+  copyText: ReturnType<typeof vi.fn>
   dispose: () => void
 }
 
@@ -261,6 +262,7 @@ const buildHarness = (options: {
   const applyTheme = vi.fn()
   const saveWorkspace = vi.fn(async () => undefined)
   const applyPinned = vi.fn((pinned: boolean) => pinned)
+  const copyText = vi.fn()
 
   const dispose = registerIpc({
     ipcMain: ipcMain as unknown as Electron.IpcMain,
@@ -276,7 +278,8 @@ const buildHarness = (options: {
     getSnapshot,
     applyTheme,
     saveWorkspace,
-    applyPinned
+    applyPinned,
+    copyText
   })
 
   return {
@@ -293,6 +296,7 @@ const buildHarness = (options: {
     getSnapshot,
     applyTheme,
     applyPinned,
+    copyText,
     saveWorkspace,
     dispose
   }
@@ -481,6 +485,28 @@ describe('registerIpc: project:open-folder', () => {
     await expect(ipcMain.invoke(IPC.projectOpenFolder, { projectId: 42 })).rejects.toBeInstanceOf(z.ZodError)
     expect(projectService.get).not.toHaveBeenCalled()
     expect(externalAppService.openInExplorer).not.toHaveBeenCalled()
+  })
+})
+
+describe('registerIpc: project:copy-path', () => {
+  it('parses the request, resolves the project, and copies the recorded path', async () => {
+    const { ipcMain, projectService, copyText } = buildHarness()
+
+    const copied = await ipcMain.invoke(IPC.projectCopyPath, { projectId: 'project-1' })
+
+    expect(projectService.get).toHaveBeenCalledWith('project-1')
+    expect(copyText).toHaveBeenCalledWith(project.path)
+    // Handed back so the renderer can name the copied path without ever knowing it up front.
+    expect(copied).toBe(project.path)
+  })
+
+  it('rejects a request carrying a path: only the project id may cross IPC', async () => {
+    const { ipcMain, projectService, copyText } = buildHarness()
+
+    await expect(ipcMain.invoke(IPC.projectCopyPath, { projectId: 'p1', path: 'C:\evil' })).rejects.toBeInstanceOf(z.ZodError)
+    await expect(ipcMain.invoke(IPC.projectCopyPath, {})).rejects.toBeInstanceOf(z.ZodError)
+    expect(projectService.get).not.toHaveBeenCalled()
+    expect(copyText).not.toHaveBeenCalled()
   })
 })
 
@@ -1042,6 +1068,7 @@ describe('registerIpc: disposer', () => {
       IPC.projectReorder,
       IPC.projectOpenVSCode,
       IPC.projectOpenFolder,
+      IPC.projectCopyPath,
       IPC.sessionCreate,
       IPC.sessionRestore,
       IPC.sessionDelete,

@@ -35,6 +35,8 @@ export type CodeflaiApi = {
   // Only the project id crosses IPC: the main process opens the remote URL it recorded for the
   // project itself, so the renderer can never name the URL that reaches the browser.
   openProjectRepository(projectId: string): Promise<void>
+  // Resolves with the path that was copied, so the renderer can name it in its confirmation.
+  copyProjectPath(projectId: string): Promise<string>
   // Forgets the project and its session records; nothing on disk is touched.
   removeProject(projectId: string): Promise<void>
   createSession(projectId: string, kind: SessionKind, worktree: boolean): Promise<SessionRecord>
@@ -88,6 +90,7 @@ const api: CodeflaiApi = {
   openProjectInVSCode: (projectId) => ipcRenderer.invoke(IPC.projectOpenVSCode, { projectId }),
   openProjectFolder: (projectId) => ipcRenderer.invoke(IPC.projectOpenFolder, { projectId }),
   openProjectRepository: (projectId) => ipcRenderer.invoke(IPC.projectOpenRepository, { projectId }),
+  copyProjectPath: (projectId) => ipcRenderer.invoke(IPC.projectCopyPath, { projectId }),
   removeProject: (projectId) => ipcRenderer.invoke(IPC.projectRemove, { projectId }),
   createSession: (projectId, kind, worktree) => ipcRenderer.invoke(IPC.sessionCreate, { projectId, kind, worktree }),
   restoreSession: (sessionId) => ipcRenderer.invoke(IPC.sessionRestore, { sessionId }),

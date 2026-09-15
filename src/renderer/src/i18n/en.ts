@@ -44,6 +44,7 @@ export const en = {
   'sidebar.newSession': 'New session',
   'sidebar.openInVSCode': 'Open project in VS Code',
   'sidebar.openProjectFolder': 'Open project folder',
+  'sidebar.copyProjectPath': 'Copy project path',
   'sidebar.openRepository': 'Open Git repository',
   'sidebar.removeProject': 'Remove from list',
   'sidebar.removeProjectTitle': 'Remove project',
@@ -161,6 +162,7 @@ export const en = {
 
   'notice.shutdownFailed': 'Could not shut the computer down: {reason}. Auto shutdown has been switched off.',
   'notice.genericError': 'Something went wrong.',
+  'notice.projectPathCopied': 'Project path copied: {path}',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',
 
   'settings.title': 'Settings',

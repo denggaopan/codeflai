@@ -10,6 +10,7 @@ export const IPC = {
   projectOpenVSCode: 'project:open-vscode',
   projectOpenFolder: 'project:open-folder',
   projectOpenRepository: 'project:open-repository',
+  projectCopyPath: 'project:copy-path',
   projectRemove: 'project:remove',
   sessionCreate: 'session:create',
   sessionRestore: 'session:restore',

@@ -35,6 +35,18 @@ function FolderGlyph() {
   )
 }
 
+function CopyPathGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-copy-path">
+      <path
+        d="M9 3h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v10h8V5H9z"
+        fill="currentColor"
+      />
+      <path d="M5 7v12a2 2 0 0 0 2 2h9v-2H7V7H5z" fill="currentColor" />
+    </svg>
+  )
+}
+
 /**
  * Left navigation: project actions, search and filters above project groups, with
  * Settings docked at the bottom-left.
@@ -68,6 +80,7 @@ export default function ProjectSidebar() {
   const deleteSession = useAppStore((state) => state.deleteSession)
   const openProjectInVSCode = useAppStore((state) => state.openProjectInVSCode)
   const openProjectFolder = useAppStore((state) => state.openProjectFolder)
+  const copyProjectPath = useAppStore((state) => state.copyProjectPath)
   const openProjectRepository = useAppStore((state) => state.openProjectRepository)
   const removeProject = useAppStore((state) => state.removeProject)
   const createSession = useAppStore((state) => state.createSession)
@@ -696,6 +709,20 @@ export default function ProjectSidebar() {
                     >
                       <FolderGlyph />
                       {t('sidebar.openProjectFolder')}
+                    </button>
+                    <button
+                      type="button"
+                      className="project-options-menu-item"
+                      role="menuitem"
+                      tabIndex={-1}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeProjectOptions(true)
+                        void copyProjectPath(project.id)
+                      }}
+                    >
+                      <CopyPathGlyph />
+                      {t('sidebar.copyProjectPath')}
                     </button>
                     {project.repoRemote && (
                       <button

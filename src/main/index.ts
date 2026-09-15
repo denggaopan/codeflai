@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
 import type { Dialog } from 'electron'
 
 import { AGENT_KINDS, type AgentKind } from '../shared/agent-kinds'
@@ -571,7 +571,8 @@ app.whenReady().then(() => {
       sessionsReconciled
     ),
     applyTheme: (theme) => applyWindowTheme(window, theme, runtimePlatform),
-    applyPinned: (pinned) => applyWindowPinned(window, pinned)
+    applyPinned: (pinned) => applyWindowPinned(window, pinned),
+    copyText: (text) => clipboard.writeText(text)
   })
 
   window.on('closed', () => {

@@ -118,6 +118,7 @@ export type AppStore = {
   openProjectInVSCode: (projectId: string) => Promise<void>
   openProjectFolder: (projectId: string) => Promise<void>
   openProjectRepository: (projectId: string) => Promise<void>
+  copyProjectPath: (projectId: string) => Promise<void>
   removeProject: (projectId: string) => Promise<void>
 
   openLauncher: () => void
@@ -1029,6 +1030,19 @@ export const useAppStore = create<AppStore>()((set, get) => {
     openProjectRepository: async (projectId) => {
       try {
         await window.codeflai.openProjectRepository(projectId)
+      } catch (error) {
+        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
+      }
+    },
+
+    /**
+     * The clipboard gives no visible feedback of its own, so a successful copy raises an
+     * info notice naming the path — otherwise the menu item would look like it did nothing.
+     */
+    copyProjectPath: async (projectId) => {
+      try {
+        const path = await window.codeflai.copyProjectPath(projectId)
+        set({ notice: { message: translate(get().locale, 'notice.projectPathCopied', { path }), tone: 'info' } })
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }

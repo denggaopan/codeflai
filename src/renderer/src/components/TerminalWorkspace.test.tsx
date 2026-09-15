@@ -200,6 +200,7 @@ const createFakeApi = () => {
     openProjectInVSCode: vi.fn(async (): Promise<void> => undefined),
     openProjectFolder: vi.fn(async (): Promise<void> => undefined),
     openProjectRepository: vi.fn(async (): Promise<void> => undefined),
+    copyProjectPath: vi.fn(async (): Promise<string> => 'E:\projects\app'),
     removeProject: vi.fn(async (): Promise<void> => undefined),
     createSession: vi.fn(async () => {
       throw new Error('createSession not stubbed for this test')
