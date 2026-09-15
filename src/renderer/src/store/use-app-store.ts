@@ -22,6 +22,7 @@ import { emptyWorkspace, reconcileWorkspace } from '../../../shared/workspace-st
 import {
   DEFAULT_AUTO_SHUTDOWN,
   SHUTDOWN_COUNTDOWN_SECONDS,
+  countdownTick,
   hasRunningSessions,
   isAutoShutdownInterval,
   parseStoredAutoShutdown,
@@ -343,12 +344,16 @@ const clearIdleTimer = (sessionId: string): void => {
 // second countdown can never be armed on top of the first.
 let autoShutdownTimer: ReturnType<typeof setInterval> | undefined
 let shutdownCountdownTimer: ReturnType<typeof setInterval> | undefined
+// When the countdown runs out, in wall-clock terms. The tick reads this rather than counting
+// itself down, so a throttled or delayed tick cannot stretch ten seconds into ten minutes.
+let shutdownDeadline: number | undefined
 
 const clearAutoShutdownTimers = (): void => {
   if (autoShutdownTimer !== undefined) clearInterval(autoShutdownTimer)
   if (shutdownCountdownTimer !== undefined) clearInterval(shutdownCountdownTimer)
   autoShutdownTimer = undefined
   shutdownCountdownTimer = undefined
+  shutdownDeadline = undefined
 }
 
 const clearAllIdleTimers = (): void => {
@@ -475,21 +480,29 @@ export const useAppStore = create<AppStore>()((set, get) => {
   // the user cancelling, the user shutting down now, or the countdown reaching zero.
   const startShutdownCountdown = (): void => {
     clearAutoShutdownTimers()
+    shutdownDeadline = Date.now() + SHUTDOWN_COUNTDOWN_SECONDS * 1_000
     set({ shutdownCountdown: SHUTDOWN_COUNTDOWN_SECONDS })
     shutdownCountdownTimer = setInterval(() => {
-      const remaining = (get().shutdownCountdown ?? 0) - 1
-      if (remaining > 0) {
-        set({ shutdownCountdown: remaining })
+      const step = countdownTick(shutdownDeadline ?? 0, Date.now())
+      if (step === 'shutdown') {
+        void performShutdown()
         return
       }
-      void performShutdown()
+      // The machine slept through its own countdown: hand the ten seconds back rather than
+      // powering off the moment the screen comes on.
+      if (step === 'restart') {
+        startShutdownCountdown()
+        return
+      }
+      set({ shutdownCountdown: step })
     }, 1_000)
   }
 
-  // One tick of the watcher: anything still running buys the machine another interval.
+  // One tick of the watcher: anything the sidebar still calls Running (or Starting…) buys the
+  // machine another interval. An agent sitting at Done does not — see hasRunningSessions.
   const runAutoShutdownCheck = (): void => {
     if (get().shutdownCountdown !== null) return
-    if (hasRunningSessions(get().appState.sessions)) return
+    if (hasRunningSessions(get().appState.sessions, get().idleAgentSessionIds)) return
     startShutdownCountdown()
   }
 

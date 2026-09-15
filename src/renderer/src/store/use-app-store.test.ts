@@ -1189,6 +1189,45 @@ describe('useAppStore auto shutdown', () => {
     expect(api.shutdownSystem).not.toHaveBeenCalled()
   })
 
+  // Agent sessions stay `running` for as long as their PTY lives, so without this the
+  // feature would only ever fire on a machine whose sessions had all been stopped by hand.
+  it('shuts down once every agent has gone quiet, without stopping any session', async () => {
+    useAppStore.setState({
+      appState: { version: 1, projects: [], sessions: [claudeSession] },
+      idleAgentSessionIds: { [claudeSession.id]: true }
+    })
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+    expect(useAppStore.getState().appState.sessions[0]?.status).toBe('running')
+  })
+
+  it('waits while one agent is still working even though the others are done', async () => {
+    useAppStore.setState({
+      appState: { version: 1, projects: [], sessions: [claudeSession, { ...powershellSession, kind: 'codex' }] },
+      idleAgentSessionIds: { [claudeSession.id]: true }
+    })
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 2)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+  })
+
+  it('lets a live shell hold the shutdown off however quiet it is', async () => {
+    useAppStore.setState({
+      appState: { version: 1, projects: [], sessions: [powershellSession] },
+      idleAgentSessionIds: { [powershellSession.id]: true }
+    })
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 2)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+  })
+
   it('counts a session that is still being created as running', async () => {
     useAppStore.setState({
       appState: { version: 1, projects: [], sessions: [{ ...claudeSession, status: 'creating' }] }

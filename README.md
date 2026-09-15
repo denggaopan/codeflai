@@ -452,7 +452,20 @@ A dropdown appears beside the button while it is on, and sets how often that che
 **1m**, **2m**, **3m**, **4m**, **5m** (the default), **10m**, **15m**, **30m**, or **1h**.
 Changing it restarts the clock, so picking **1m** means a minute from now. The first check is
 always a full interval away — switching auto shutdown on never shuts the machine down on the
-spot. Sessions that are still starting count as running, exactly like running ones.
+spot.
+
+**"Running" means the status the sidebar shows**, not whether a session is still open. An
+agent that has finished its turn and is waiting for you reads as **Done** there, and a
+machine whose agents are all Done is exactly the one that should power itself off — you do
+not have to stop or close anything by hand. What does hold the shutdown off:
+
+| Sidebar status | Holds the shutdown off? |
+| --- | --- |
+| **Running** — an agent working right now | Yes |
+| **Starting…** — a session whose terminal is still coming up | Yes |
+| A shell session (PowerShell, Command Prompt, Shell) that is open | Yes — a prompt sitting quiet cannot say whether a build is running behind it |
+| **Done** — an agent finished and waiting for input | No |
+| **Stopped**, **Path missing**, **Error** | No |
 
 When a check finds nothing running, a dialog says so and counts down from ten seconds:
 

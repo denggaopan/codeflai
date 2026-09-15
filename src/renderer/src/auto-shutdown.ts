@@ -1,4 +1,5 @@
 import type { SessionRecord } from '../../shared/contracts'
+import { isAgentDone } from './session-status'
 
 /**
  * Auto shutdown: while it is switched on, the renderer checks every `intervalMs` whether any
@@ -23,6 +24,40 @@ export const DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS = 5 * 60_000
  * enough that someone sitting in front of it can stop it.
  */
 export const SHUTDOWN_COUNTDOWN_SECONDS = 10
+
+/**
+ * How far past its deadline a tick has to arrive before it is read as the clock having
+ * jumped — the machine slept or hibernated — rather than as a late tick.
+ *
+ * It has to sit well above any throttling delay, and that is the whole reason it is five
+ * minutes and not ten seconds. A renderer hidden for a few minutes is throttled by Chromium
+ * to roughly one wake-up a minute, so with a small threshold *every* tick of an unattended
+ * countdown would look like a clock jump, restart the countdown, and be a minute late again
+ * — the machine would never power off at all. Five minutes is longer than any throttling
+ * interval and far shorter than a real sleep.
+ */
+const COUNTDOWN_CLOCK_JUMP_MS = 5 * 60_000
+
+/**
+ * What the countdown should do on a given tick, worked out from the deadline rather than by
+ * subtracting one from the last number shown.
+ *
+ * The tick that drives this is a renderer timer, and a renderer whose window has been hidden
+ * for minutes — which is the whole unattended run this feature exists for — is throttled by
+ * Chromium to about one wake-up a minute. Counting ticks would stretch ten seconds into ten
+ * minutes and show numbers that have nothing to do with the clock; reading the deadline
+ * instead means a throttled tick shuts the machine down late by at most one wake-up, and
+ * never displays a second that has already passed.
+ *
+ * A deadline missed by more than `COUNTDOWN_CLOCK_JUMP_MS` starts the countdown over:
+ * someone opening a lid deserves the same ten seconds to stop it as someone sitting in front
+ * of the screen.
+ */
+export const countdownTick = (deadlineMs: number, nowMs: number): number | 'shutdown' | 'restart' => {
+  const remainingMs = deadlineMs - nowMs
+  if (remainingMs > 0) return Math.ceil(remainingMs / 1000)
+  return remainingMs < -COUNTDOWN_CLOCK_JUMP_MS ? 'restart' : 'shutdown'
+}
 
 export type AutoShutdownPreference = {
   enabled: boolean
@@ -71,8 +106,25 @@ export const parseStoredAutoShutdown = (raw: string | null): AutoShutdownPrefere
 
 /**
  * Whether any session still counts as running, which is what holds the shutdown off.
- * `creating` counts: a session whose PTY is still being started is about to be running, and
- * powering the machine off in that window would be the worst possible moment.
+ *
+ * "Running" here means exactly what the sidebar shows, not whether a PTY happens to be
+ * alive: an agent that has finished its turn and is waiting for input reads as **Done**
+ * there, and `isAgentDone` is imported rather than re-derived so the two can never disagree.
+ * Judging by the raw status instead would make this feature unreachable in practice — every
+ * agent session you have ever talked to stays `running` until you stop it by hand, so the
+ * machine would only ever power off after you had already walked back to it.
+ *
+ * `creating` does hold the shutdown off (the sidebar calls it *Starting…*): a session whose
+ * PTY is still coming up is about to be running, and powering the machine off in that window
+ * would be the worst possible moment. Shells never go Done — they idle at their prompt and
+ * cannot say whether a build is running — so a live shell always holds the shutdown off.
  */
-export const hasRunningSessions = (sessions: readonly SessionRecord[]): boolean =>
-  sessions.some((session) => session.status === 'running' || session.status === 'creating')
+export const hasRunningSessions = (
+  sessions: readonly SessionRecord[],
+  idleAgentSessionIds: Readonly<Record<string, true>> = {}
+): boolean =>
+  sessions.some(
+    (session) =>
+      session.status === 'creating' ||
+      (session.status === 'running' && !isAgentDone(session, idleAgentSessionIds[session.id] === true))
+  )
