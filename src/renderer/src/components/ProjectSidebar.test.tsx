@@ -420,6 +420,15 @@ const openProjectOptions = async (
   return screen.getByRole('menu', { name: projectOptionsName(projectName) })
 }
 
+const openLauncher = async (
+  user: ReturnType<typeof userEvent.setup>,
+  projectName = project1.name
+): Promise<HTMLElement> => {
+  const menu = await openProjectOptions(user, projectName)
+  await user.click(within(menu).getByRole('menuitem', { name: 'New session' }))
+  return screen.getByLabelText('Create session')
+}
+
 const geometry = (top: number, bottom: number, left = 0, right = 300): DOMRect =>
   ({
     x: left,
@@ -432,6 +441,11 @@ const geometry = (top: number, bottom: number, left = 0, right = 300): DOMRect =
     left,
     toJSON: () => ({})
   }) as DOMRect
+
+// Both row popovers -- the project options menu and the session launcher -- run the same
+// scrollport-aware placement, so one geometry harness drives whichever of them is open.
+const isRowPopover = (element: Element): boolean =>
+  element.classList.contains('project-options-menu') || element.classList.contains('session-launcher')
 
 const controlProjectOptionsGeometry = (state: {
   rowTop: number
@@ -452,8 +466,8 @@ const controlProjectOptionsGeometry = (state: {
     if (this.classList.contains('project-options-trigger')) {
       return geometry(state.triggerTop ?? state.rowTop, state.triggerBottom ?? state.rowBottom)
     }
-    if (this.classList.contains('project-options-menu')) {
-      const clamped = this.style.getPropertyValue('--project-options-menu-max-height') !== ''
+    if (isRowPopover(this)) {
+      const clamped = this.getAttribute('data-clamped') === 'true'
       const height = clamped ? state.clampedMenuRectHeight ?? state.menuRectHeight ?? 0 : state.menuRectHeight ?? 0
       return geometry(0, height)
     }
@@ -465,11 +479,11 @@ const controlProjectOptionsGeometry = (state: {
       : ([] as unknown as DOMRectList)
   })
   vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
-    return this.classList.contains('project-options-menu') ? state.menuHeight : 0
+    return isRowPopover(this) ? state.menuHeight : 0
   })
   const originalGetComputedStyle = window.getComputedStyle.bind(window)
   vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
-    if (!element.classList.contains('project-options-menu')) return originalGetComputedStyle(element)
+    if (!isRowPopover(element)) return originalGetComputedStyle(element)
     const style = originalGetComputedStyle(element)
     return new Proxy(style, {
       get(target, property) {
@@ -1350,6 +1364,80 @@ describe('ProjectSidebar', () => {
 
     expect(menu).toBeInTheDocument()
     expect(menu).toHaveAttribute('data-placement', 'below')
+  })
+
+  it('places the session launcher below its row when the scrollport has room', async () => {
+    const user = userEvent.setup()
+    controlProjectOptionsGeometry({ rowTop: 80, rowBottom: 112, scrollportTop: 40, scrollportBottom: 300, menuHeight: 100 })
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const launcher = await openLauncher(user)
+
+    expect(launcher).toHaveAttribute('data-placement', 'below')
+    expect(launcher).toHaveAttribute('data-clamped', 'false')
+  })
+
+  it('places the session launcher above a bottom row instead of letting the scrollport clip it', async () => {
+    const user = userEvent.setup()
+    controlProjectOptionsGeometry({ rowTop: 240, rowBottom: 272, scrollportTop: 40, scrollportBottom: 300, menuHeight: 100 })
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const launcher = await openLauncher(user)
+
+    expect(launcher).toHaveAttribute('data-placement', 'above')
+    expect(launcher).toHaveAttribute('data-clamped', 'false')
+  })
+
+  it('clamps the session launcher to the space its side of the row has left', async () => {
+    const user = userEvent.setup()
+    controlProjectOptionsGeometry({ rowTop: 80, rowBottom: 112, scrollportTop: 40, scrollportBottom: 160, menuHeight: 100 })
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const launcher = await openLauncher(user)
+
+    expect(launcher).toHaveAttribute('data-placement', 'below')
+    expect(launcher).toHaveAttribute('data-clamped', 'true')
+    expect(launcher.style.getPropertyValue('--session-launcher-max-height')).toBe('42px')
+  })
+
+  it('recomputes the session launcher placement after the project list scrolls', async () => {
+    const user = userEvent.setup()
+    const state = { rowTop: 80, rowBottom: 112, scrollportTop: 40, scrollportBottom: 300, menuHeight: 100 }
+    controlProjectOptionsGeometry(state)
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const launcher = await openLauncher(user)
+    const scrollport = document.querySelector('.project-groups') as HTMLElement
+    expect(launcher).toHaveAttribute('data-placement', 'below')
+
+    state.rowTop = 240
+    state.rowBottom = 272
+    fireEvent.scroll(scrollport)
+
+    expect(launcher).toHaveAttribute('data-placement', 'above')
+  })
+
+  it('closes the session launcher without restoring focus when its row scrolls out of the scrollport', async () => {
+    const user = userEvent.setup()
+    const state = { rowTop: 80, rowBottom: 112, scrollportTop: 40, scrollportBottom: 300, menuHeight: 100 }
+    controlProjectOptionsGeometry(state)
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const trigger = screen.getByRole('button', { name: projectOptionsName(project1.name) })
+    await openLauncher(user)
+    const scrollport = document.querySelector('.project-groups') as HTMLElement
+
+    state.rowTop = 320
+    state.rowBottom = 352
+    fireEvent.scroll(scrollport)
+
+    await waitFor(() => expect(screen.queryByLabelText('Create session')).not.toBeInTheDocument())
+    expect(trigger).not.toHaveFocus()
   })
 
   it('keeps one scroll and resize listener while open, then removes them on close and unmount', async () => {

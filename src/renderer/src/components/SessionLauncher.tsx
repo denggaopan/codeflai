@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
 import { isAgentKind } from '../../../shared/agent-kinds'
 import type { SessionKind } from '../../../shared/contracts'
@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n/use-translation'
 import { sessionKindIconUrl } from '../session-kind-icons'
 import { sessionKindOptions } from '../session-kind-options'
 import { useAppStore } from '../store/use-app-store'
+import { ROW_POPOVER_GAP, useScrollportPopoverLayout } from './use-scrollport-popover'
 
 type LauncherEntry = {
   id: string
@@ -17,6 +18,10 @@ type LauncherEntry = {
 
 type SessionLauncherProps = {
   projectId: string
+  /** The sidebar's scrolling project area, which this popover must stay inside. */
+  scrollportRef: RefObject<HTMLElement | null>
+  /** Dismissal for a row that scrolled out of view — the caller skips focus restoration. */
+  onScrolledOutOfView: () => void
 }
 
 /**
@@ -32,7 +37,7 @@ type SessionLauncherProps = {
  * is different from a kind whose CLI is missing: that one stays listed but disabled, with
  * the lookup detail explaining why.
  */
-export default function SessionLauncher({ projectId }: SessionLauncherProps) {
+export default function SessionLauncher({ projectId, scrollportRef, onScrolledOutOfView }: SessionLauncherProps) {
   const { t } = useTranslation()
   const platform = useAppStore((state) => state.platform)
   const capabilities = useAppStore((state) => state.capabilities)
@@ -41,6 +46,19 @@ export default function SessionLauncher({ projectId }: SessionLauncherProps) {
   const closeLauncher = useAppStore((state) => state.closeLauncher)
   const creatingSession = useAppStore((state) => state.creatingSession)
   const launcherRef = useRef<HTMLDivElement | null>(null)
+
+  // Same placement rules as the project options menu: this popover is absolutely positioned
+  // inside the scrolling project list, so on a bottom row it flips above its row rather than
+  // extending past the scrollport and losing its lower entries behind the sidebar footer.
+  const layout = useScrollportPopoverLayout({
+    openKey: projectId,
+    popoverRef: launcherRef,
+    scrollportRef,
+    anchorSelector: '[data-project-row]',
+    triggerSelector: '.project-options-trigger',
+    gap: ROW_POPOVER_GAP,
+    onDismiss: onScrolledOutOfView
+  })
 
   // Escape and outside clicks dismiss the popover; ProjectSidebar restores trigger focus.
   useEffect(() => {
@@ -84,7 +102,16 @@ export default function SessionLauncher({ projectId }: SessionLauncherProps) {
   }
 
   return (
-    <div className="session-launcher" aria-label={t('launcher.createSession')} ref={launcherRef}>
+    <div
+      className="session-launcher"
+      aria-label={t('launcher.createSession')}
+      data-placement={layout.placement}
+      data-clamped={layout.maxHeight !== null}
+      style={
+        { '--session-launcher-max-height': layout.maxHeight === null ? undefined : `${layout.maxHeight}px` } as React.CSSProperties
+      }
+      ref={launcherRef}
+    >
       <div className="session-launcher-header">
         <span>{t('launcher.newSession')}</span>
         <button type="button" className="session-launcher-close" aria-label={t('launcher.close')} onClick={closeLauncher}>

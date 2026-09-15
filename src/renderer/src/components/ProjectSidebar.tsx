@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ProjectRecord, SessionRecord } from '../../../shared/contracts'
 import newFolderIconUrl from '../assets/new_folder.svg'
@@ -19,13 +19,7 @@ import SettingsDialog from './SettingsDialog'
 import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
 import SessionRow from './SessionRow'
 import { useDragSort, type DropPlacement } from './use-drag-sort'
-
-const PROJECT_OPTIONS_GAP = 6
-
-type ProjectOptionsLayout = {
-  placement: 'below' | 'above'
-  maxHeight: number | null
-}
+import { ROW_POPOVER_GAP, useScrollportPopoverLayout } from './use-scrollport-popover'
 
 function FolderGlyph() {
   return (
@@ -97,7 +91,6 @@ export default function ProjectSidebar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
   const [openOptionsProjectId, setOpenOptionsProjectId] = useState<string | null>(null)
-  const [optionsMenuLayout, setOptionsMenuLayout] = useState<ProjectOptionsLayout>({ placement: 'below', maxHeight: null })
   const [launcherFocusRequest, setLauncherFocusRequest] = useState(0)
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const optionsMenuRef = useRef<HTMLDivElement | null>(null)
@@ -108,6 +101,19 @@ export default function ProjectSidebar() {
     if (restoreFocus) optionsTriggerRef.current?.focus()
     setOpenOptionsProjectId(null)
   }
+
+  // The menu remains inside the sidebar's scrolling project area even when its row sits at
+  // the scrollport edge. Dismissal here skips focus restoration on purpose: the trigger it
+  // would return focus to has scrolled out of view.
+  const optionsMenuLayout = useScrollportPopoverLayout({
+    openKey: openOptionsProjectId,
+    popoverRef: optionsMenuRef,
+    scrollportRef: projectGroupsRef,
+    anchorSelector: '[data-project-row]',
+    triggerSelector: '.project-options-trigger',
+    gap: ROW_POPOVER_GAP,
+    onDismiss: () => setOpenOptionsProjectId(null)
+  })
 
   // Project drag-reordering: the whole project row is the drag handle unless the pointer began
   // in the options trigger, menu, or launcher. Dragging is disabled while a session filter is
@@ -187,65 +193,6 @@ export default function ProjectSidebar() {
 
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [openOptionsProjectId])
-
-  // The menu remains inside the sidebar's scrolling project area even when its row sits at
-  // the scrollport edge. Layout timing prevents a visible below-then-above placement flash.
-  useLayoutEffect(() => {
-    if (!openOptionsProjectId) return
-
-    const menu = optionsMenuRef.current
-    const scrollport = projectGroupsRef.current
-    const row = menu?.closest<HTMLElement>('[data-project-row]')
-    if (!menu || !scrollport || !row) return
-    const trigger = row.querySelector<HTMLElement>('.project-options-trigger')
-    if (!trigger) {
-      setOpenOptionsProjectId(null)
-      return
-    }
-
-    const updateLayout = (): void => {
-      const rowRect = row.getBoundingClientRect()
-      const triggerRect = trigger.getBoundingClientRect()
-      const scrollportRect = scrollport.getBoundingClientRect()
-      // A zero-height browser layout has no visible anchor; a layoutless test DOM has no
-      // client rect at all and cannot provide meaningful visibility geometry.
-      const scrollportHasLayout = scrollport.getClientRects().length > 0
-      if (
-        scrollportHasLayout &&
-        (scrollportRect.height <= 0 || triggerRect.bottom <= scrollportRect.top || triggerRect.top >= scrollportRect.bottom)
-      ) {
-        // The trigger is no longer visible, so leave focus alone rather than restoring it to
-        // an offscreen row while dismissing the clipped menu.
-        setOpenOptionsProjectId(null)
-        return
-      }
-
-      const menuRect = menu.getBoundingClientRect()
-      const menuScrollHeight = menu.scrollHeight
-      const menuStyle = window.getComputedStyle(menu)
-      const verticalBorders = (Number.parseFloat(menuStyle.borderTopWidth) || 0) + (Number.parseFloat(menuStyle.borderBottomWidth) || 0)
-      // scrollHeight excludes borders, while max-height uses the app-wide border-box sizing.
-      // It therefore remains the stable natural content/padding height after a prior clamp.
-      const naturalMenuHeight = menuScrollHeight > 0 ? menuScrollHeight + verticalBorders : menuRect.height
-      const belowSpace = Math.max(0, scrollportRect.bottom - rowRect.bottom - PROJECT_OPTIONS_GAP)
-      const aboveSpace = Math.max(0, rowRect.top - scrollportRect.top - PROJECT_OPTIONS_GAP)
-      const placement = belowSpace >= naturalMenuHeight || belowSpace >= aboveSpace ? 'below' : 'above'
-      const availableSpace = placement === 'below' ? belowSpace : aboveSpace
-      const maxHeight = availableSpace >= naturalMenuHeight ? null : Math.floor(availableSpace)
-
-      setOptionsMenuLayout((current) =>
-        current.placement === placement && current.maxHeight === maxHeight ? current : { placement, maxHeight }
-      )
-    }
-
-    updateLayout()
-    scrollport.addEventListener('scroll', updateLayout)
-    window.addEventListener('resize', updateLayout)
-    return () => {
-      scrollport.removeEventListener('scroll', updateLayout)
-      window.removeEventListener('resize', updateLayout)
-    }
   }, [openOptionsProjectId])
 
   useEffect(() => {
@@ -628,7 +575,6 @@ export default function ProjectSidebar() {
                         // The launcher anchors to the same row edge as this menu, so it is
                         // dismissed rather than left stacked underneath.
                         closeLauncher()
-                        setOptionsMenuLayout({ placement: 'below', maxHeight: null })
                         setOpenOptionsProjectId(project.id)
                       }
                     }}
@@ -761,7 +707,19 @@ export default function ProjectSidebar() {
                     </button>
                   </div>
                 )}
-                {launcherOpen && activeProjectId === project.id && <SessionLauncher projectId={project.id} />}
+                {launcherOpen && activeProjectId === project.id && (
+                  <SessionLauncher
+                    projectId={project.id}
+                    scrollportRef={projectGroupsRef}
+                    onScrolledOutOfView={() => {
+                      // Clearing the remembered trigger suppresses the usual focus restoration:
+                      // it has scrolled out of the project list, and refocusing it would scroll
+                      // the list back to a row the user just navigated away from.
+                      launcherTriggerRef.current = null
+                      closeLauncher()
+                    }}
+                  />
+                )}
               </div>
 
               {expanded && (

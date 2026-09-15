@@ -1204,11 +1204,21 @@ body[data-sidebar-resizing='true'] .app-main {
   right: 0;
   z-index: 20;
   width: 220px;
+  max-height: var(--session-launcher-max-height, none);
   border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
   background: var(--color-panel-elevated);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
+  /* Horizontal hidden keeps the rounded corners clipping their content; vertical auto lets a
+     launcher clamped by useScrollportPopoverLayout scroll instead of being cut off. */
+  overflow: hidden auto;
+}
+
+/* On a row near the bottom of the project list the launcher opens upward, so its entries stay
+   inside the scrollport instead of being clipped by it and hidden behind the sidebar footer. */
+.session-launcher[data-placement='above'] {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .session-launcher-header {
