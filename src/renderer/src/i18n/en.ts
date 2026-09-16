@@ -18,6 +18,13 @@ export const en = {
   'titleBar.autoShutdownOff': 'Auto shutdown: off. Switch on to check for running sessions and shut this computer down when there are none.',
   'titleBar.autoShutdownOn': 'Auto shutdown: on. Checks every {interval} whether any session is running, and shuts this computer down when none is.',
   'titleBar.autoShutdownInterval': 'How often to check for running sessions',
+  // Appended to the "on" label rather than folded into it: the window is a separate sentence
+  // about a separate decision, and a translator reading either one alone still has all of it.
+  'titleBar.autoShutdownWindow': 'Only between {start} and {end}.',
+  'titleBar.autoShutdownWindowEmpty': 'The time range starts and ends at the same time, so nothing will be shut down.',
+  'titleBar.autoShutdownTimeRange': 'Only shut down within a time range',
+  'titleBar.autoShutdownTimeRangeStart': 'Earliest time of day a shutdown may happen',
+  'titleBar.autoShutdownTimeRangeEnd': 'Time of day a shutdown may no longer happen',
   'titleBar.pinWindow': 'Keep window on top',
   'titleBar.unpinWindow': 'Stop keeping window on top',
 

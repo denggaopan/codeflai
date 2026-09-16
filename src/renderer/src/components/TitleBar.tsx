@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState, type MouseEvent } from 'react'
 
 import logoUrl from '../assets/logo.svg'
-import { AUTO_SHUTDOWN_INTERVAL_OPTIONS, formatAutoShutdownInterval } from '../auto-shutdown'
+import {
+  AUTO_SHUTDOWN_INTERVAL_OPTIONS,
+  AUTO_SHUTDOWN_TIME_OPTIONS,
+  formatAutoShutdownInterval,
+  parseTimeOfDay
+} from '../auto-shutdown'
 import { useTranslation } from '../i18n/use-translation'
 import { recordRocketClick, type RocketClickStreak } from '../rocket-click-streak'
 import type { Point } from '../rocket-flight'
@@ -26,6 +31,8 @@ export default function TitleBar() {
   const autoShutdown = useAppStore((state) => state.autoShutdown)
   const setAutoShutdownEnabled = useAppStore((state) => state.setAutoShutdownEnabled)
   const setAutoShutdownInterval = useAppStore((state) => state.setAutoShutdownInterval)
+  const setAutoShutdownTimeRangeEnabled = useAppStore((state) => state.setAutoShutdownTimeRangeEnabled)
+  const setAutoShutdownTimeRange = useAppStore((state) => state.setAutoShutdownTimeRange)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
   const clickStreak = useRef<RocketClickStreak>({ clicks: [], rocketCount: 1 })
@@ -51,12 +58,54 @@ export default function TitleBar() {
   // One label per state rather than a fixed name plus aria-pressed alone: the tooltip is
   // where most users read what the button will do next.
   const pinLabel = pinned ? t('titleBar.unpinWindow') : t('titleBar.pinWindow')
-  // The frequency only appears once the feature is on: an interval nothing acts on would be
-  // a permanent control in a strip that has room for two buttons, and switching it on is
-  // what makes the number mean anything.
+  // The frequency and the time range only appear once the feature is on: controls nothing
+  // acts on would be permanent fixtures in a strip that has room for two buttons, and
+  // switching it on is what makes them mean anything.
+  //
+  // A window whose ends are equal contains no minute at all, so the watcher would never fire
+  // (see isWithinTimeRange). The control says so rather than silently doing nothing: this is
+  // the one place with room to explain it, and the alternative — reading it as "all day" —
+  // would throw away the restriction the user had just asked for.
+  const emptyTimeRange = parseTimeOfDay(autoShutdown.timeRange.start) === parseTimeOfDay(autoShutdown.timeRange.end)
+  const autoShutdownWindowLabel = !autoShutdown.timeRangeEnabled
+    ? ''
+    : emptyTimeRange
+      ? ` ${t('titleBar.autoShutdownWindowEmpty')}`
+      : ` ${t('titleBar.autoShutdownWindow', { start: autoShutdown.timeRange.start, end: autoShutdown.timeRange.end })}`
   const autoShutdownLabel = autoShutdown.enabled
-    ? t('titleBar.autoShutdownOn', { interval: formatAutoShutdownInterval(autoShutdown.intervalMs) })
+    ? `${t('titleBar.autoShutdownOn', { interval: formatAutoShutdownInterval(autoShutdown.intervalMs) })}${autoShutdownWindowLabel}`
     : t('titleBar.autoShutdownOff')
+
+  // One of the window's two ends, picked from a list rather than typed: these are two clock
+  // readings somebody sets once, and a field you have to type digits into is the wrong shape
+  // for that. Written once for both ends so neither can drift from the other.
+  const renderTimeEdge = (edge: 'start' | 'end') => {
+    const selected = autoShutdown.timeRange[edge]
+    // A window that came from an older preference or a hand-edited one can sit between two
+    // rows of the menu. It is offered as its own row rather than rounded away: the rule the
+    // watcher follows is that time, and a dropdown showing nothing at all would be a lie.
+    const options = AUTO_SHUTDOWN_TIME_OPTIONS.includes(selected)
+      ? AUTO_SHUTDOWN_TIME_OPTIONS
+      : [...AUTO_SHUTDOWN_TIME_OPTIONS, selected].sort()
+
+    return (
+      <select
+        className="title-bar-time"
+        aria-label={t(edge === 'start' ? 'titleBar.autoShutdownTimeRangeStart' : 'titleBar.autoShutdownTimeRangeEnd')}
+        // Equal ends are a window no minute falls in, so the control reports itself invalid
+        // rather than leaving a switched-on restriction that quietly never fires.
+        aria-invalid={autoShutdown.timeRangeEnabled && emptyTimeRange}
+        value={selected}
+        onChange={(event) => setAutoShutdownTimeRange({ ...autoShutdown.timeRange, [edge]: event.target.value })}
+      >
+        {options.map((time) => (
+          <option key={time} value={time}>
+            {time}
+          </option>
+        ))}
+      </select>
+    )
+  }
 
   return (
     <header className="title-bar">
@@ -69,19 +118,41 @@ export default function TitleBar() {
       <span className="title-bar-drag-area" aria-hidden="true" />
       <div className="title-bar-actions">
         {autoShutdown.enabled && (
-          <select
-            className="title-bar-interval"
-            aria-label={t('titleBar.autoShutdownInterval')}
-            title={t('titleBar.autoShutdownInterval')}
-            value={autoShutdown.intervalMs}
-            onChange={(event) => setAutoShutdownInterval(Number(event.target.value))}
-          >
-            {AUTO_SHUTDOWN_INTERVAL_OPTIONS.map((intervalMs) => (
-              <option key={intervalMs} value={intervalMs}>
-                {formatAutoShutdownInterval(intervalMs)}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              className="title-bar-interval"
+              aria-label={t('titleBar.autoShutdownInterval')}
+              title={t('titleBar.autoShutdownInterval')}
+              value={autoShutdown.intervalMs}
+              onChange={(event) => setAutoShutdownInterval(Number(event.target.value))}
+            >
+              {AUTO_SHUTDOWN_INTERVAL_OPTIONS.map((intervalMs) => (
+                <option key={intervalMs} value={intervalMs}>
+                  {formatAutoShutdownInterval(intervalMs)}
+                </option>
+              ))}
+            </select>
+            {/* The window and its switch travel together, and the hours stay editable while
+                the restriction is off: setting the window you want and then arming it is the
+                natural order to do this in, and a control that only accepts input after you
+                have switched the rule on forces the opposite one. The checkbox says whether
+                the window applies, not whether it can be chosen. */}
+            <div className="title-bar-time-range">
+              <input
+                type="checkbox"
+                className="title-bar-time-range-toggle"
+                aria-label={t('titleBar.autoShutdownTimeRange')}
+                title={t('titleBar.autoShutdownTimeRange')}
+                checked={autoShutdown.timeRangeEnabled}
+                onChange={(event) => setAutoShutdownTimeRangeEnabled(event.target.checked)}
+              />
+              {renderTimeEdge('start')}
+              <span className="title-bar-time-range-dash" aria-hidden="true">
+                –
+              </span>
+              {renderTimeEdge('end')}
+            </div>
+          </>
         )}
         <button
           type="button"

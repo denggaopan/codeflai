@@ -24,9 +24,12 @@ import {
   SHUTDOWN_COUNTDOWN_SECONDS,
   countdownTick,
   hasRunningSessions,
+  isAutoShutdownAllowedAt,
   isAutoShutdownInterval,
+  isAutoShutdownTimeRange,
   parseStoredAutoShutdown,
-  type AutoShutdownPreference
+  type AutoShutdownPreference,
+  type AutoShutdownTimeRange
 } from '../auto-shutdown'
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
@@ -101,6 +104,9 @@ export type AppStore = {
   setWindowPinned: (pinned: boolean) => void
   setAutoShutdownEnabled: (enabled: boolean) => void
   setAutoShutdownInterval: (intervalMs: number) => void
+  /** Switches the time-of-day restriction on or off; the window itself is kept either way. */
+  setAutoShutdownTimeRangeEnabled: (enabled: boolean) => void
+  setAutoShutdownTimeRange: (timeRange: AutoShutdownTimeRange) => void
   /** Stops the countdown and switches auto shutdown off, which is what "Cancel" means here. */
   cancelAutoShutdown: () => void
   /** Skips the rest of the countdown and shuts the machine down now. */
@@ -490,8 +496,16 @@ export const useAppStore = create<AppStore>()((set, get) => {
         return
       }
       // The machine slept through its own countdown: hand the ten seconds back rather than
-      // powering off the moment the screen comes on.
+      // powering off the moment the screen comes on. A sleep long enough to be noticed here
+      // can also have carried the clock straight out of the allowed window — that is what an
+      // 8am lid-open looks like — so the countdown is abandoned rather than restarted, and
+      // the periodic check takes over again.
       if (step === 'restart') {
+        if (!isAutoShutdownAllowedAt(get().autoShutdown, new Date())) {
+          set({ shutdownCountdown: null })
+          restartAutoShutdownWatcher()
+          return
+        }
         startShutdownCountdown()
         return
       }
@@ -500,9 +514,11 @@ export const useAppStore = create<AppStore>()((set, get) => {
   }
 
   // One tick of the watcher: anything the sidebar still calls Running (or Starting…) buys the
-  // machine another interval. An agent sitting at Done does not — see hasRunningSessions.
+  // machine another interval, and so does a clock outside the configured window. An agent
+  // sitting at Done does not — see hasRunningSessions.
   const runAutoShutdownCheck = (): void => {
     if (get().shutdownCountdown !== null) return
+    if (!isAutoShutdownAllowedAt(get().autoShutdown, new Date())) return
     if (hasRunningSessions(get().appState.sessions, get().idleAgentSessionIds)) return
     startShutdownCountdown()
   }
@@ -925,6 +941,28 @@ export const useAppStore = create<AppStore>()((set, get) => {
       set({ autoShutdown: next })
       persistAutoShutdown(next)
       restartAutoShutdownWatcher()
+    },
+
+    /**
+     * The window and the switch that confines the shutdown to it. Neither restarts the
+     * watcher, and that is the difference from the frequency: the cadence has not changed,
+     * only the answer the next check will give. Restarting it would push that check a full
+     * interval away on every keystroke in the time control — with an hour selected, editing
+     * the window would cost an hour.
+     */
+    setAutoShutdownTimeRangeEnabled: (timeRangeEnabled) => {
+      const next = { ...get().autoShutdown, timeRangeEnabled }
+      set({ autoShutdown: next })
+      persistAutoShutdown(next)
+    },
+
+    setAutoShutdownTimeRange: (timeRange) => {
+      // Same guard as the interval, for the same reason: a half-written or hand-edited value
+      // must not reach the watcher, where an unreadable window means "never shut down".
+      if (!isAutoShutdownTimeRange(timeRange)) return
+      const next = { ...get().autoShutdown, timeRange: { start: timeRange.start, end: timeRange.end } }
+      set({ autoShutdown: next })
+      persistAutoShutdown(next)
     },
 
     // "Cancel shutdown" is the user saying the machine is in use, so it switches the whole

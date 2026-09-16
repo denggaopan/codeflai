@@ -299,7 +299,10 @@ html[data-platform='darwin'] .title-bar {
   color: var(--color-text);
 }
 
-.title-bar-interval {
+/* The frequency and the two ends of the time window are the same control in three places:
+   a small dropdown you pick a value from, never a field you type into. */
+.title-bar-interval,
+.title-bar-time {
   flex: 0 0 auto;
   height: 22px;
   padding: 0 2px;
@@ -311,8 +314,65 @@ html[data-platform='darwin'] .title-bar {
   font-size: 0.72rem;
 }
 
-.title-bar-interval:hover {
+.title-bar-interval:hover,
+.title-bar-time:hover {
   color: var(--color-text);
+}
+
+/* The time menu is 48 rows, so it is the one popup in the app that scrolls — and a select
+   popup's scrollbar is painted by the browser, out of reach of the ::-webkit-scrollbar rules
+   further down this file. What it does follow is `color-scheme`, which this document
+   otherwise never declares (see .project-groups::-webkit-scrollbar): without it the popup is
+   drawn in the light scheme and puts a pale gutter down the edge of a dark menu. Declared on
+   the controls rather than on :root so it changes these popups and nothing else. */
+.title-bar-interval,
+.title-bar-time {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] .title-bar-interval,
+:root[data-theme='light'] .title-bar-time {
+  color-scheme: light;
+}
+
+/* The time window the shutdown is confined to: a checkbox and the two ends of the range,
+   grouped so they read as one control beside the frequency. */
+.title-bar-time-range {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.title-bar-time-range-toggle {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  /* Muted rather than the accent purple, the same restraint the power switch shows: a ticked
+     box on this strip is a state to read at a glance, not something to pull the eye. */
+  accent-color: var(--color-text-muted);
+}
+
+/* The app-wide focus ring is accent purple, which reads as an alert on a strip this quiet —
+   and these three controls are the only ones here that can take keyboard focus. */
+.title-bar-interval:focus-visible,
+.title-bar-time:focus-visible,
+.title-bar-time-range-toggle:focus-visible {
+  outline-color: var(--color-text-muted);
+}
+
+/* A window whose ends are equal holds no minute at all, so the watcher can never fire in it
+   (see isWithinTimeRange). The border says so; the switch's tooltip spells it out. */
+.title-bar-time[aria-invalid='true'] {
+  border-color: var(--color-state-destructive);
+  color: var(--color-state-destructive);
+}
+
+.title-bar-time-range-dash {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
 }
 
 /* The countdown reuses the confirm dialog's shell but outranks every other modal: it is the

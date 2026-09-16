@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DEFAULT_AUTO_SHUTDOWN, type AutoShutdownPreference } from '../auto-shutdown'
 import { useAppStore } from '../store/use-app-store'
 import TitleBar from './TitleBar'
 
@@ -57,6 +58,15 @@ function installAnimateStub(): void {
 }
 
 const rockets = (): NodeListOf<Element> => document.querySelectorAll('.rocket-flight')
+
+/** Auto shutdown switched on, which is what reveals the frequency and the time range. */
+const armed = (change: Partial<AutoShutdownPreference> = {}): void => {
+  useAppStore.setState({ autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN, enabled: true, ...change } })
+}
+
+const timeRangeGroup = (): Element | null => document.querySelector('.title-bar-time-range')
+const start = (): HTMLElement => screen.getByLabelText('Earliest time of day a shutdown may happen')
+const end = (): HTMLElement => screen.getByLabelText('Time of day a shutdown may no longer happen')
 
 const clickBrand = async (): Promise<void> => {
   await userEvent.click(screen.getByRole('button', { name: 'Codeflai — launch a rocket' }))
@@ -117,10 +127,12 @@ describe('TitleBar', () => {
     expect(pin).toHaveAttribute('aria-pressed', 'false')
     expect(power).toHaveAttribute('aria-pressed', 'false')
     expect(pin.previousElementSibling).toBe(power)
-    // Nothing precedes the switch while it is off: the frequency dropdown only appears once
-    // there is a watcher for it to configure.
+    // Nothing precedes the switch while it is off: the frequency dropdown and the time range
+    // only appear once there is a watcher for them to configure.
     expect(power.previousElementSibling).toBeNull()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Earliest time of day a shutdown may happen')).not.toBeInTheDocument()
   })
 
   it('reveals the frequency dropdown once auto shutdown is switched on', async () => {
@@ -132,7 +144,8 @@ describe('TitleBar', () => {
     const power = screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 5m whether any session is running/ })
     expect(power).toHaveAttribute('aria-pressed', 'true')
     const frequency = screen.getByRole('combobox', { name: 'How often to check for running sessions' })
-    expect(frequency.nextElementSibling).toBe(power)
+    expect(frequency.nextElementSibling).toBe(timeRangeGroup())
+    expect(timeRangeGroup()?.nextElementSibling).toBe(power)
     expect(frequency).toHaveValue(String(5 * 60_000))
     expect([...frequency.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
       '1m',
@@ -148,23 +161,134 @@ describe('TitleBar', () => {
   })
 
   it('changes the check frequency from the dropdown', async () => {
-    useAppStore.setState({ autoShutdown: { enabled: true, intervalMs: 5 * 60_000 } })
+    armed({ intervalMs: 5 * 60_000 })
     render(<TitleBar />)
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'How often to check for running sessions' }), String(30 * 60_000))
 
-    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: true, intervalMs: 30 * 60_000 })
+    expect(useAppStore.getState().autoShutdown).toMatchObject({ enabled: true, intervalMs: 30 * 60_000 })
     expect(screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 30m whether any session is running/ })).toBeInTheDocument()
   })
 
   it('switches auto shutdown back off and takes the dropdown with it', async () => {
-    useAppStore.setState({ autoShutdown: { enabled: true, intervalMs: 60 * 60_000 } })
+    armed({ intervalMs: 60 * 60_000 })
     render(<TitleBar />)
 
     await userEvent.click(screen.getByRole('button', { name: /^Auto shutdown: on\. Checks every 1h whether any session is running/ }))
 
     expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(timeRangeGroup()).toBeNull()
+  })
+
+  // The time-of-day window: the shutdown is confined to it once the box is ticked, and the
+  // hours are on screen and editable before that, so the window can be set and then armed.
+  it('claims nothing about the window until the restriction is switched on', async () => {
+    armed()
+    render(<TitleBar />)
+
+    const toggle = screen.getByRole('checkbox', { name: 'Only shut down within a time range' })
+    expect(toggle).not.toBeChecked()
+    expect(start()).toHaveValue('20:00')
+    expect(end()).toHaveValue('08:00')
+    // Nothing about the window is claimed while it restricts nothing.
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /shuts this computer down when none is\.$/
+    )
+
+    await userEvent.click(toggle)
+
+    expect(useAppStore.getState().autoShutdown).toMatchObject({
+      timeRangeEnabled: true,
+      timeRange: { start: '20:00', end: '08:00' }
+    })
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /Only between 20:00 and 08:00\.$/
+    )
+  })
+
+  // Setting the window and then arming it is the natural order; a control that only accepts
+  // input after the rule is switched on forces the opposite one.
+  it('lets the window be set before the restriction is switched on', async () => {
+    armed()
+    render(<TitleBar />)
+
+    expect(start()).toBeEnabled()
+    expect(end()).toBeEnabled()
+    await userEvent.selectOptions(start(), '21:30')
+
+    expect(useAppStore.getState().autoShutdown).toMatchObject({
+      timeRangeEnabled: false,
+      timeRange: { start: '21:30', end: '08:00' }
+    })
+    // Still switched off, so the switch says nothing about a window yet.
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /shuts this computer down when none is\.$/
+    )
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Only shut down within a time range' }))
+
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /Only between 21:30 and 08:00\.$/
+    )
+  })
+
+  it('picks either end of the window from a dropdown and reports it on the switch', async () => {
+    armed({ timeRangeEnabled: true })
+    render(<TitleBar />)
+
+    await userEvent.selectOptions(start(), '22:30')
+    await userEvent.selectOptions(end(), '06:00')
+
+    expect(useAppStore.getState().autoShutdown.timeRange).toEqual({ start: '22:30', end: '06:00' })
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /Only between 22:30 and 06:00\.$/
+    )
+  })
+
+  // Both ends are picked, never typed: a pair of clock readings set once is the wrong place
+  // for a field that demands four digits in the right order.
+  it('offers every half hour of the day, from midnight to the last one', () => {
+    armed({ timeRangeEnabled: true })
+    render(<TitleBar />)
+
+    const times = [...start().querySelectorAll('option')].map((option) => option.textContent)
+    expect(times).toHaveLength(48)
+    expect(times.slice(0, 3)).toEqual(['00:00', '00:30', '01:00'])
+    expect(times.at(-1)).toBe('23:30')
+    expect(times).toContain('20:00')
+  })
+
+  // A window from an older preference can sit between two rows of the menu. It gets a row of
+  // its own rather than being rounded away or leaving the dropdown blank.
+  it('keeps a stored time that is not on the half hour', () => {
+    armed({ timeRangeEnabled: true, timeRange: { start: '22:47', end: '08:00' } })
+    render(<TitleBar />)
+
+    expect(start()).toHaveValue('22:47')
+    const times = [...start().querySelectorAll('option')].map((option) => option.textContent)
+    expect(times).toHaveLength(49)
+    expect(times[times.indexOf('22:47') - 1]).toBe('22:30')
+  })
+
+  // A window whose ends are equal contains no minute at all, so the watcher could never fire
+  // in it. Saying so is the whole difference between a restriction and a silent no-op.
+  it('marks a window whose ends are equal as invalid and says nothing will happen', () => {
+    armed({ timeRangeEnabled: true, timeRange: { start: '08:00', end: '08:00' } })
+    render(<TitleBar />)
+
+    expect(start()).toHaveAttribute('aria-invalid', 'true')
+    expect(end()).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: /^Auto shutdown: on\./ })).toHaveAccessibleName(
+      /The time range starts and ends at the same time, so nothing will be shut down\.$/
+    )
+  })
+
+  it('does not call a switched-off window invalid', () => {
+    armed({ timeRange: { start: '08:00', end: '08:00' } })
+    render(<TitleBar />)
+
+    expect(start()).toHaveAttribute('aria-invalid', 'false')
   })
 
   it('shows the pressed pin and the undo label while the window is pinned', () => {

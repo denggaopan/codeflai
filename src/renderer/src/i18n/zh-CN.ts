@@ -16,6 +16,11 @@ export const zhCN: Translations = {
   'titleBar.autoShutdownOff': '自动关机：已关闭。开启后会定期检查是否有运行中的会话，没有就关闭这台电脑。',
   'titleBar.autoShutdownOn': '自动关机：已开启。每 {interval} 检查一次是否有运行中的会话，没有就关闭这台电脑。',
   'titleBar.autoShutdownInterval': '检查运行中会话的频率',
+  'titleBar.autoShutdownWindow': '仅在 {start} 到 {end} 之间关机。',
+  'titleBar.autoShutdownWindowEmpty': '时间范围的起点和终点相同，不会有任何关机发生。',
+  'titleBar.autoShutdownTimeRange': '仅在时间范围内关机',
+  'titleBar.autoShutdownTimeRangeStart': '允许关机的最早时刻',
+  'titleBar.autoShutdownTimeRangeEnd': '不再允许关机的时刻',
   'titleBar.pinWindow': '窗口置顶',
   'titleBar.unpinWindow': '取消窗口置顶',
 

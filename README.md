@@ -454,6 +454,40 @@ Changing it restarts the clock, so picking **1m** means a minute from now. The f
 always a full interval away — switching auto shutdown on never shuts the machine down on the
 spot.
 
+### Only shutting down at certain hours
+
+Beside the frequency is a checkbox and two dropdowns: tick it and the shutdown may only
+happen **between those two times of day**. Everything else is unchanged — the same check, at
+the same frequency — but outside the window it never starts a countdown. Leave it unticked
+and the machine may power itself off at any hour, which is what every version before 0.25.2
+did and what an existing installation keeps doing.
+
+Both ends are picked from a list of every half hour, from **00:00** to **23:30** — this is a
+"not before the evening" rule, not an alarm clock, and a menu you can scan beats four digits
+you have to type in the right order. Both stay editable whether or not the box is ticked, so
+you can set the window you want and then arm it; the checkbox says whether the window
+applies, not whether it can be chosen.
+
+The window starts at **20:00** and ends at **08:00** until you change it, and a start later
+than its end means overnight: 20:00–08:00 covers the evening, the night, and the early
+morning, and closes at eight. The start counts, the end does not — at exactly 08:00 the
+window has already closed. Any window works the same way, including a daytime one like
+09:00–17:00.
+
+A machine that goes idle at lunchtime is *not* shut down when the window opens that evening
+by surprise: the check simply keeps running and finds, at its first tick after 20:00, that
+nothing is running and the window is open. So the longest you ever wait past the opening hour
+is one interval.
+
+Two details worth knowing:
+
+- **Setting both times the same shuts nothing down.** A window that starts and ends at the
+  same minute contains no time at all. The two fields turn red and the power button's tooltip
+  says so, rather than the restriction quietly doing nothing.
+- **A machine that wakes outside the window does not power off.** If it slept through a
+  countdown — the lid was closed at 07:55 and opened at 09:00 — the countdown is dropped
+  instead of handed its ten seconds back, and the ordinary check takes over again.
+
 **"Running" means the status the sidebar shows**, not whether a session is still open. An
 agent that has finished its turn and is waiting for you reads as **Done** there, and a
 machine whose agents are all Done is exactly the one that should power itself off — you do
@@ -481,8 +515,10 @@ menu's **Shut Down…**, so applications there may still put up their own save p
 command is refused — no permission, a policy that blocks it — Codeflai says so in a notice and
 switches auto shutdown off rather than asking again every interval.
 
-The switch and the frequency are remembered, so a machine left with auto shutdown on keeps
-powering itself off after a restart. Both are stored per window profile, like the theme.
+The switch, the frequency, and the time window are remembered, so a machine left with auto
+shutdown on keeps powering itself off after a restart. The hours survive unticking the
+restriction, so switching it off by mistake does not lose them. All of it is stored per window
+profile, like the theme.
 
 ## Keeping the window on top
 

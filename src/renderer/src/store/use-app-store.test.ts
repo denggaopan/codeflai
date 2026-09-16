@@ -1161,7 +1161,12 @@ describe('useAppStore auto shutdown', () => {
   }
 
   it('starts switched off and never shuts the machine down while nobody asked for it', async () => {
-    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: false, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
+    expect(useAppStore.getState().autoShutdown).toEqual({
+      enabled: false,
+      intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS,
+      timeRangeEnabled: false,
+      timeRange: { start: '20:00', end: '08:00' }
+    })
     idleSessions()
 
     await vi.advanceTimersByTimeAsync(60 * 60_000)
@@ -1182,9 +1187,12 @@ describe('useAppStore auto shutdown', () => {
     await vi.advanceTimersByTimeAsync(1)
 
     expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
-    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
-      JSON.stringify({ enabled: true, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
-    )
+    expect(JSON.parse(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)!)).toEqual({
+      enabled: true,
+      intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS,
+      timeRangeEnabled: false,
+      timeRange: { start: '20:00', end: '08:00' }
+    })
   })
 
   it('counts down to zero and then shuts the machine down', async () => {
@@ -1270,9 +1278,10 @@ describe('useAppStore auto shutdown', () => {
 
     expect(useAppStore.getState().shutdownCountdown).toBeNull()
     expect(useAppStore.getState().autoShutdown.enabled).toBe(false)
-    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
-      JSON.stringify({ enabled: false, intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS })
-    )
+    expect(JSON.parse(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)!)).toMatchObject({
+      enabled: false,
+      intervalMs: DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS
+    })
 
     // Neither the rest of this countdown nor a later check may bring it back.
     await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS * 3)
@@ -1302,9 +1311,7 @@ describe('useAppStore auto shutdown', () => {
 
     useAppStore.getState().setAutoShutdownInterval(60_000)
 
-    expect(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)).toBe(
-      JSON.stringify({ enabled: true, intervalMs: 60_000 })
-    )
+    expect(JSON.parse(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)!).intervalMs).toBe(60_000)
     // The old timer is gone, so the moment it would have fired passes quietly.
     await vi.advanceTimersByTimeAsync(1_000)
     expect(useAppStore.getState().shutdownCountdown).toBeNull()
@@ -1359,11 +1366,105 @@ describe('useAppStore auto shutdown', () => {
 
     dispose = useAppStore.getState().initialize()
     await vi.advanceTimersByTimeAsync(0)
-    expect(useAppStore.getState().autoShutdown).toEqual({ enabled: true, intervalMs: 60_000 })
+    expect(useAppStore.getState().autoShutdown).toMatchObject({ enabled: true, intervalMs: 60_000 })
 
     await vi.advanceTimersByTimeAsync(60_000)
 
     expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  // The time-of-day window. Everything here pins the clock first: these are the only
+  // auto-shutdown tests whose answer depends on what hour it happens to be.
+  it('waits for the window to open instead of losing its cadence', async () => {
+    idleSessions()
+    vi.setSystemTime(new Date(2026, 8, 16, 19, 58))
+    useAppStore.getState().setAutoShutdownTimeRange({ start: '20:00', end: '08:00' })
+    useAppStore.getState().setAutoShutdownTimeRangeEnabled(true)
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    useAppStore.getState().setAutoShutdownInterval(60_000)
+
+    // 19:59 — nothing is running, but the window has not opened, so the check passes quietly.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+
+    // 20:00 — the same watcher, never restarted, finds the window open on its next tick.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  it('shuts the machine down at any hour while no window is switched on', async () => {
+    idleSessions()
+    vi.setSystemTime(new Date(2026, 8, 16, 13, 0))
+    useAppStore.getState().setAutoShutdownEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS)
+
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  it('keeps the window while the restriction is switched off', () => {
+    useAppStore.getState().setAutoShutdownTimeRange({ start: '22:30', end: '06:00' })
+    useAppStore.getState().setAutoShutdownTimeRangeEnabled(true)
+    expect(JSON.parse(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)!)).toMatchObject({
+      timeRangeEnabled: true,
+      timeRange: { start: '22:30', end: '06:00' }
+    })
+
+    useAppStore.getState().setAutoShutdownTimeRangeEnabled(false)
+
+    // The hours somebody typed survive the click that switched them off, exactly as the
+    // frequency survives the whole feature being switched off.
+    expect(JSON.parse(window.localStorage.getItem(AUTO_SHUTDOWN_STORAGE_KEY)!)).toMatchObject({
+      timeRangeEnabled: false,
+      timeRange: { start: '22:30', end: '06:00' }
+    })
+  })
+
+  it('ignores a window it cannot read', () => {
+    useAppStore.getState().setAutoShutdownTimeRange({ start: '', end: '06:00' })
+
+    expect(useAppStore.getState().autoShutdown.timeRange).toEqual({ start: '20:00', end: '08:00' })
+  })
+
+  // Unlike the frequency, editing the window must not restart the clock: with an hour
+  // selected, every keystroke in the time control would otherwise cost an hour.
+  it('does not push the next check back when the window is edited', async () => {
+    idleSessions()
+    vi.setSystemTime(new Date(2026, 8, 16, 22, 0))
+    useAppStore.getState().setAutoShutdownInterval(60_000)
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(59_000)
+
+    useAppStore.getState().setAutoShutdownTimeRange({ start: '20:00', end: '08:00' })
+    useAppStore.getState().setAutoShutdownTimeRangeEnabled(true)
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+  })
+
+  it('abandons a countdown the machine slept through when it wakes outside the window', async () => {
+    idleSessions()
+    vi.setSystemTime(new Date(2026, 8, 16, 7, 30))
+    useAppStore.getState().setAutoShutdownTimeRange({ start: '20:00', end: '08:00' })
+    useAppStore.getState().setAutoShutdownTimeRangeEnabled(true)
+    useAppStore.getState().setAutoShutdownInterval(60_000)
+    useAppStore.getState().setAutoShutdownEnabled(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(useAppStore.getState().shutdownCountdown).toBe(SHUTDOWN_COUNTDOWN_SECONDS)
+
+    // The lid opened at nine, long after the window closed. A sleep of that length is the
+    // one case the countdown restarts itself for, and restarting it here would power the
+    // machine off at exactly the hour the user said not to.
+    vi.setSystemTime(new Date(2026, 8, 16, 9, 0))
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
+    expect(api.shutdownSystem).not.toHaveBeenCalled()
+
+    // The periodic check is back, and it stays quiet until the window opens again.
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(useAppStore.getState().shutdownCountdown).toBeNull()
   })
 
   it('stops every timer when the store is torn down', async () => {
