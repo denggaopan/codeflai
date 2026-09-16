@@ -750,7 +750,9 @@ describe('App', () => {
       'Light',
       'Visual Studio Dark',
       'Abyss',
-      'Monokai'
+      'Monokai',
+      'Solarized Dark',
+      'Tomorrow Night Blue'
     ])
 
     await user.selectOptions(themeSelect, 'light')

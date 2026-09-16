@@ -193,6 +193,8 @@ export const en = {
   'settings.themeVsDark': 'Visual Studio Dark',
   'settings.themeAbyss': 'Abyss',
   'settings.themeMonokai': 'Monokai',
+  'settings.themeSolarizedDark': 'Solarized Dark',
+  'settings.themeTomorrowNightBlue': 'Tomorrow Night Blue',
   'settings.language': 'Language',
   'settings.showQuickPrompts': 'Show quick prompt bar',
   'settings.version': 'Version',

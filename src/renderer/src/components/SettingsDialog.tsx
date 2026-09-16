@@ -33,7 +33,9 @@ const THEME_LABEL_KEYS: Record<ThemePreference, TranslationKey> = {
   light: 'settings.themeLight',
   'vs-dark': 'settings.themeVsDark',
   abyss: 'settings.themeAbyss',
-  monokai: 'settings.themeMonokai'
+  monokai: 'settings.themeMonokai',
+  'solarized-dark': 'settings.themeSolarizedDark',
+  'tomorrow-night-blue': 'settings.themeTomorrowNightBlue'
 }
 
 // Breathing room left above a section the menu jumped to, so its heading is not flush against

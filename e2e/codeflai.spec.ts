@@ -184,7 +184,9 @@ test('keeps Settings interactive outside the draggable title bar', async () => {
   await trigger.click()
   await expect(dialog).toBeVisible()
   const themeSelect = dialog.getByRole('combobox', { name: 'Theme' })
-  await expect(themeSelect.locator('option')).toHaveText(['Dark', 'Light', 'Visual Studio Dark', 'Abyss', 'Monokai'])
+  await expect(themeSelect.locator('option')).toHaveText([
+    'Dark', 'Light', 'Visual Studio Dark', 'Abyss', 'Monokai', 'Solarized Dark', 'Tomorrow Night Blue'
+  ])
   // Every theme is a block of token overrides keyed off the same attribute, so one of the
   // three editor ports is enough to prove the dropdown is not limited to the original two.
   await themeSelect.selectOption('monokai')

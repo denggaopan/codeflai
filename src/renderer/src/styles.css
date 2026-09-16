@@ -21,8 +21,10 @@
   --color-accent: #9471c7;
   /* Text/icon color laid over a filled --color-accent surface. A token rather than a literal
      white because a theme is free to pick a bright accent (Monokai's cyan) that white text
-     cannot be read on. */
+     cannot be read on. Same for the destructive fill: Tomorrow Night Blue's red is a pale
+     pink, and the one button wearing it is the one that deletes a session. */
   --color-on-accent: #ffffff;
+  --color-on-destructive: #ffffff;
   /* The radial highlight over the workspace canvas (.app-main): the accent at low alpha. */
   --color-glow: rgba(148, 113, 199, 0.16);
   --color-state-running: #3ecf8e;
@@ -160,6 +162,61 @@
 
   --color-scrollbar-thumb: #55564d;
   --color-scrollbar-thumb-hover: #6b6c62;
+}
+
+/* Solarized Dark: Ethan Schoonover's palette. It defines only two dark grounds (base03 and
+   base02) where this app wants four, and its low contrast is the point — so the extra levels
+   go *below* base03 rather than above base02. Putting base03 on the panels the sidebar text
+   sits on, with the canvas a step deeper, buys back the contrast that base02-under-base1
+   loses (4.86 → 5.61 for body text, 4.11 → 4.75 for muted) without lightening a single one of
+   the palette's own colors. */
+:root[data-theme='solarized-dark'] {
+  --color-canvas: #00212b;
+  --color-panel: #002b36;
+  --color-title-bar: #073642;
+  --color-panel-elevated: #0a4250;
+  --color-border: #125061;
+
+  --color-text: #93a1a1;
+  --color-text-muted: #839496;
+
+  --color-accent: #268bd2;
+  --color-on-accent: #002b36;
+  --color-on-destructive: #ffffff;
+  --color-glow: rgba(38, 139, 210, 0.12);
+  --color-state-running: #859900;
+  --color-state-done: #6c71c4;
+  --color-state-warning: #b58900;
+  --color-state-destructive: #dc322f;
+
+  --color-scrollbar-thumb: #2a5663;
+  --color-scrollbar-thumb-hover: #3b6d7c;
+}
+
+/* Tomorrow Night Blue: deep navy under white text, with the palette's pastels for state. Its
+   red is a pale pink, so the destructive button takes dark text — this is the theme
+   --color-on-destructive exists for. */
+:root[data-theme='tomorrow-night-blue'] {
+  --color-canvas: #002451;
+  --color-panel: #001733;
+  --color-title-bar: #00204a;
+  --color-panel-elevated: #00346e;
+  --color-border: #12447e;
+
+  --color-text: #ffffff;
+  --color-text-muted: #7285b7;
+
+  --color-accent: #bbdaff;
+  --color-on-accent: #002451;
+  --color-on-destructive: #002451;
+  --color-glow: rgba(187, 218, 255, 0.10);
+  --color-state-running: #d1f1a9;
+  --color-state-done: #ebbbff;
+  --color-state-warning: #ffc58f;
+  --color-state-destructive: #ff9da4;
+
+  --color-scrollbar-thumb: #1d4a86;
+  --color-scrollbar-thumb-hover: #2c63a8;
 }
 
 /* ==========================================================================
@@ -2042,7 +2099,7 @@ body[data-sidebar-resizing='true'] .app-main {
 .confirm-dialog-confirm--destructive {
   border-color: var(--color-state-destructive);
   background: var(--color-state-destructive);
-  color: #fff;
+  color: var(--color-on-destructive);
 }
 
 /* ==========================================================================

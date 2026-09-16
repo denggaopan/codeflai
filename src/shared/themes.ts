@@ -2,10 +2,18 @@ import type { ThemePreference } from './contracts'
 
 /**
  * The themes the Settings dropdown offers, in menu order: the two original looks first, then
- * the three ports of familiar editor themes. Hand-kept in step with `themePreferenceSchema`
+ * the ports of familiar editor themes. Hand-kept in step with `themePreferenceSchema`
  * (contracts.ts owns the wire format); themes.test.ts asserts the two never drift apart.
  */
-export const THEME_PREFERENCES = ['dark', 'light', 'vs-dark', 'abyss', 'monokai'] as const satisfies readonly ThemePreference[]
+export const THEME_PREFERENCES = [
+  'dark',
+  'light',
+  'vs-dark',
+  'abyss',
+  'monokai',
+  'solarized-dark',
+  'tomorrow-night-blue'
+] as const satisfies readonly ThemePreference[]
 
 /**
  * The handful of colors CSS custom properties cannot reach, one entry per theme:
@@ -65,5 +73,19 @@ export const THEME_CHROME: Record<ThemePreference, ThemeChrome> = {
     titleBar: '#33342e',
     text: '#f8f8f2',
     selection: 'rgba(102, 217, 239, 0.30)'
+  },
+  'solarized-dark': {
+    base: 'dark',
+    canvas: '#00212b',
+    titleBar: '#073642',
+    text: '#93a1a1',
+    selection: 'rgba(38, 139, 210, 0.35)'
+  },
+  'tomorrow-night-blue': {
+    base: 'dark',
+    canvas: '#002451',
+    titleBar: '#00204a',
+    text: '#ffffff',
+    selection: 'rgba(187, 218, 255, 0.30)'
   }
 }

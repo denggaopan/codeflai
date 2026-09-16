@@ -265,7 +265,7 @@ describe('shared contracts', () => {
   })
 
   it('accepts only the known themes', () => {
-    for (const theme of ['dark', 'light', 'vs-dark', 'abyss', 'monokai']) {
+    for (const theme of ['dark', 'light', 'vs-dark', 'abyss', 'monokai', 'solarized-dark', 'tomorrow-night-blue']) {
       expect(setThemeRequestSchema.safeParse({ theme }).success).toBe(true)
     }
     expect(setThemeRequestSchema.safeParse({ theme: 'blue' }).success).toBe(false)

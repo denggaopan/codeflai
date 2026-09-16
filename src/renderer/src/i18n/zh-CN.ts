@@ -188,6 +188,8 @@ export const zhCN: Translations = {
   'settings.themeVsDark': 'Visual Studio Dark',
   'settings.themeAbyss': 'Abyss',
   'settings.themeMonokai': 'Monokai',
+  'settings.themeSolarizedDark': 'Solarized Dark',
+  'settings.themeTomorrowNightBlue': 'Tomorrow Night Blue',
   'settings.language': '语言',
   'settings.showQuickPrompts': '显示快捷提示词栏',
   'settings.version': '版本',

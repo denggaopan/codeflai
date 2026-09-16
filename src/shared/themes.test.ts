@@ -12,7 +12,15 @@ describe('theme table', () => {
   })
 
   it('keeps the original two themes first, then the editor ports', () => {
-    expect(THEME_PREFERENCES).toEqual(['dark', 'light', 'vs-dark', 'abyss', 'monokai'])
+    expect(THEME_PREFERENCES).toEqual([
+      'dark',
+      'light',
+      'vs-dark',
+      'abyss',
+      'monokai',
+      'solarized-dark',
+      'tomorrow-night-blue'
+    ])
   })
 
   // `base` is what reaches Electron's nativeTheme and the CSS color-scheme of native select
