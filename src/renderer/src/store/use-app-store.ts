@@ -18,6 +18,7 @@ import type {
   ToolAvailability
 } from '../../../shared/contracts'
 import { DEFAULT_SESSION_KIND_PREFERENCES, storedSessionKindPreferencesSchema } from '../../../shared/contracts'
+import { THEME_PREFERENCES } from '../../../shared/themes'
 import { emptyWorkspace, reconcileWorkspace } from '../../../shared/workspace-state'
 import {
   DEFAULT_AUTO_SHUTDOWN,
@@ -177,7 +178,8 @@ export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
 // launch) falls back to dark, the app's original and default look.
 const readStoredTheme = (): ThemePreference => {
   try {
-    return readMigratedStorage(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark'
+    const stored = readMigratedStorage(THEME_STORAGE_KEY)
+    return THEME_PREFERENCES.find((theme) => theme === stored) ?? 'dark'
   } catch {
     return 'dark'
   }

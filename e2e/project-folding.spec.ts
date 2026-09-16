@@ -145,7 +145,7 @@ test('toggles all projects and filtered results while preserving workspace folds
     await expect(search).toBeFocused()
     await page.getByRole('button', { name: 'Close search', exact: true }).click()
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
-    await page.getByRole('button', { name: 'Light', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('light')
     await page.getByRole('button', { name: '简体中文', exact: true }).click()
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '全部折叠', exact: true }).click()

@@ -264,9 +264,10 @@ describe('shared contracts', () => {
     expect(reorderProjectsRequestSchema.safeParse({ orderedProjectIds: ['p1'], extra: true }).success).toBe(false)
   })
 
-  it('accepts only dark/light theme requests', () => {
-    expect(setThemeRequestSchema.safeParse({ theme: 'dark' }).success).toBe(true)
-    expect(setThemeRequestSchema.safeParse({ theme: 'light' }).success).toBe(true)
+  it('accepts only the known themes', () => {
+    for (const theme of ['dark', 'light', 'vs-dark', 'abyss', 'monokai']) {
+      expect(setThemeRequestSchema.safeParse({ theme }).success).toBe(true)
+    }
     expect(setThemeRequestSchema.safeParse({ theme: 'blue' }).success).toBe(false)
     expect(setThemeRequestSchema.safeParse({}).success).toBe(false)
   })

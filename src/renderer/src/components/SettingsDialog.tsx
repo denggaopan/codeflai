@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { AppInfo, UpdateCheckResult } from '../../../shared/contracts'
+import type { AppInfo, ThemePreference, UpdateCheckResult } from '../../../shared/contracts'
 import type { ExternalLinkTarget } from '../../../shared/links'
+import { THEME_PREFERENCES } from '../../../shared/themes'
 import { LOCALES, type TranslationKey, type Translator } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
 import { sessionKindOptions, type SessionKindOption } from '../session-kind-options'
@@ -23,6 +24,17 @@ const LINK_ITEMS: ReadonlyArray<{ target: ExternalLinkTarget; labelKey: Translat
   { target: 'changelog', labelKey: 'settings.linkChangelog' },
   { target: 'download', labelKey: 'settings.linkDownload' }
 ]
+
+// One label per theme, as a Record rather than a list so adding a theme to the shared table
+// fails to compile until it has a name in both dictionaries. The menu order is the shared
+// list's order: the two original looks first, then the editor ports.
+const THEME_LABEL_KEYS: Record<ThemePreference, TranslationKey> = {
+  dark: 'settings.themeDark',
+  light: 'settings.themeLight',
+  'vs-dark': 'settings.themeVsDark',
+  abyss: 'settings.themeAbyss',
+  monokai: 'settings.themeMonokai'
+}
 
 // Breathing room left above a section the menu jumped to, so its heading is not flush against
 // the pane's edge. Stays under ACTIVE_SECTION_MARGIN or the jump would land short of its own
@@ -337,14 +349,24 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <span className="settings-dialog-label" id="settings-theme-label">
                   {t('settings.theme')}
                 </span>
-                <div className="settings-theme-toggle" role="group" aria-labelledby="settings-theme-label">
-                  <button type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}>
-                    {t('settings.themeDark')}
-                  </button>
-                  <button type="button" aria-pressed={theme === 'light'} onClick={() => setTheme('light')}>
-                    {t('settings.themeLight')}
-                  </button>
-                </div>
+                {/* A dropdown rather than the pair of buttons this used to be: five themes no
+                    longer fit on one row beside their label, and unlike the two-value language
+                    toggle next to it this list is expected to keep growing. */}
+                <select
+                  className="settings-select"
+                  aria-labelledby="settings-theme-label"
+                  value={theme}
+                  onChange={(event) => {
+                    const next = THEME_PREFERENCES.find((option) => option === event.target.value)
+                    if (next) setTheme(next)
+                  }}
+                >
+                  {THEME_PREFERENCES.map((option) => (
+                    <option key={option} value={option}>
+                      {t(THEME_LABEL_KEYS[option])}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="settings-dialog-section">

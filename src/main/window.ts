@@ -3,20 +3,13 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import type { ThemePreference } from '../shared/contracts'
+import { THEME_CHROME } from '../shared/themes'
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url))
 
 /** Must match the .title-bar height in styles.css so the native caption buttons the
  * titleBarOverlay draws line up exactly with the renderer's custom title-bar strip. */
 export const TITLE_BAR_HEIGHT = 36
-
-// Window-chrome colors per theme. These mirror the renderer's CSS tokens in styles.css
-// (--color-canvas for background, --color-title-bar/--color-text for the caption-button overlay)
-// because the overlay is drawn natively by Windows and cannot read CSS custom properties.
-const WINDOW_THEME_COLORS: Record<ThemePreference, { background: string; overlayColor: string; overlaySymbol: string }> = {
-  dark: { background: '#0b0f14', overlayColor: '#181e27', overlaySymbol: '#e7edf5' },
-  light: { background: '#f5f7fa', overlayColor: '#f0f3f7', overlaySymbol: '#1c2733' }
-}
 
 /**
  * Applies a theme to everything the renderer's CSS cannot reach: the native theme source
@@ -26,11 +19,13 @@ const WINDOW_THEME_COLORS: Record<ThemePreference, { background: string; overlay
  * renderer applies its persisted preference or the user switches themes in Settings.
  */
 export function applyWindowTheme(window: BrowserWindow, theme: ThemePreference, platform: NodeJS.Platform = process.platform): void {
-  const colors = WINDOW_THEME_COLORS[theme]
-  nativeTheme.themeSource = theme
-  window.setBackgroundColor(colors.background)
+  const colors = THEME_CHROME[theme]
+  // The themeSource follows the theme's base scheme, not its id: 'monokai' means nothing to
+  // Chromium, but every theme but one is a dark one.
+  nativeTheme.themeSource = colors.base
+  window.setBackgroundColor(colors.canvas)
   if (platform === 'win32') {
-    window.setTitleBarOverlay({ color: colors.overlayColor, symbolColor: colors.overlaySymbol, height: TITLE_BAR_HEIGHT })
+    window.setTitleBarOverlay({ color: colors.titleBar, symbolColor: colors.text, height: TITLE_BAR_HEIGHT })
   }
 }
 
@@ -76,14 +71,14 @@ export function createMainWindow(platform: NodeJS.Platform = process.platform): 
     minWidth: 900,
     minHeight: 600,
     autoHideMenuBar: true,
-    backgroundColor: WINDOW_THEME_COLORS.dark.background,
+    backgroundColor: THEME_CHROME.dark.canvas,
     ...(platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const }
       : {
           titleBarStyle: 'hidden' as const,
           titleBarOverlay: {
-            color: WINDOW_THEME_COLORS.dark.overlayColor,
-            symbolColor: WINDOW_THEME_COLORS.dark.overlaySymbol,
+            color: THEME_CHROME.dark.titleBar,
+            symbolColor: THEME_CHROME.dark.text,
             height: TITLE_BAR_HEIGHT
           }
         }),

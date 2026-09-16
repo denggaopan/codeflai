@@ -734,7 +734,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Settings' }).closest('.project-sidebar-footer')).not.toBeNull()
   })
 
-  it('opens Settings from the sidebar footer and switches between light and dark themes', async () => {
+  it('opens Settings from the sidebar footer and picks a theme from the dropdown', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -743,14 +743,30 @@ describe('App', () => {
     expect(dialog).toBeInTheDocument()
     expect(dialog.closest('.title-bar')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Light' }))
+    const themeSelect = screen.getByRole('combobox', { name: 'Theme' })
+    // Menu order is the shared table's: the two original looks, then the editor ports.
+    expect(within(themeSelect).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Dark',
+      'Light',
+      'Visual Studio Dark',
+      'Abyss',
+      'Monokai'
+    ])
+
+    await user.selectOptions(themeSelect, 'light')
     expect(document.documentElement.dataset.theme).toBe('light')
     expect(window.localStorage.getItem('codeflai.theme')).toBe('light')
     expect(api.setTheme).toHaveBeenCalledWith('light')
-    expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'false')
+    expect(themeSelect).toHaveValue('light')
 
-    await user.click(screen.getByRole('button', { name: 'Dark' }))
+    // One of the new themes: it reaches the DOM stamp, storage, and the main process the same
+    // way the two original ones do.
+    await user.selectOptions(themeSelect, 'monokai')
+    expect(document.documentElement.dataset.theme).toBe('monokai')
+    expect(window.localStorage.getItem('codeflai.theme')).toBe('monokai')
+    expect(api.setTheme).toHaveBeenLastCalledWith('monokai')
+
+    await user.selectOptions(themeSelect, 'dark')
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(api.setTheme).toHaveBeenLastCalledWith('dark')
 
@@ -814,6 +830,26 @@ describe('App', () => {
 
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'))
     expect(api.setTheme).toHaveBeenCalledWith('light')
+  })
+
+  it('applies a persisted editor theme on startup', async () => {
+    window.localStorage.setItem('codeflai.theme', 'abyss')
+
+    render(<App />)
+
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('abyss'))
+    expect(api.setTheme).toHaveBeenCalledWith('abyss')
+  })
+
+  // A preference written by a future version (or corrupted by hand) must not leave the app
+  // with an unstyled html[data-theme]: anything unrecognized falls back to the default look.
+  it('falls back to dark when the persisted theme is not one of the known ones', async () => {
+    window.localStorage.setItem('codeflai.theme', 'solarized')
+
+    render(<App />)
+
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+    expect(api.setTheme).toHaveBeenCalledWith('dark')
   })
 
   describe('sidebar resize handle', () => {

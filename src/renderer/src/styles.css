@@ -19,6 +19,12 @@
      build/icon.svg) lightened along the same hue so small text and outlines stay
      readable on the dark canvas. */
   --color-accent: #9471c7;
+  /* Text/icon color laid over a filled --color-accent surface. A token rather than a literal
+     white because a theme is free to pick a bright accent (Monokai's cyan) that white text
+     cannot be read on. */
+  --color-on-accent: #ffffff;
+  /* The radial highlight over the workspace canvas (.app-main): the accent at low alpha. */
+  --color-glow: rgba(148, 113, 199, 0.16);
   --color-state-running: #3ecf8e;
   --color-state-done: #b18aff;
   --color-state-warning: #e0a940;
@@ -63,6 +69,9 @@
   /* The original rocket-logo purple works unlightened on a light canvas; state colors are
      darkened along their hues so pill text stays readable on the light tints behind it. */
   --color-accent: #6e5494;
+  /* 0.16 of the accent purple reads as a smudge on a light canvas where it read as a glow on
+     the dark one, so the highlight is dialled back rather than dropped. */
+  --color-glow: rgba(110, 84, 148, 0.08);
   --color-state-running: #14855c;
   --color-state-done: #6f47c5;
   --color-state-warning: #9a6b0f;
@@ -71,6 +80,86 @@
   /* Darker greys so the thumb reads against the white panel. */
   --color-scrollbar-thumb: #9aa5b3;
   --color-scrollbar-thumb-hover: #6b7684;
+}
+
+/* ----- Ports of three familiar editor themes -------------------------------------------
+   Each one only restates the token contract above with that editor's palette; every rule in
+   the rest of this file is written against the tokens, so nothing else needs a per-theme
+   branch. All three are dark, so the light-theme exceptions further down (inverted mono
+   glyphs, the light `color-scheme` on select popups) correctly leave them alone.
+
+   The canvas/title-bar/text values of each are duplicated in shared/themes.ts, which is where
+   the native window chrome and xterm's canvas read them from — change the two together. */
+
+/* Visual Studio Dark: VS Code's default Dark+ — neutral greys, its link blue as the accent. */
+:root[data-theme='vs-dark'] {
+  --color-canvas: #1e1e1e;
+  --color-panel: #252526;
+  --color-title-bar: #323233;
+  --color-panel-elevated: #2d2d30;
+  --color-border: #3c3c3c;
+
+  --color-text: #d4d4d4;
+  --color-text-muted: #969696;
+
+  /* Bright enough to carry small text on the grey canvas, which is also why filled accent
+     surfaces switch to dark text here. */
+  --color-accent: #3794ff;
+  --color-on-accent: #1e1e1e;
+  --color-glow: rgba(55, 148, 255, 0.10);
+  --color-state-running: #89d185;
+  --color-state-done: #c586c0;
+  --color-state-warning: #cca700;
+  --color-state-destructive: #f14c4c;
+
+  --color-scrollbar-thumb: #4e4e4e;
+  --color-scrollbar-thumb-hover: #5f5f5f;
+}
+
+/* Abyss: near-black navy surfaces under a cool blue accent. */
+:root[data-theme='abyss'] {
+  --color-canvas: #000c18;
+  --color-panel: #05101f;
+  --color-title-bar: #051336;
+  --color-panel-elevated: #10192c;
+  --color-border: #1f3a5f;
+
+  --color-text: #dbe3f0;
+  --color-text-muted: #8296b5;
+
+  --color-accent: #82aaff;
+  --color-on-accent: #000c18;
+  --color-glow: rgba(130, 170, 255, 0.14);
+  --color-state-running: #3fc98a;
+  --color-state-done: #b08ae0;
+  --color-state-warning: #ddbb88;
+  --color-state-destructive: #ef5f6b;
+
+  --color-scrollbar-thumb: #2b4a78;
+  --color-scrollbar-thumb-hover: #3c6099;
+}
+
+/* Monokai: warm olive-greys, and the palette's own cyan/green/purple/orange/pink for state. */
+:root[data-theme='monokai'] {
+  --color-canvas: #272822;
+  --color-panel: #1e1f1c;
+  --color-title-bar: #33342e;
+  --color-panel-elevated: #3e3d32;
+  --color-border: #4a4b42;
+
+  --color-text: #f8f8f2;
+  --color-text-muted: #a6a69b;
+
+  --color-accent: #66d9ef;
+  --color-on-accent: #272822;
+  --color-glow: rgba(102, 217, 239, 0.10);
+  --color-state-running: #a6e22e;
+  --color-state-done: #ae81ff;
+  --color-state-warning: #fd971f;
+  --color-state-destructive: #f92672;
+
+  --color-scrollbar-thumb: #55564d;
+  --color-scrollbar-thumb-hover: #6b6c62;
 }
 
 /* ==========================================================================
@@ -535,15 +624,7 @@ body[data-sidebar-resizing='true'] .app-main {
      transparent), so the highlight is actually visible in the main workspace area, most
      obviously in the empty state before any session is opened. */
   background:
-    radial-gradient(ellipse 900px 500px at 20% -10%, rgba(148, 113, 199, 0.16), transparent 60%),
-    var(--color-canvas);
-}
-
-/* Same layered highlight at lower alpha: 0.16 of the accent purple reads as a smudge on a
-   light canvas where it read as a glow on the dark one. */
-:root[data-theme='light'] .app-main {
-  background:
-    radial-gradient(ellipse 900px 500px at 20% -10%, rgba(110, 84, 148, 0.08), transparent 60%),
+    radial-gradient(ellipse 900px 500px at 20% -10%, var(--color-glow), transparent 60%),
     var(--color-canvas);
 }
 
@@ -2270,7 +2351,7 @@ body[data-sidebar-resizing='true'] .app-main {
   border: 1px solid var(--color-accent);
   border-radius: 6px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.82rem;
 }
 
@@ -2434,6 +2515,31 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-text);
 }
 
+/* The theme dropdown. Sized and coloured like the toggle group beside it so the two settings
+   rows read as one column of controls; `color-scheme` is declared here for the same reason as
+   on the title bar's dropdowns (the popup's scrollbar and its own background follow it, and
+   this document never declares one at :root). Every theme but `light` is a dark one, so the
+   dark value is the default and only the light theme overrides it. */
+.settings-select {
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.settings-select:hover {
+  border-color: var(--color-accent);
+}
+
+:root[data-theme='light'] .settings-select {
+  color-scheme: light;
+}
+
 .settings-theme-toggle {
   display: inline-flex;
   gap: 2px;
@@ -2454,7 +2560,7 @@ body[data-sidebar-resizing='true'] .app-main {
 
 .settings-theme-toggle button[aria-pressed='true'] {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
 }
 
 .settings-theme-toggle button[aria-pressed='false']:hover {
@@ -2496,7 +2602,7 @@ body[data-sidebar-resizing='true'] .app-main {
 }
 
 .settings-switch[aria-checked='true'] .settings-switch-thumb {
-  background: #fff;
+  background: var(--color-on-accent);
   transform: translateX(17px);
 }
 
@@ -2617,7 +2723,7 @@ body[data-sidebar-resizing='true'] .app-main {
   border-radius: 6px;
   padding: 2px 10px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 0.75rem;
 }
 
@@ -2719,7 +2825,7 @@ body[data-sidebar-resizing='true'] .app-main {
 .update-dialog-primary {
   border-color: var(--color-accent);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

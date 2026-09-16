@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { isAgentKind } from '../../../shared/agent-kinds'
 import type { SessionRecord, ThemePreference } from '../../../shared/contracts'
+import { THEME_CHROME } from '../../../shared/themes'
 import type { TerminalReplay } from '../../../shared/pty-protocol'
 import type { TranslationKey } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
@@ -54,11 +55,16 @@ type PendingData = { chunks: PendingDataChunk[]; chars: number }
 const TERMINAL_FONT_FAMILY = '"Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace'
 
 // Like the font above, xterm renders to its own canvas and cannot read CSS custom
-// properties: these mirror the --color-canvas/--color-text tokens per theme in styles.css
-// (selection uses the accent purple at low alpha) so the terminal follows the app theme.
-const XTERM_THEMES: Record<ThemePreference, { background: string; foreground: string; cursor: string; selectionBackground: string }> = {
-  dark: { background: '#0b0f14', foreground: '#e7edf5', cursor: '#e7edf5', selectionBackground: 'rgba(148, 113, 199, 0.35)' },
-  light: { background: '#f5f7fa', foreground: '#1c2733', cursor: '#1c2733', selectionBackground: 'rgba(110, 84, 148, 0.25)' }
+// properties, so the terminal's colors come from the shared palette in shared/themes.ts
+// (which mirrors the --color-canvas/--color-text tokens per theme in styles.css).
+const xtermTheme = (theme: ThemePreference): { background: string; foreground: string; cursor: string; selectionBackground: string } => {
+  const chrome = THEME_CHROME[theme]
+  return {
+    background: chrome.canvas,
+    foreground: chrome.text,
+    cursor: chrome.text,
+    selectionBackground: chrome.selection
+  }
 }
 const MAX_PENDING_DATA_PER_SESSION = 65_536
 const MAX_PENDING_SESSIONS = 32
@@ -212,7 +218,7 @@ export default function TerminalWorkspace() {
       fontFamily: TERMINAL_FONT_FAMILY,
       // Read via getState() rather than the subscribed `theme`: ensureEntry runs inside a
       // stable ref callback, and the theme-change effect below re-themes live entries anyway.
-      theme: XTERM_THEMES[useAppStore.getState().theme]
+      theme: xtermTheme(useAppStore.getState().theme)
     })
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
@@ -420,7 +426,7 @@ export default function TerminalWorkspace() {
   // to its canvas immediately, so existing scrollback repaints in the new palette.
   useEffect(() => {
     for (const entry of entriesRef.current.values()) {
-      entry.terminal.options.theme = XTERM_THEMES[theme]
+      entry.terminal.options.theme = xtermTheme(theme)
     }
   }, [theme])
 

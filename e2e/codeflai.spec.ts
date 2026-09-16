@@ -183,9 +183,15 @@ test('keeps Settings interactive outside the draggable title bar', async () => {
 
   await trigger.click()
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: 'Light' }).click()
+  const themeSelect = dialog.getByRole('combobox', { name: 'Theme' })
+  await expect(themeSelect.locator('option')).toHaveText(['Dark', 'Light', 'Visual Studio Dark', 'Abyss', 'Monokai'])
+  // Every theme is a block of token overrides keyed off the same attribute, so one of the
+  // three editor ports is enough to prove the dropdown is not limited to the original two.
+  await themeSelect.selectOption('monokai')
+  await expect(window.locator('html')).toHaveAttribute('data-theme', 'monokai')
+  await themeSelect.selectOption('light')
   await expect(window.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(dialog.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(themeSelect).toHaveValue('light')
 
   await dialog.getByRole('button', { name: 'Close settings' }).click()
   await expect(dialog).toHaveCount(0)
@@ -201,7 +207,7 @@ test('keeps Settings interactive outside the draggable title bar', async () => {
   await expect(dialog).toHaveCount(0)
 
   await trigger.click()
-  await dialog.getByRole('button', { name: 'Dark' }).click()
+  await dialog.getByRole('combobox', { name: 'Theme' }).selectOption('dark')
   await expect(window.locator('html')).toHaveAttribute('data-theme', 'dark')
   await window.keyboard.press('Escape')
 })
@@ -514,7 +520,7 @@ test('keeps the terminal workflow usable at the 900 by 600 minimum window size',
   const settingsTrigger = window.getByRole('button', { name: 'Settings' })
   await settingsTrigger.click()
   const settingsDialog = window.getByRole('dialog', { name: 'Settings' })
-  await settingsDialog.getByRole('button', { name: 'Light' }).click()
+  await settingsDialog.getByRole('combobox', { name: 'Theme' }).selectOption('light')
   await settingsDialog.getByRole('button', { name: 'Close settings' }).click()
 
   const lightOptionsMenu = await openProjectOptions()
@@ -523,7 +529,7 @@ test('keeps the terminal workflow usable at the 900 by 600 minimum window size',
   await window.keyboard.press('Escape')
 
   await settingsTrigger.click()
-  await settingsDialog.getByRole('button', { name: 'Dark' }).click()
+  await settingsDialog.getByRole('combobox', { name: 'Theme' }).selectOption('dark')
   await expect(window.locator('html')).toHaveAttribute('data-theme', 'dark')
   await window.keyboard.press('Escape')
 

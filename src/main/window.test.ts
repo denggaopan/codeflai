@@ -163,6 +163,16 @@ describe('applyWindowTheme', () => {
     expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#181e27', symbolColor: '#e7edf5', height: TITLE_BAR_HEIGHT })
   })
 
+  // Everything but `light` is a dark theme, and its id means nothing to Chromium: the native
+  // theme source has to follow the theme's base scheme or this throws at the assignment.
+  it('reports an editor theme to the native theme source as dark, with its own chrome colors', () => {
+    applyWindowTheme(fakeWindow as unknown as Electron.BrowserWindow, 'monokai')
+
+    expect(mockNativeTheme.themeSource).toBe('dark')
+    expect(fakeWindow.setBackgroundColor).toHaveBeenCalledWith('#272822')
+    expect(fakeWindow.setTitleBarOverlay).toHaveBeenCalledWith({ color: '#33342e', symbolColor: '#f8f8f2', height: TITLE_BAR_HEIGHT })
+  })
+
   it('does not call the Windows title-bar overlay API on macOS', () => {
     applyWindowTheme(fakeWindow as unknown as Electron.BrowserWindow, 'light', 'darwin')
 

@@ -241,7 +241,10 @@ export const DEFAULT_SESSION_KIND_PREFERENCES: Readonly<SessionKindPreferences> 
   qwen: { enabled: false, worktree: true }
 }
 
-export const themePreferenceSchema = z.enum(['dark', 'light'])
+// Hand-written enum rather than one derived from shared/themes.ts, for the same reason
+// sessionKindSchema is: contracts.ts stays the single place a wire format is spelled out.
+// themes.test.ts asserts the two lists never drift apart.
+export const themePreferenceSchema = z.enum(['dark', 'light', 'vs-dark', 'abyss', 'monokai'])
 
 export const setThemeRequestSchema = z.strictObject({
   theme: themePreferenceSchema
