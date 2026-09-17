@@ -152,6 +152,13 @@ const emptyAppState = (): AppState => ({ version: 1, projects: [], sessions: [] 
 
 // Whether the user can actually see the window right now. Three things need this: unread
 // markers, the Done-edge notification, and the badge.
+//
+// The `visibilityState` half is dead weight in production: window.ts sets
+// `backgroundThrottling: false` (so the three-second Done-edge timer keeps firing while
+// hidden), and Electron's own docs say that option "also affects the Page Visibility API" — a
+// minimized/occluded window never reports hidden, so `visibilityState` stays 'visible'
+// regardless. `hasFocus()` alone is what actually separates attended from unattended today.
+// Left in place because it becomes live again if that throttling trade-off is ever revisited.
 const isWindowAttended = (): boolean => document.visibilityState !== 'hidden' && document.hasFocus()
 
 const isViewingSession = (sessionId: string, activeSessionId: string | null): boolean =>
@@ -640,11 +647,17 @@ export const useAppStore = create<AppStore>()((set, get) => {
         const session = appState.sessions.find((candidate) => candidate.id === sessionId)
         if (!session) return
         const project = appState.projects.find((candidate) => candidate.id === session.projectId)
-        const body = translate(
-          locale,
-          reason === 'idle' ? 'notification.agentDone' : 'notification.sessionExited',
-          { project: project?.name ?? '' }
-        )
+        const reasonKey = reason === 'idle' ? 'notification.agentDone' : 'notification.sessionExited'
+        // projectRecordSchema.name has no upper bound (a Windows/macOS path component can run to
+        // ~255 chars) but notificationIdleRequestSchema.body caps at 200; an over-long body is
+        // dropped by the main process's own safeParse with nothing logged (onNotificationIdle),
+        // so that project would silently stop notifying forever. Reserve room for the template's
+        // own fixed text (it varies by locale and reason) instead of guessing a fixed budget, so
+        // the composed body can never cross the cap. A missing project falls back to a named
+        // placeholder rather than leaving the template's separator dangling at the front.
+        const fixedTextLength = translate(locale, reasonKey, { project: '' }).length
+        const projectName = project?.name || translate(locale, 'notification.unknownProject')
+        const body = translate(locale, reasonKey, { project: projectName.slice(0, Math.max(0, 200 - fixedTextLength)) })
         // sessionRecordSchema.title has no upper bound but notificationIdleRequestSchema caps
         // it at 200, so an over-long title would be dropped by our own validation.
         window.codeflai.notifySessionIdle(sessionId, session.title.slice(0, 200), body)
@@ -853,6 +866,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // network must leave the app exactly as quiet as it would have been without it.
       void get().checkForUpdatesInBackground()
       window.addEventListener('focus', acknowledgeViewedSession)
+      // Inert in production alongside isWindowAttended's visibilityState half, and for the same
+      // reason (window.ts's backgroundThrottling: false): the neighbouring focus listener is
+      // what actually covers the restore path.
       document.addEventListener('visibilitychange', acknowledgeViewedSession)
 
       return () => {
@@ -868,6 +884,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         pendingActivity.clear()
         pendingUnread.clear()
         startupRead.clear()
+        expectedExits.clear()
         window.removeEventListener('focus', acknowledgeViewedSession)
         document.removeEventListener('visibilitychange', acknowledgeViewedSession)
         set({ idleAgentSessionIds: {} })
@@ -1200,6 +1217,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
             launcherOpen: activeProjectRemoved ? false : state.launcherOpen
           }
         })
+        // The prune above can drop the project's own unread sessions; a local set() does not
+        // broadcast, so nothing else re-syncs the badge (see syncBadge's other callers).
+        syncBadge()
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
@@ -1291,6 +1311,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
           unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
           notice: null
         }))
+        // Stopping a session can drop its own unread marker; see the removeProject comment above.
+        syncBadge()
       } catch (error) {
         expectedExits.delete(sessionId)
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
@@ -1312,6 +1334,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
             unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
             activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
           }))
+          // Deleting a session can drop its own unread marker; see the removeProject comment above.
+          syncBadge()
         } else if (result.status === 'dirty') {
           set({
             notice: {

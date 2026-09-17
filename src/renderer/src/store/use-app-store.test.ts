@@ -24,6 +24,7 @@ import { DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS, SHUTDOWN_COUNTDOWN_SECONDS } from '.
 import {
   AGENT_IDLE_MS,
   AUTO_SHUTDOWN_STORAGE_KEY,
+  NOTIFICATIONS_STORAGE_KEY,
   SESSION_KINDS_STORAGE_KEY,
   WINDOW_PINNED_STORAGE_KEY,
   useAppStore
@@ -148,8 +149,8 @@ const idleIds = (): Record<string, true> => useAppStore.getState().idleAgentSess
 const reinitializeWith = async (stored: string | null): Promise<void> => {
   dispose()
   useAppStore.getState().reset()
-  if (stored === null) window.localStorage.removeItem('codeflai.notifications')
-  else window.localStorage.setItem('codeflai.notifications', stored)
+  if (stored === null) window.localStorage.removeItem(NOTIFICATIONS_STORAGE_KEY)
+  else window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, stored)
   api = createFakeApi()
   window.codeflai = api
   dispose = useAppStore.getState().initialize()
@@ -1519,7 +1520,7 @@ describe('useAppStore notifications', () => {
     useAppStore.getState().setNotificationsEnabled(false)
 
     expect(useAppStore.getState().notificationsEnabled).toBe(false)
-    expect(window.localStorage.getItem('codeflai.notifications')).toBe('false')
+    expect(window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)).toBe('false')
     // A number that will never update again is worse than no badge.
     expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
   })
@@ -1666,6 +1667,31 @@ describe('session notifications', () => {
     expect(api.notifySessionIdle.mock.calls.at(-1)?.[1]).toHaveLength(200)
   })
 
+  // projectRecordSchema.name has no upper bound either, and a long folder name is legal on both
+  // platforms (a path component can run to ~255 chars) — the composed body still has to fit
+  // notificationIdleRequestSchema's 200-char cap, or the whole notification is dropped silently
+  // (see onNotificationIdle in register-ipc.ts).
+  it('caps the composed body when the project name exceeds the schema limit', () => {
+    const longNameProject: ProjectRecord = { ...project, name: 'x'.repeat(250) }
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [longNameProject], sessions: [claudeSession, powershellSession] })
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    const body = api.notifySessionIdle.mock.calls.at(-1)?.[2] as string
+    expect(body.length).toBeLessThanOrEqual(200)
+  })
+
+  // A missing project must not leave the template's own separator dangling at the front.
+  it('does not leave a dangling separator when the project is missing', () => {
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [], sessions: [claudeSession, powershellSession] })
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle.mock.calls.at(-1)?.[2]).toBe('This project · Session exited')
+  })
+
   it('pushes the unread count to the badge', () => {
     seedProject()
     vi.mocked(document.hasFocus).mockReturnValue(false)
@@ -1702,6 +1728,21 @@ describe('session notifications', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
+  })
+
+  // The badge does not self-heal from a local prune the way it does from onStateChanged's
+  // broadcast, so removeProject (and stopSession/deleteSession alongside it) has to re-sync it
+  // explicitly after dropping the project's own unread sessions.
+  it('resyncs the badge when removing a project drops its only unread session', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
+
+    await useAppStore.getState().removeProject(project.id)
+
+    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
   })
 
   it('switches to the session a clicked notification names', () => {

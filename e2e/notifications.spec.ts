@@ -30,10 +30,19 @@ test('switches notifications off and keeps them off across a restart', async () 
       }
     })
 
-  let app = await launch()
-  let page = await app.firstWindow()
   const errors: string[] = []
-  page.on('pageerror', (error) => errors.push(error.message))
+  // Re-attached after every relaunch below: `page` is reassigned to a new window, and a
+  // pageerror listener bound to the first instance does not carry over to it — without this,
+  // the final assertion could only ever see errors from before the restart, which is exactly
+  // the path this spec exists to cover.
+  const openWindow = async (instance: Awaited<ReturnType<typeof launch>>) => {
+    const win = await instance.firstWindow()
+    win.on('pageerror', (error) => errors.push(error.message))
+    return win
+  }
+
+  let app = await launch()
+  let page = await openWindow(app)
 
   const openSettings = async () => {
     await page.getByRole('button', { name: 'Settings' }).click()
@@ -56,7 +65,7 @@ test('switches notifications off and keeps them off across a restart', async () 
     await app.close().catch(() => undefined)
 
     app = await launch()
-    page = await app.firstWindow()
+    page = await openWindow(app)
     toggle = await openSettings()
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
 

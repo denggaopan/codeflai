@@ -169,6 +169,7 @@ export const zhCN: Translations = {
 
   'notification.agentDone': '{project} · 已完成',
   'notification.sessionExited': '{project} · 会话已退出',
+  'notification.unknownProject': '该项目',
 
   'settings.title': '设置',
   'settings.close': '关闭设置',

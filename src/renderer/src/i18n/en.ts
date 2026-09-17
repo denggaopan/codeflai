@@ -174,6 +174,7 @@ export const en = {
 
   'notification.agentDone': '{project} · Done',
   'notification.sessionExited': '{project} · Session exited',
+  'notification.unknownProject': 'This project',
 
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
