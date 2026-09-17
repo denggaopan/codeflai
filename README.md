@@ -37,6 +37,7 @@ CLI credentials.**
 - [Quick prompts](#quick-prompts)
 - [Session titles](#session-titles)
 - [Organizing sessions](#organizing-sessions)
+- [Notifications](#notifications)
 - [The project options menu](#the-project-options-menu)
 - [Shutting the computer down when nothing is running](#shutting-the-computer-down-when-nothing-is-running)
 - [Keeping the window on top](#keeping-the-window-on-top)
@@ -417,6 +418,26 @@ survive reopening the window; replaying old terminal output does not create new
 ones. Unread activity does not mean that an agent completed its task
 successfully.
 
+## Notifications
+
+A system notification fires when an agent session finishes its turn, or when any session
+exits — the same two triggers that mark those sessions unread in the sidebar. It only appears
+while the window is not in front of you — hidden, minimized, or simply not focused. With the
+window in front of you the sidebar's bold title and unread dot are the signal instead, so
+nothing pops up on top of what you are already looking at. Stopping or deleting a session
+yourself does not raise a notification for that exit; only one you did not ask for does.
+
+Clicking a notification brings Codeflai to the front — restoring the window first if it was
+minimized — and switches to the session that finished.
+
+The taskbar icon on Windows and the Dock icon on macOS also carry the unread count while any
+session is unread: Windows shows a dot, macOS shows the number itself. The sidebar still has
+the exact count per project; the taskbar or Dock only answers whether there is anything to look
+at.
+
+The switch is **Notify when a session finishes**, under **General** in Settings, and it is on
+by default.
+
 ## The project options menu
 
 The ⋯ button on a project row opens it. Nothing in here changes which session is active or
@@ -656,6 +677,11 @@ on the CLI. Comate has none at all.
 **A session vanished after a restart.** Deleting a session, or removing its project from the
 list, removes the record — but never anything on disk. Any work an agent did in a worktree is
 still on that worktree's branch.
+
+**No notifications arrive.** Check **Notify when a session finishes** in Settings, and then
+your OS notification settings — Windows Focus assist and macOS Do Not Disturb both suppress
+them without telling the app. Notifications are deliberately silent while the Codeflai window
+is in front of you; the sidebar dot is the signal then.
 
 ## License
 
