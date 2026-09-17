@@ -150,8 +150,12 @@ export type AppStore = {
 
 const emptyAppState = (): AppState => ({ version: 1, projects: [], sessions: [] })
 
+// Whether the user can actually see the window right now. Three things need this: unread
+// markers, the Done-edge notification, and the badge.
+const isWindowAttended = (): boolean => document.visibilityState !== 'hidden' && document.hasFocus()
+
 const isViewingSession = (sessionId: string, activeSessionId: string | null): boolean =>
-  sessionId === activeSessionId && document.visibilityState !== 'hidden' && document.hasFocus()
+  sessionId === activeSessionId && isWindowAttended()
 
 // The resting state the launcher may already be reading from: it looks availability up by
 // kind with nothing to fall back to, so every agent kind needs an entry before the first
@@ -415,10 +419,25 @@ const upsertSession = (state: AppState, session: SessionRecord): AppState => {
  * so every catch here only reads error.message and never branches on error type.
  */
 export const useAppStore = create<AppStore>()((set, get) => {
+  /**
+   * Sessions the user asked to end. The window-attended check already covers the common case —
+   * the window has focus at the moment Stop or Delete is clicked — but "stop it, then switch
+   * away before the exit event lands" is a real race, and a toast reporting that a session the
+   * user just stopped has stopped is worse than no toast.
+   */
+  const expectedExits = new Set<string>()
+
+  const syncBadge = (): void => {
+    const { notificationsEnabled, unreadSessionIds, locale } = get()
+    const count = notificationsEnabled ? unreadSessionIds.length : 0
+    window.codeflai.setUnreadBadge(count, count > 0 ? translate(locale, 'sidebar.unreadCount', { count }) : '')
+  }
+
   const markViewedSessionRead = (): void => {
     const { activeSessionId, unreadSessionIds } = get()
     if (!activeSessionId || !unreadSessionIds.includes(activeSessionId) || !isViewingSession(activeSessionId, activeSessionId)) return
     set({ unreadSessionIds: unreadSessionIds.filter((id) => id !== activeSessionId) })
+    syncBadge()
   }
 
   const noteUnreadOutput = (sessionId: string): void => {
@@ -426,6 +445,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     if (!appState.sessions.some((session) => session.id === sessionId) ||
       isViewingSession(sessionId, activeSessionId) || unreadSessionIds.includes(sessionId)) return
     set({ unreadSessionIds: [...unreadSessionIds, sessionId] })
+    syncBadge()
   }
 
   const unmarkIdle = (sessionId: string): void => {
@@ -611,6 +631,25 @@ export const useAppStore = create<AppStore>()((set, get) => {
           startupRead.delete(sessionId)
         }
       }
+      const notifySessionEvent = (sessionId: string, reason: 'idle' | 'exit'): void => {
+        const { notificationsEnabled, appState, locale } = get()
+        if (!snapshotLoaded || !notificationsEnabled || isWindowAttended()) return
+        const session = appState.sessions.find((candidate) => candidate.id === sessionId)
+        if (!session) return
+        const project = appState.projects.find((candidate) => candidate.id === session.projectId)
+        const body = translate(
+          locale,
+          reason === 'idle' ? 'notification.agentDone' : 'notification.sessionExited',
+          { project: project?.name ?? '' }
+        )
+        // sessionRecordSchema.title has no upper bound but notificationIdleRequestSchema caps
+        // it at 200, so an over-long title would be dropped by our own validation.
+        window.codeflai.notifySessionIdle(sessionId, session.title.slice(0, 200), body)
+      }
+      const onAgentIdle = (sessionId: string): void => {
+        recordUnread(sessionId)
+        notifySessionEvent(sessionId, 'idle')
+      }
       const hydrateActivity = (sessionId: string): void => {
         const pending = pendingActivity.get(sessionId) ?? []
         pendingActivity.set(sessionId, pending)
@@ -619,10 +658,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (disposed || pendingActivity.get(sessionId) !== pending) return
           pendingActivity.delete(sessionId)
           if (activityEpoch !== epoch) return
-          if (replay?.data) noteAgentOutput(sessionId, replay.data, true, recordUnread)
+          if (replay?.data) noteAgentOutput(sessionId, replay.data, true, onAgentIdle)
           for (const event of pending) {
             if (replay && event.sequence !== undefined && event.sequence <= replay.throughSequence) continue
-            noteAgentOutput(sessionId, event.data, false, recordUnread)
+            noteAgentOutput(sessionId, event.data, false, onAgentIdle)
           }
         })
       }
@@ -711,6 +750,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
           }))
           hydratingWorkspace = false
           snapshotLoaded = true
+          // Unread survives restarts, so the badge has to start from the restored count.
+          syncBadge()
           markViewedSessionRead()
           for (const sessionId of pendingUnread) {
             const queued = appState.sessions.find((candidate) => candidate.id === sessionId)
@@ -751,6 +792,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (session.status === 'running' && isAgentKind(session.kind) &&
             !previousSessions.some((previous) => previous.id === session.id && previous.status === 'running')) hydrateActivity(session.id)
         }
+        for (const id of expectedExits) {
+          if (!state.sessions.some((session) => session.id === id)) expectedExits.delete(id)
+        }
+        syncBadge()
       })
       const disposeData = window.codeflai.onTerminalData((event) => {
         // Shells do not repaint themselves, so for them any output really is new content.
@@ -765,12 +810,20 @@ export const useAppStore = create<AppStore>()((set, get) => {
           pendingActivity.set(event.sessionId, pending)
           return
         }
-        noteAgentOutput(event.sessionId, event.data, false, recordUnread)
+        noteAgentOutput(event.sessionId, event.data, false, onAgentIdle)
       })
       const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
         recordUnread(sessionId)
+        if (!expectedExits.delete(sessionId)) notifySessionEvent(sessionId, 'exit')
         pendingActivity.delete(sessionId)
         forgetAgentActivity(sessionId)
+      })
+      const disposeActivate = window.codeflai.onNotificationActivate(({ sessionId }) => {
+        // The main process has already focused the window. If the session is gone, stop there:
+        // setActiveSession does not guard against unknown ids and would blank the terminal pane.
+        const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
+        if (!session) return
+        get().setActiveSession(sessionId, session.projectId)
       })
       // Merged only while a download is actually in progress, so an event arriving after a
       // cancel, a failure, or a completion cannot drag the dialog back into the downloading
@@ -805,6 +858,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         disposeState()
         disposeData()
         disposeExit()
+        disposeActivate()
         disposeUpdateProgress()
         clearAllIdleTimers()
         clearAutoShutdownTimers()
@@ -1046,8 +1100,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         // Match other presentation preferences when localStorage is unavailable.
       }
       // Switching off must take the badge with it; a count that will never update again is
-      // worse than no badge at all. Task 4 replaces this with syncBadge().
-      if (!enabled) window.codeflai.setUnreadBadge(0, '')
+      // worse than no badge at all.
+      syncBadge()
     },
 
     addProject: async (source) => {
@@ -1224,6 +1278,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     stopSession: async (sessionId) => {
       try {
+        expectedExits.add(sessionId)
         await window.codeflai.stopSession(sessionId)
         // The stopped record itself arrives via onStateChanged, the durable source of truth.
         // Only renderer-local activity bookkeeping needs clearing here: the process is gone,
@@ -1240,6 +1295,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     deleteSession: async (sessionId) => {
       try {
+        expectedExits.add(sessionId)
         const result = await window.codeflai.deleteSession(sessionId)
 
         if (result.status === 'deleted') {

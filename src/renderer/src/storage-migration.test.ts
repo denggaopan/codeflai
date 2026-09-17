@@ -16,7 +16,9 @@ beforeEach(() => {
     onStateChanged: () => () => undefined,
     onTerminalData: () => () => undefined,
     onTerminalExit: () => () => undefined,
-    onUpdateProgress: () => () => undefined
+    onUpdateProgress: () => () => undefined,
+    onNotificationActivate: () => () => undefined,
+    setUnreadBadge: () => undefined
   } as unknown as typeof window.codeflai
 })
 afterEach(() => { dispose?.(); dispose = undefined; vi.restoreAllMocks() })

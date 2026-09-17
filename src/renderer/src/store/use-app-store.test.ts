@@ -1524,3 +1524,177 @@ describe('useAppStore notifications', () => {
     expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
   })
 })
+
+describe('session notifications', () => {
+  const project: ProjectRecord = {
+    id: 'project-1', name: 'Project', path: 'C:\project', createdAt: claudeSession.createdAt
+  }
+
+  const seedProject = (sessions: SessionRecord[] = [claudeSession, powershellSession]): void => {
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [project], sessions })
+  }
+
+  beforeEach(() => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+  })
+
+  it('notifies at the Done edge while the window is unattended', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'working…' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Done')
+  })
+
+  it('stays silent at the Done edge while the window is attended', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(true)
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'working…' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  it('stays silent when the preference is off', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    useAppStore.getState().setNotificationsEnabled(false)
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'working…' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  // Shells still raise unread markers — they do not repaint themselves, so bytes really are
+  // new content — but a notification per chunk of output would be unusable.
+  it('never notifies for shell output, while still marking it unread', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalData({ sessionId: powershellSession.id, data: 'PS C:\> ' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+    expect(useAppStore.getState().unreadSessionIds).toContain(powershellSession.id)
+  })
+
+  // The retained tail redrawn on every startup and reconnect must never manufacture a toast.
+  it('never notifies for replayed output', async () => {
+    const stopped: SessionRecord = { ...claudeSession, status: 'stopped' }
+    seedProject([stopped, powershellSession])
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    api.replayTerminal.mockResolvedValueOnce({ data: 'earlier output', cols: 120, rows: 30, throughSequence: 1 })
+
+    // Going stopped -> running is what triggers hydration of the retained output.
+    seedProject([claudeSession, powershellSession])
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  it('never notifies for output arriving before the snapshot loads', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    api = createFakeApi()
+    window.codeflai = api
+    // Never resolves: the store stays in its pre-snapshot state for the whole test.
+    api.getSnapshot.mockReturnValueOnce(new Promise(() => undefined))
+    dispose = useAppStore.getState().initialize()
+    api.onStateChanged.mock.calls.at(-1)![0]({ ...seededState, projects: [project] })
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  it('notifies when a session exits on its own', () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')
+  })
+
+  it('does not notify for an exit the user asked for', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    await useAppStore.getState().stopSession(claudeSession.id)
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  // sessionRecordSchema.title has no upper bound; notificationIdleRequestSchema caps it at 200,
+  // so an untruncated long title would be dropped by our own validation.
+  it('truncates a title that exceeds the schema cap', () => {
+    seedProject([{ ...claudeSession, title: 'x'.repeat(250) }, powershellSession])
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle.mock.calls.at(-1)?.[1]).toHaveLength(200)
+  })
+
+  it('pushes the unread count to the badge', () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
+  })
+
+  // Unread survives restarts (it is restored from workspace.unreadSessionIds), so the badge
+  // has to be drawn from the restored count rather than starting at zero.
+  it('draws the badge from unread restored at startup', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    api = createFakeApi()
+    window.codeflai = api
+    api.getSnapshot.mockResolvedValueOnce({
+      platform: 'win32',
+      capabilities: defaultCapabilities(),
+      state: {
+        ...seededState,
+        projects: [project],
+        workspace: {
+          activeProjectId: null,
+          activeSessionId: null,
+          collapsedProjectIds: [],
+          unreadSessionIds: [claudeSession.id]
+        }
+      }
+    })
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
+  })
+
+  it('switches to the session a clicked notification names', () => {
+    seedProject()
+
+    api.onNotificationActivate.mock.calls.at(-1)![0]({ sessionId: claudeSession.id })
+
+    expect(useAppStore.getState().activeSessionId).toBe(claudeSession.id)
+  })
+
+  // setActiveSession does not guard against unknown ids and would blank the terminal pane.
+  it('ignores a click naming a session that is gone', () => {
+    seedProject()
+    useAppStore.getState().setActiveSession(powershellSession.id)
+
+    api.onNotificationActivate.mock.calls.at(-1)![0]({ sessionId: 'deleted-session' })
+
+    expect(useAppStore.getState().activeSessionId).toBe(powershellSession.id)
+  })
+})
