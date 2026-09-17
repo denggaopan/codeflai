@@ -60,7 +60,7 @@ The main-process service, with no Electron import so it can be tested directly.
 
 **Interfaces:**
 - Consumes: `HostPlatform` from `src/shared/contracts.ts` (`'win32' | 'darwin'`).
-- Produces: `NotificationService` with `notify(notification: SessionNotification): void`, `setUnread(count: number, label: string): void`, `onActivate(listener: (sessionId: string) => void): () => void`. Types `SessionNotification`, `NotificationFactory`, `PlatformNotification`, `NotificationSurface`, and the constant `UNREAD_BADGE_DATA_URL`. Task 2 injects the service into `registerIpc`; Task 3 implements the two interfaces against Electron.
+- Produces: `NotificationService` with `notify(notification: SessionNotification): void`, `setUnread(count: number, label: string): void`, `onActivate(listener: (sessionId: string) => void): () => void`. Types `SessionNotification`, `NotificationFactory`, `PlatformNotification`, `NotificationSurface`, and the constant `UNREAD_BADGE_DATA_URL`. Task 2 injects the service into `registerIpc` and implements its two interfaces against Electron.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -372,20 +372,30 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Contracts, channels, and the IPC layer
+### Task 2: The IPC layer, the Electron adapter, and the wiring
 
-Three channels and their validation. After this task the main process can receive a notification request; nothing sends one yet.
+Three channels, their validation, the only file that touches Electron's notification APIs, and
+the composition-root wiring that makes them reachable.
+
+These arrive as one task because they cannot be split: the moment `registerIpc` gains a
+required `notificationService` dependency, `src/main/index.ts` stops compiling until something
+constructs one — and constructing one needs the adapter. A reviewer cannot meaningfully approve
+half of that, and the Global Constraints require `npm run typecheck` to pass before every
+commit.
 
 **Files:**
 - Modify: `src/shared/ipc.ts`
 - Modify: `src/shared/contracts.ts`
 - Modify: `src/preload/index.ts`
+- Create: `src/main/infrastructure/electron-notifications.ts`
 - Modify: `src/main/ipc/register-ipc.ts`
+- Modify: `src/main/index.ts`
+- Modify: `src/main/window.ts:88` (the `webPreferences` block)
 - Test: `src/main/ipc/register-ipc.test.ts`
 
 **Interfaces:**
-- Consumes: `NotificationService` from Task 1.
-- Produces: `IPC.notificationIdle`, `IPC.notificationUnread`, `IPC.notificationActivate`; schemas `notificationIdleRequestSchema`, `notificationUnreadRequestSchema`; preload methods `notifySessionIdle(sessionId: string, title: string, body: string): void`, `setUnreadBadge(count: number, label: string): void`, `onNotificationActivate(listener: (event: { sessionId: string }) => void): () => void`. Task 5 calls all three.
+- Consumes: `NotificationService`, `NotificationFactory`, `NotificationSurface`, `PlatformNotification` from Task 1.
+- Produces: `IPC.notificationIdle`, `IPC.notificationUnread`, `IPC.notificationActivate`; schemas `notificationIdleRequestSchema`, `notificationUnreadRequestSchema`; preload methods `notifySessionIdle(sessionId: string, title: string, body: string): void`, `setUnreadBadge(count: number, label: string): void`, `onNotificationActivate(listener: (event: { sessionId: string }) => void): () => void`; `electronNotificationFactory()` and `electronNotificationSurface(window)`. Task 4 calls all three preload methods; Task 3 calls `setUnreadBadge`.
 
 - [ ] **Step 1: Add the channel names**
 
@@ -459,7 +469,53 @@ And beside `onUpdateProgress`:
   },
 ```
 
-- [ ] **Step 4: Extend the test harness**
+- [ ] **Step 4: Write the adapter**
+
+Create `src/main/infrastructure/electron-notifications.ts`:
+
+```ts
+import { app, nativeImage, Notification, type BrowserWindow } from 'electron'
+
+import type {
+  NotificationFactory,
+  NotificationSurface,
+  PlatformNotification
+} from '../services/notification-service'
+
+/**
+ * The only file that touches Electron's notification and badge APIs, so that
+ * `NotificationService` stays unit-testable — the same split `net-fetch.ts` exists for.
+ */
+export const electronNotificationFactory = (): NotificationFactory => ({
+  isSupported: () => Notification.isSupported(),
+  create: (title, body): PlatformNotification => {
+    const notification = new Notification({ title, body })
+    return {
+      show: () => notification.show(),
+      onClick: (listener) => {
+        notification.on('click', listener)
+      }
+    }
+  }
+})
+
+export const electronNotificationSurface = (window: BrowserWindow): NotificationSurface => ({
+  isMinimized: () => window.isMinimized(),
+  restore: () => window.restore(),
+  show: () => window.show(),
+  focus: () => window.focus(),
+  setOverlayIcon: (dataUrl, description) => {
+    window.setOverlayIcon(dataUrl === null ? null : nativeImage.createFromDataURL(dataUrl), description)
+  },
+  // `app.dock` exists only on macOS; the service never calls this on Windows, but the optional
+  // chain keeps a mis-wired platform from crashing the main process.
+  setDockBadge: (text) => {
+    app.dock?.setBadge(text)
+  }
+})
+```
+
+- [ ] **Step 5: Extend the test harness**
 
 `src/main/ipc/register-ipc.test.ts` already has everything needed: `FakeIpcMain` with `emit(channel, payload)` and `emitFrom(sender, channel, payload)`, and `fakeWindow()` whose `webContents.send` is a `vi.fn()`.
 
@@ -498,7 +554,7 @@ class FakeNotificationService {
 
 Add `notificationService: FakeNotificationService` to the `Harness` type (beside `powerService`), construct it in `buildHarness` (`const notificationService = new FakeNotificationService()`), pass `notificationService: notificationService as unknown as NotificationService` in the `registerIpc({ ... })` call, and add `notificationService,` to the returned object.
 
-- [ ] **Step 5: Write the failing tests**
+- [ ] **Step 6: Write the failing tests**
 
 Follow the file's conventions: destructure what each case needs from `buildHarness()`, and do **not** call `dispose()` — only the `describe('registerIpc: disposer')` block at the bottom of the file does that.
 
@@ -576,12 +632,12 @@ And add this one inside the existing `describe('registerIpc: disposer')` block, 
   })
 ```
 
-- [ ] **Step 6: Run the test to verify it fails**
+- [ ] **Step 7: Run the test to verify it fails**
 
 Run: `npx vitest run src/main/ipc/register-ipc.test.ts`
 Expected: FAIL — the `notificationService` dependency does not exist.
 
-- [ ] **Step 7: Wire the handlers**
+- [ ] **Step 8: Wire the handlers**
 
 In `src/main/ipc/register-ipc.ts`:
 
@@ -628,105 +684,19 @@ Add all three to the returned cleanup:
 
 Neither listener needs a try/catch: `NotificationService` never throws.
 
-- [ ] **Step 8: Run the test to verify it passes**
+- [ ] **Step 9: Run the test to verify it passes**
 
 Run: `npx vitest run src/main/ipc/register-ipc.test.ts`
 Expected: PASS.
 
-- [ ] **Step 9: Typecheck and commit**
-
-`npm run typecheck` fails here until Task 3 supplies the dependency at the call site in `src/main/index.ts`. That is expected; do Task 3 before committing, or add the argument now. Prefer adding it now:
-
-```bash
-npm run typecheck
-git add src/shared/ipc.ts src/shared/contracts.ts src/preload/index.ts src/main/ipc/register-ipc.ts src/main/ipc/register-ipc.test.ts
-git commit -m "feat: add notification IPC channels and validation
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
-```
-
----
-
-### Task 3: Electron adapter, composition root, and background throttling
-
-**Files:**
-- Create: `src/main/infrastructure/electron-notifications.ts`
-- Modify: `src/main/index.ts`
-- Modify: `src/main/window.ts:88` (the `webPreferences` block)
-
-**Interfaces:**
-- Consumes: `NotificationFactory`, `NotificationSurface`, `NotificationService` from Task 1; the `notificationService` dependency added in Task 2.
-- Produces: `electronNotificationFactory(): NotificationFactory` and `electronNotificationSurface(window: BrowserWindow): NotificationSurface`.
-
-- [ ] **Step 1: Write the adapter**
-
-Create `src/main/infrastructure/electron-notifications.ts`:
-
-```ts
-import { app, nativeImage, Notification, type BrowserWindow } from 'electron'
-
-import type {
-  NotificationFactory,
-  NotificationSurface,
-  PlatformNotification
-} from '../services/notification-service'
-
-/**
- * The only file that touches Electron's notification and badge APIs, so that
- * `NotificationService` stays unit-testable — the same split `net-fetch.ts` exists for.
- */
-export const electronNotificationFactory = (): NotificationFactory => ({
-  isSupported: () => Notification.isSupported(),
-  create: (title, body): PlatformNotification => {
-    const notification = new Notification({ title, body })
-    return {
-      show: () => notification.show(),
-      onClick: (listener) => {
-        notification.on('click', listener)
-      }
-    }
-  }
-})
-
-export const electronNotificationSurface = (window: BrowserWindow): NotificationSurface => ({
-  isMinimized: () => window.isMinimized(),
-  restore: () => window.restore(),
-  show: () => window.show(),
-  focus: () => window.focus(),
-  setOverlayIcon: (dataUrl, description) => {
-    window.setOverlayIcon(dataUrl === null ? null : nativeImage.createFromDataURL(dataUrl), description)
-  },
-  // `app.dock` exists only on macOS; the service never calls this on Windows, but the optional
-  // chain keeps a mis-wired platform from crashing the main process.
-  setDockBadge: (text) => {
-    app.dock?.setBadge(text)
-  }
-})
-```
-
-- [ ] **Step 2: Stop Chromium throttling the renderer**
-
-In `src/main/window.ts`, add to `webPreferences`:
-
-```ts
-      // The Done edge that drives notifications is a three-second timer in the renderer, and
-      // Chromium aligns timers in a hidden renderer to roughly one minute once it has been out
-      // of sight for five — which is exactly when a notification matters most. Auto shutdown is
-      // unaffected: `countdownTick` computes from an absolute deadline, so it is correct either
-      // way (that is why it was written that way).
-      backgroundThrottling: false,
-```
-
-- [ ] **Step 3: Wire the composition root**
+- [ ] **Step 10: Wire the composition root**
 
 In `src/main/index.ts`, add the imports:
 
 ```ts
 import { NotificationService } from './services/notification-service'
-import { electronNotificationFactory, electronNotificationSurface } from '../main/infrastructure/electron-notifications'
+import { electronNotificationFactory, electronNotificationSurface } from './infrastructure/electron-notifications'
 ```
-
-(Use the import style the file already uses for sibling directories — check the existing `./services/...` and `./infrastructure/...` lines and match them.)
 
 Add an E2E build beside `buildE2EPowerService`:
 
@@ -755,25 +725,35 @@ After `window` is created and before `registerIpc`:
 
 Add `notificationService,` to the `registerIpc({ ... })` argument object, beside `powerService`.
 
-- [ ] **Step 4: Typecheck and run the full suite**
+- [ ] **Step 11: Stop Chromium throttling the renderer**
+
+In `src/main/window.ts`, add to `webPreferences`:
+
+```ts
+      // The Done edge that drives notifications is a three-second timer in the renderer, and
+      // Chromium aligns timers in a hidden renderer to roughly one minute once it has been out
+      // of sight for five — which is exactly when a notification matters most. Auto shutdown is
+      // unaffected: `countdownTick` computes from an absolute deadline, so it is correct either
+      // way (that is why it was written that way).
+      backgroundThrottling: false,
+```
+
+- [ ] **Step 12: Typecheck, run the full suite, and commit**
 
 Run: `npm run typecheck && npm test`
-Expected: PASS. Nothing sends a notification request yet, so behaviour is unchanged.
-
-- [ ] **Step 5: Commit**
+Expected: PASS. The renderer still sends nothing, so behaviour is unchanged — this task only
+makes the channels reachable.
 
 ```bash
-git add src/main/infrastructure/electron-notifications.ts src/main/index.ts src/main/window.ts
-git commit -m "feat: wire the notification service into the main process
+git add src/shared/ipc.ts src/shared/contracts.ts src/preload/index.ts src/main/infrastructure/electron-notifications.ts src/main/ipc/register-ipc.ts src/main/ipc/register-ipc.test.ts src/main/index.ts src/main/window.ts
+git commit -m "feat: add notification IPC channels and wire the service
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
----
+### Task 3: The preference, its wording, and the Settings switch
 
-### Task 4: The preference, its wording, and the Settings switch
-
-Deliberately ahead of the notification logic: after this task the switch exists and persists, and Task 5 reads it.
+Deliberately ahead of the notification logic: after this task the switch exists and persists, and Task 4 reads it.
 
 **Files:**
 - Modify: `src/renderer/src/i18n/en.ts`
@@ -784,7 +764,7 @@ Deliberately ahead of the notification logic: after this task the switch exists 
 
 **Interfaces:**
 - Consumes: `setUnreadBadge` from Task 2.
-- Produces: store state `notificationsEnabled: boolean`, action `setNotificationsEnabled(enabled: boolean): void`, exported `NOTIFICATIONS_STORAGE_KEY`, and the keys `settings.notifications`, `notification.agentDone`, `notification.sessionExited`. Task 5 reads `notificationsEnabled` and both `notification.*` keys.
+- Produces: store state `notificationsEnabled: boolean`, action `setNotificationsEnabled(enabled: boolean): void`, exported `NOTIFICATIONS_STORAGE_KEY`, and the keys `settings.notifications`, `notification.agentDone`, `notification.sessionExited`. Task 4 reads `notificationsEnabled` and both `notification.*` keys.
 
 - [ ] **Step 1: Add the translation keys**
 
@@ -862,7 +842,7 @@ const reinitializeWith = async (stored: string | null): Promise<void> => {
   })
 ```
 
-Add the two new methods to `createFakeApi`'s returned object, beside `resizeTerminal`, so the type matches `CodeflaiApi` (Task 5 extends this with the activate listener):
+Add the two new methods to `createFakeApi`'s returned object, beside `resizeTerminal`, so the type matches `CodeflaiApi` (Task 4 extends this with the activate listener):
 
 ```ts
     notifySessionIdle: vi.fn(),
@@ -916,7 +896,7 @@ Add the action beside `setShowQuickPrompts`:
         // Match other presentation preferences when localStorage is unavailable.
       }
       // Switching off must take the badge with it; a count that will never update again is
-      // worse than no badge at all. Task 5 replaces this with syncBadge().
+      // worse than no badge at all. Task 4 replaces this with syncBadge().
       if (!enabled) window.codeflai.setUnreadBadge(0, '')
     },
 ```
@@ -960,7 +940,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Raising notifications and driving the badge
+### Task 4: Raising notifications and driving the badge
 
 The behavioural core. Everything before this was plumbing.
 
@@ -969,7 +949,7 @@ The behavioural core. Everything before this was plumbing.
 - Test: `src/renderer/src/store/use-app-store.test.ts`
 
 **Interfaces:**
-- Consumes: `notifySessionIdle`, `setUnreadBadge`, `onNotificationActivate` (Task 2); `notificationsEnabled` (Task 4).
+- Consumes: `notifySessionIdle`, `setUnreadBadge`, `onNotificationActivate` (Task 2); `notificationsEnabled` (Task 3).
 - Produces: no new public surface — this task wires existing pieces together.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1150,7 +1130,7 @@ describe('session notifications', () => {
 })
 ```
 
-Change `onNotificationActivate` in `createFakeApi` from the stub added in Task 4 to one that records its listener, matching how `onStateChanged` is stubbed:
+Change `onNotificationActivate` in `createFakeApi` from the stub added in Task 3 to one that records its listener, matching how `onStateChanged` is stubbed:
 
 ```ts
     onNotificationActivate: vi.fn((_listener: (event: { sessionId: string }) => void) => () => undefined),
@@ -1259,7 +1239,7 @@ Pass `onAgentIdle` in place of `recordUnread` at all three `noteAgentOutput(...)
 
 6. After the snapshot restores `unreadSessionIds` (~line 689), call `syncBadge()` — unread survives restarts, so the badge must be drawn from the restored count rather than from zero.
 
-7. Replace the `window.codeflai.setUnreadBadge(0, '')` line added in Task 4's `setNotificationsEnabled` with `syncBadge()`, which already returns zero when the preference is off.
+7. Replace the `window.codeflai.setUnreadBadge(0, '')` line added in Task 3's `setNotificationsEnabled` with `syncBadge()`, which already returns zero when the preference is off.
 
 - [ ] **Step 6: Subscribe to notification clicks**
 
@@ -1298,13 +1278,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 6: End-to-end coverage of the switch
+### Task 5: End-to-end coverage of the switch
 
 **Files:**
 - Create: `e2e/notifications.spec.ts`
 
 **Interfaces:**
-- Consumes: the Settings switch from Task 4.
+- Consumes: the Settings switch from Task 3.
 - Produces: nothing other code depends on.
 
 - [ ] **Step 1: Write the spec**
@@ -1346,6 +1326,8 @@ test('switches notifications off and keeps them off across a restart', async () 
 
   let app = await launch()
   let page = await app.firstWindow()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
 
   const openSettings = async () => {
     await page.getByRole('button', { name: 'Settings' }).click()
@@ -1363,7 +1345,9 @@ test('switches notifications off and keeps them off across a restart', async () 
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(await stored()).toBe('false')
 
-    await app.close()
+    // `.catch()` matches e2e/auto-shutdown.spec.ts: close() waits on every process in
+    // Electron's Windows job object, including the pty-host, and must never fail the test.
+    await app.close().catch(() => undefined)
 
     app = await launch()
     page = await app.firstWindow()
@@ -1373,8 +1357,10 @@ test('switches notifications off and keeps them off across a restart', async () 
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(await stored()).toBe('true')
+
+    expect(errors).toEqual([])
   } finally {
-    await app.close()
+    await app.close().catch(() => undefined)
   }
 })
 ```
@@ -1400,7 +1386,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 7: Documentation
+### Task 6: Documentation
 
 The spec is a dated archive and is not updated; README is the living description.
 
