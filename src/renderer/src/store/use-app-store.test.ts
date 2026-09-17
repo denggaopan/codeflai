@@ -1631,6 +1631,30 @@ describe('session notifications', () => {
     expect(api.notifySessionIdle).not.toHaveBeenCalled()
   })
 
+  // A dirty worktree refuses deletion and the session keeps running, so the exit that
+  // eventually arrives is the session's own and still has to be announced.
+  it('still notifies after a delete the main process refused', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    api.deleteSession.mockResolvedValueOnce({ status: 'dirty', changedFiles: 2 })
+
+    await useAppStore.getState().deleteSession(claudeSession.id)
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')
+  })
+
+  it('still notifies after a stop that failed', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    api.stopSession.mockRejectedValueOnce(new Error('pty host unreachable'))
+
+    await useAppStore.getState().stopSession(claudeSession.id)
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')
+  })
+
   // sessionRecordSchema.title has no upper bound; notificationIdleRequestSchema caps it at 200,
   // so an untruncated long title would be dropped by our own validation.
   it('truncates a title that exceeds the schema cap', () => {

@@ -424,6 +424,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
    * the window has focus at the moment Stop or Delete is clicked — but "stop it, then switch
    * away before the exit event lands" is a real race, and a toast reporting that a session the
    * user just stopped has stopped is worse than no toast.
+   *
+   * An entry only survives while a termination is actually pending: a refused or failed stop
+   * or delete leaves the session running, and its eventual exit is its own news again.
    */
   const expectedExits = new Set<string>()
 
@@ -1289,6 +1292,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
           notice: null
         }))
       } catch (error) {
+        expectedExits.delete(sessionId)
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
     },
@@ -1297,6 +1301,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
       try {
         expectedExits.add(sessionId)
         const result = await window.codeflai.deleteSession(sessionId)
+        // A refused delete (a dirty worktree) or a failed one leaves the session running, so
+        // the exit that eventually arrives is the session's own and must still be announced.
+        if (result.status !== 'deleted') expectedExits.delete(sessionId)
 
         if (result.status === 'deleted') {
           forgetAgentActivity(sessionId)
@@ -1318,6 +1325,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
         return result
       } catch (error) {
+        expectedExits.delete(sessionId)
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         return undefined
       }
