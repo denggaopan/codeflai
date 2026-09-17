@@ -45,6 +45,23 @@ export const UNREAD_BADGE_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAdklEQVR42q2TwQ3AIAhFncTpXKBjeO9OHYBtuLymCU2osdEWTf6F+J8gkIAUUS+YgQoIoCaxWB4BihnYt+MhO2p3uoDSM76ASgu4UtOR2UH0LucG1JnXmyyqB8is2UHEA/QHQJcCwiWEPzHcxvAgLRnlJcv0WSd1DhHSJm8CJQAAAABJRU5ErkJggg=='
 
 /**
+ * How many shown notifications stay referenced.
+ *
+ * Electron collects a `Notification` whose JS object nothing holds any more, and the native
+ * toast silently loses its click handler along with it: clicking it then does nothing at all,
+ * with no error raised anywhere (electron/electron#18746). Keeping a reference is what holds
+ * the click path open, and nothing else in this service does.
+ *
+ * Releasing on the `close` event would be wrong twice over. Electron's own docs say `close` is
+ * not guaranteed to fire; and on Windows it fires when the toast times out, while the
+ * notification stays in the Action Center and is still clickable from there — so releasing
+ * then would break exactly the case the user is most likely to hit after stepping away. The
+ * set is bounded by count instead: the oldest entry is dropped once this many are outstanding,
+ * trading the clickability of very old notifications for a hard ceiling on memory.
+ */
+export const MAX_RETAINED_NOTIFICATIONS = 100
+
+/**
  * Raises OS notifications and keeps the taskbar/Dock unread badge current.
  *
  * Like `PowerService` this **never throws**: every caller is an `ipcMain.on` listener, whose
@@ -57,6 +74,8 @@ export const UNREAD_BADGE_DATA_URL =
  */
 export class NotificationService {
   private readonly activateListeners = new Set<(sessionId: string) => void>()
+  // Oldest first. See MAX_RETAINED_NOTIFICATIONS for why these are held at all.
+  private readonly retained: PlatformNotification[] = []
 
   constructor(
     private readonly surface: NotificationSurface,
@@ -68,6 +87,8 @@ export class NotificationService {
     try {
       if (!this.factory.isSupported()) return
       const toast = this.factory.create(notification.title, notification.body)
+      this.retained.push(toast)
+      if (this.retained.length > MAX_RETAINED_NOTIFICATIONS) this.retained.shift()
       toast.onClick(() => {
         try {
           this.focusWindow()
@@ -92,6 +113,11 @@ export class NotificationService {
     } catch (error) {
       console.error('NotificationService: failed to update the unread badge.', error)
     }
+  }
+
+  /** How many shown notifications are still referenced. Exposed so the bound stays testable. */
+  get retainedCount(): number {
+    return this.retained.length
   }
 
   onActivate(listener: (sessionId: string) => void): () => void {

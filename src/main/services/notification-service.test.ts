@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  MAX_RETAINED_NOTIFICATIONS,
   NotificationService,
   UNREAD_BADGE_DATA_URL,
   type NotificationFactory,
@@ -194,5 +195,38 @@ describe('NotificationService', () => {
 
     expect(logged).toHaveBeenCalled()
     logged.mockRestore()
+  })
+  // These lock the bound, not the garbage-collection behaviour itself — a fake is never
+  // collected, so no unit test can prove the real fix. What they do prove is that a shown
+  // notification is referenced at all, which is the property the click path depends on.
+  it('keeps a reference to every notification it shows', () => {
+    const { service } = build()
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+
+    expect(service.retainedCount).toBe(1)
+  })
+
+  it('retains nothing where the platform has no notifications', () => {
+    const { factory, service } = build()
+    factory.supported = false
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+
+    expect(service.retainedCount).toBe(0)
+  })
+
+  it('drops the oldest reference once the bound is reached, keeping recent ones clickable', () => {
+    const { factory, service } = build()
+    const activated: string[] = []
+    service.onActivate((sessionId) => activated.push(sessionId))
+
+    for (let index = 0; index <= MAX_RETAINED_NOTIFICATIONS; index++) {
+      service.notify({ sessionId: `s${index}`, title: 'Add the parser', body: 'codeflai · Done' })
+    }
+
+    expect(service.retainedCount).toBe(MAX_RETAINED_NOTIFICATIONS)
+    factory.created.at(-1)!.notification.click()
+    expect(activated).toEqual([`s${MAX_RETAINED_NOTIFICATIONS}`])
   })
 })
