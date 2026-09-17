@@ -87,6 +87,7 @@ export type AppStore = {
   sidebarWidth: number
   quickPrompts: QuickPrompt[]
   showQuickPrompts: boolean
+  notificationsEnabled: boolean
   /** Drives UpdateDialog; `idle` renders nothing at all. */
   updater: UpdaterState
 
@@ -118,6 +119,7 @@ export type AppStore = {
   resetSidebarWidth: () => void
   setQuickPrompts: (prompts: QuickPrompt[]) => boolean
   setShowQuickPrompts: (show: boolean) => void
+  setNotificationsEnabled: (enabled: boolean) => void
 
   addProject: (source?: { recentProjectId: string } | CloneProjectRequest) => Promise<boolean>
   removeRecentProject: (projectId: string) => Promise<void>
@@ -171,6 +173,7 @@ export const SIDEBAR_WIDTH_STORAGE_KEY = 'codeflai.sidebarWidth'
 export const WINDOW_PINNED_STORAGE_KEY = 'codeflai.windowPinned'
 export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
 export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
+export const NOTIFICATIONS_STORAGE_KEY = 'codeflai.notifications'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -239,6 +242,20 @@ const readStoredShowQuickPrompts = (): boolean => {
     return stored === 'true'
   } catch {
     return false
+  }
+}
+
+/**
+ * Unlike the other presentation preferences this defaults to **on**, so only an explicit
+ * 'false' switches it off. A toast fires only while the window is unattended and reports
+ * exactly the event the user is waiting for, and a storage failure must not silently take the
+ * feature away. (Auto shutdown defaults off for the opposite reason: it is irreversible.)
+ */
+const readStoredNotifications = (): boolean => {
+  try {
+    return window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
   }
 }
 
@@ -562,6 +579,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     quickPrompts: [],
     showQuickPrompts: false,
+    notificationsEnabled: true,
     updater: { phase: 'idle' },
 
     initialize: () => {
@@ -611,7 +629,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
       set({
         sidebarWidth: readStoredSidebarWidth(),
         quickPrompts: readStoredQuickPrompts(),
-        showQuickPrompts: readStoredShowQuickPrompts()
+        showQuickPrompts: readStoredShowQuickPrompts(),
+        notificationsEnabled: readStoredNotifications()
       })
 
       const persistWorkspace = (): void => {
@@ -824,6 +843,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
         quickPrompts: [],
         showQuickPrompts: false,
+        notificationsEnabled: true,
         updater: { phase: 'idle' }
       })
     },
@@ -1016,6 +1036,18 @@ export const useAppStore = create<AppStore>()((set, get) => {
       } catch {
         // Match other presentation preferences when localStorage is unavailable.
       }
+    },
+
+    setNotificationsEnabled: (enabled) => {
+      set({ notificationsEnabled: enabled })
+      try {
+        window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, String(enabled))
+      } catch {
+        // Match other presentation preferences when localStorage is unavailable.
+      }
+      // Switching off must take the badge with it; a count that will never update again is
+      // worse than no badge at all. Task 4 replaces this with syncBadge().
+      if (!enabled) window.codeflai.setUnreadBadge(0, '')
     },
 
     addProject: async (source) => {

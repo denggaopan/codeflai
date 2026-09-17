@@ -167,6 +167,9 @@ export const zhCN: Translations = {
   'notice.projectPathCopied': '已复制项目目录地址：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',
 
+  'notification.agentDone': '{project} · 已完成',
+  'notification.sessionExited': '{project} · 会话已退出',
+
   'settings.title': '设置',
   'settings.close': '关闭设置',
   'settings.sections': '设置分类',
@@ -192,6 +195,7 @@ export const zhCN: Translations = {
   'settings.themeTomorrowNightBlue': 'Tomorrow Night Blue',
   'settings.language': '语言',
   'settings.showQuickPrompts': '显示快捷提示词栏',
+  'settings.notifications': '会话完成时通知',
   'settings.version': '版本',
   'settings.versionUnknown': '未知',
   'settings.checkForUpdates': '检查更新',

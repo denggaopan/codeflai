@@ -143,6 +143,19 @@ let dispose: () => void
 
 const idleIds = (): Record<string, true> => useAppStore.getState().idleAgentSessionIds
 
+// The preference is read once, during initialize(). Re-initializing is how a stored value is
+// put in front of it without widening the module's public surface.
+const reinitializeWith = async (stored: string | null): Promise<void> => {
+  dispose()
+  useAppStore.getState().reset()
+  if (stored === null) window.localStorage.removeItem('codeflai.notifications')
+  else window.localStorage.setItem('codeflai.notifications', stored)
+  api = createFakeApi()
+  window.codeflai = api
+  dispose = useAppStore.getState().initialize()
+  await vi.advanceTimersByTimeAsync(0)
+}
+
 beforeEach(async () => {
   vi.useFakeTimers()
   window.localStorage.clear()
@@ -1480,5 +1493,34 @@ describe('useAppStore auto shutdown', () => {
     expect(api.shutdownSystem).not.toHaveBeenCalled()
     // afterEach calls dispose() again; a second call has to stay harmless.
     dispose = () => undefined
+  })
+})
+
+describe('useAppStore notifications', () => {
+  it('defaults notifications on when nothing is stored', async () => {
+    await reinitializeWith(null)
+
+    expect(useAppStore.getState().notificationsEnabled).toBe(true)
+  })
+
+  it('reads a stored off preference', async () => {
+    await reinitializeWith('false')
+
+    expect(useAppStore.getState().notificationsEnabled).toBe(false)
+  })
+
+  it('treats a malformed preference as on', async () => {
+    await reinitializeWith('perhaps')
+
+    expect(useAppStore.getState().notificationsEnabled).toBe(true)
+  })
+
+  it('clears the badge when notifications are switched off', () => {
+    useAppStore.getState().setNotificationsEnabled(false)
+
+    expect(useAppStore.getState().notificationsEnabled).toBe(false)
+    expect(window.localStorage.getItem('codeflai.notifications')).toBe('false')
+    // A number that will never update again is worse than no badge.
+    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
   })
 })

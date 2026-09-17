@@ -172,6 +172,9 @@ export const en = {
   'notice.projectPathCopied': 'Project path copied: {path}',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',
 
+  'notification.agentDone': '{project} · Done',
+  'notification.sessionExited': '{project} · Session exited',
+
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
   'settings.sections': 'Settings sections',
@@ -197,6 +200,7 @@ export const en = {
   'settings.themeTomorrowNightBlue': 'Tomorrow Night Blue',
   'settings.language': 'Language',
   'settings.showQuickPrompts': 'Show quick prompt bar',
+  'settings.notifications': 'Notify when a session finishes',
   'settings.version': 'Version',
   'settings.versionUnknown': 'Unknown',
   'settings.checkForUpdates': 'Check for updates',

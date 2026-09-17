@@ -85,6 +85,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const setLocale = useAppStore((state) => state.setLocale)
   const showQuickPrompts = useAppStore((state) => state.showQuickPrompts)
   const setShowQuickPrompts = useAppStore((state) => state.setShowQuickPrompts)
+  const notificationsEnabled = useAppStore((state) => state.notificationsEnabled)
+  const setNotificationsEnabled = useAppStore((state) => state.setNotificationsEnabled)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const setSessionKindPreference = useAppStore((state) => state.setSessionKindPreference)
   const beginUpdate = useAppStore((state) => state.beginUpdate)
@@ -400,6 +402,22 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   aria-checked={showQuickPrompts}
                   aria-labelledby="settings-quick-prompts-label"
                   onClick={() => setShowQuickPrompts(!showQuickPrompts)}
+                >
+                  <span className="settings-switch-thumb" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-notifications-label">
+                  {t('settings.notifications')}
+                </span>
+                <button
+                  type="button"
+                  className="settings-switch"
+                  role="switch"
+                  aria-checked={notificationsEnabled}
+                  aria-labelledby="settings-notifications-label"
+                  onClick={() => setNotificationsEnabled(!notificationsEnabled)}
                 >
                   <span className="settings-switch-thumb" aria-hidden="true" />
                 </button>
