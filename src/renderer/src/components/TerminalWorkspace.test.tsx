@@ -227,7 +227,6 @@ const createFakeApi = () => {
     onUpdateProgress: vi.fn(() => () => undefined),
     writeTerminal: vi.fn(),
     notifySessionIdle: vi.fn(),
-    setUnreadBadge: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn(() => () => undefined),

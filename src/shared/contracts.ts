@@ -183,13 +183,6 @@ export const notificationIdleRequestSchema = z.strictObject({
   body: z.string().min(1).max(200)
 })
 
-// `label` is the accessible description for the Windows taskbar overlay, translated by the
-// renderer for the same reason as the rest of the wording. It is empty when the count is zero.
-export const notificationUnreadRequestSchema = z.strictObject({
-  count: z.number().int().min(0).max(9999),
-  label: z.string().max(200)
-})
-
 export const firstInputRequestSchema = z.strictObject({
   sessionId: z.string().min(1),
   text: z.string().min(1).max(65536)

@@ -18,7 +18,6 @@ import {
   createSessionRequestSchema,
   firstInputRequestSchema,
   notificationIdleRequestSchema,
-  notificationUnreadRequestSchema,
   openExternalLinkRequestSchema,
   projectIdRequestSchema,
   reorderProjectsRequestSchema,
@@ -388,17 +387,10 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     notificationService.notify(parsed.data)
   }
 
-  const onNotificationUnread = (event: IpcMainEvent, payload: unknown): void => {
-    if (event.sender !== window.webContents) return
-    const parsed = notificationUnreadRequestSchema.safeParse(payload)
-    if (!parsed.success) return
-    notificationService.setUnread(parsed.data.count, parsed.data.label)
-  }
 
   ipcMain.on(IPC.terminalWrite, onTerminalWrite)
   ipcMain.on(IPC.terminalResize, onTerminalResize)
   ipcMain.on(IPC.notificationIdle, onNotificationIdle)
-  ipcMain.on(IPC.notificationUnread, onNotificationUnread)
 
   const unsubscribeState = coordinator.onStateChanged((state) => {
     publish(window, IPC.stateChanged, state)
@@ -423,7 +415,6 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ipcMain.removeListener(IPC.terminalWrite, onTerminalWrite)
     ipcMain.removeListener(IPC.terminalResize, onTerminalResize)
     ipcMain.removeListener(IPC.notificationIdle, onNotificationIdle)
-    ipcMain.removeListener(IPC.notificationUnread, onNotificationUnread)
     unsubscribeState()
     unsubscribeTerminalData()
     unsubscribeTerminalExit()

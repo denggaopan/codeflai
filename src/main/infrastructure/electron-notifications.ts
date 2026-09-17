@@ -1,4 +1,4 @@
-import { app, nativeImage, Notification, type BrowserWindow } from 'electron'
+import { Notification, type BrowserWindow } from 'electron'
 
 import type {
   NotificationFactory,
@@ -27,13 +27,5 @@ export const electronNotificationSurface = (window: BrowserWindow): Notification
   isMinimized: () => window.isMinimized(),
   restore: () => window.restore(),
   show: () => window.show(),
-  focus: () => window.focus(),
-  setOverlayIcon: (dataUrl, description) => {
-    window.setOverlayIcon(dataUrl === null ? null : nativeImage.createFromDataURL(dataUrl), description)
-  },
-  // `app.dock` exists only on macOS; the service never calls this on Windows, but the optional
-  // chain keeps a mis-wired platform from crashing the main process.
-  setDockBadge: (text) => {
-    app.dock?.setBadge(text)
-  }
+  focus: () => window.focus()
 })

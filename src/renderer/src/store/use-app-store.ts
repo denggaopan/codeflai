@@ -437,17 +437,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
    */
   const expectedExits = new Set<string>()
 
-  const syncBadge = (): void => {
-    const { notificationsEnabled, unreadSessionIds, locale } = get()
-    const count = notificationsEnabled ? unreadSessionIds.length : 0
-    window.codeflai.setUnreadBadge(count, count > 0 ? translate(locale, 'sidebar.unreadCount', { count }) : '')
-  }
-
   const markViewedSessionRead = (): void => {
     const { activeSessionId, unreadSessionIds } = get()
     if (!activeSessionId || !unreadSessionIds.includes(activeSessionId) || !isViewingSession(activeSessionId, activeSessionId)) return
     set({ unreadSessionIds: unreadSessionIds.filter((id) => id !== activeSessionId) })
-    syncBadge()
   }
 
   const noteUnreadOutput = (sessionId: string): void => {
@@ -455,7 +448,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
     if (!appState.sessions.some((session) => session.id === sessionId) ||
       isViewingSession(sessionId, activeSessionId) || unreadSessionIds.includes(sessionId)) return
     set({ unreadSessionIds: [...unreadSessionIds, sessionId] })
-    syncBadge()
   }
 
   const unmarkIdle = (sessionId: string): void => {
@@ -767,7 +759,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
           hydratingWorkspace = false
           snapshotLoaded = true
           // Unread survives restarts, so the badge has to start from the restored count.
-          syncBadge()
           markViewedSessionRead()
           for (const sessionId of pendingUnread) {
             const queued = appState.sessions.find((candidate) => candidate.id === sessionId)
@@ -811,7 +802,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
         for (const id of expectedExits) {
           if (!state.sessions.some((session) => session.id === id)) expectedExits.delete(id)
         }
-        syncBadge()
       })
       const disposeData = window.codeflai.onTerminalData((event) => {
         // Shells do not repaint themselves, so for them any output really is new content.
@@ -1119,9 +1109,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
       } catch {
         // Match other presentation preferences when localStorage is unavailable.
       }
-      // Switching off must take the badge with it; a count that will never update again is
-      // worse than no badge at all.
-      syncBadge()
     },
 
     addProject: async (source) => {
@@ -1217,9 +1204,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
             launcherOpen: activeProjectRemoved ? false : state.launcherOpen
           }
         })
-        // The prune above can drop the project's own unread sessions; a local set() does not
-        // broadcast, so nothing else re-syncs the badge (see syncBadge's other callers).
-        syncBadge()
       } catch (error) {
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
       }
@@ -1312,7 +1296,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
           notice: null
         }))
         // Stopping a session can drop its own unread marker; see the removeProject comment above.
-        syncBadge()
       } catch (error) {
         expectedExits.delete(sessionId)
         set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
@@ -1335,7 +1318,6 @@ export const useAppStore = create<AppStore>()((set, get) => {
             activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
           }))
           // Deleting a session can drop its own unread marker; see the removeProject comment above.
-          syncBadge()
         } else if (result.status === 'dirty') {
           set({
             notice: {

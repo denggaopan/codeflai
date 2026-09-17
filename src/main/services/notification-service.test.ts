@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   MAX_RETAINED_NOTIFICATIONS,
   NotificationService,
-  UNREAD_BADGE_DATA_URL,
   type NotificationFactory,
   type NotificationSurface,
   type PlatformNotification
@@ -12,8 +11,6 @@ import {
 class FakeSurface implements NotificationSurface {
   readonly calls: string[] = []
   minimized = false
-  overlay: { dataUrl: string | null; description: string } | undefined
-  dockBadge: string | undefined
 
   isMinimized(): boolean {
     return this.minimized
@@ -26,14 +23,6 @@ class FakeSurface implements NotificationSurface {
   }
   focus(): void {
     this.calls.push('focus')
-  }
-  setOverlayIcon(dataUrl: string | null, description: string): void {
-    this.calls.push('setOverlayIcon')
-    this.overlay = { dataUrl, description }
-  }
-  setDockBadge(text: string): void {
-    this.calls.push('setDockBadge')
-    this.dockBadge = text
   }
 }
 
@@ -68,10 +57,10 @@ class FakeFactory implements NotificationFactory {
   }
 }
 
-const build = (platform: 'win32' | 'darwin' = 'win32') => {
+const build = () => {
   const surface = new FakeSurface()
   const factory = new FakeFactory()
-  return { surface, factory, service: new NotificationService(surface, factory, platform) }
+  return { surface, factory, service: new NotificationService(surface, factory) }
 }
 
 describe('NotificationService', () => {
@@ -129,33 +118,8 @@ describe('NotificationService', () => {
     expect(activated).toEqual([])
   })
 
-  it('badges Windows with a dot and the accessible label', () => {
-    const { surface, service } = build('win32')
 
-    service.setUnread(3, '3 unread session(s)')
 
-    expect(surface.overlay).toEqual({ dataUrl: UNREAD_BADGE_DATA_URL, description: '3 unread session(s)' })
-    expect(surface.dockBadge).toBeUndefined()
-  })
-
-  it('badges macOS with the count itself', () => {
-    const { surface, service } = build('darwin')
-
-    service.setUnread(3, '3 unread session(s)')
-
-    expect(surface.dockBadge).toBe('3')
-    expect(surface.overlay).toBeUndefined()
-  })
-
-  it('clears the badge on both platforms when nothing is unread', () => {
-    const windows = build('win32')
-    windows.service.setUnread(0, '')
-    expect(windows.surface.overlay).toEqual({ dataUrl: null, description: '' })
-
-    const mac = build('darwin')
-    mac.service.setUnread(0, '')
-    expect(mac.surface.dockBadge).toBe('')
-  })
 
   it('never throws when the platform refuses a notification', () => {
     const { factory, service } = build()

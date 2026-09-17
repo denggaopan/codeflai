@@ -336,11 +336,10 @@ const buildE2EPowerService = (platform: HostPlatform): PowerService =>
  * suite would spray real system notifications across the machine running it. The badge is left
  * alone: it is confined to the app's own taskbar button.
  */
-const buildE2ENotificationService = (window: BrowserWindow, platform: HostPlatform): NotificationService =>
+const buildE2ENotificationService = (window: BrowserWindow): NotificationService =>
   new NotificationService(
     electronNotificationSurface(window),
-    { isSupported: () => false, create: () => ({ show: () => undefined, onClick: () => undefined }) },
-    platform
+    { isSupported: () => false, create: () => ({ show: () => undefined, onClick: () => undefined }) }
   )
 
 const buildE2EDialog = (projectPath: string | undefined): Dialog =>
@@ -565,8 +564,8 @@ app.whenReady().then(() => {
   const window = createMainWindow(runtimePlatform)
 
   const notificationService = isE2E
-    ? buildE2ENotificationService(window, runtimePlatform)
-    : new NotificationService(electronNotificationSurface(window), electronNotificationFactory(), runtimePlatform)
+    ? buildE2ENotificationService(window)
+    : new NotificationService(electronNotificationSurface(window), electronNotificationFactory())
 
   const disposeIpc = registerIpc({
     ipcMain,

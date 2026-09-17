@@ -102,7 +102,6 @@ const createFakeApi = () => {
     shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
     notifySessionIdle: vi.fn(),
-    setUnreadBadge: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((_listener: (state: AppState) => void) => () => undefined),
@@ -1516,13 +1515,11 @@ describe('useAppStore notifications', () => {
     expect(useAppStore.getState().notificationsEnabled).toBe(true)
   })
 
-  it('clears the badge when notifications are switched off', () => {
+  it('persists the preference when notifications are switched off', () => {
     useAppStore.getState().setNotificationsEnabled(false)
 
     expect(useAppStore.getState().notificationsEnabled).toBe(false)
     expect(window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)).toBe('false')
-    // A number that will never update again is worse than no badge.
-    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
   })
 })
 
@@ -1692,58 +1689,8 @@ describe('session notifications', () => {
     expect(api.notifySessionIdle.mock.calls.at(-1)?.[2]).toBe('This project · Session exited')
   })
 
-  it('pushes the unread count to the badge', () => {
-    seedProject()
-    vi.mocked(document.hasFocus).mockReturnValue(false)
 
-    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
 
-    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
-  })
-
-  // Unread survives restarts (it is restored from workspace.unreadSessionIds), so the badge
-  // has to be drawn from the restored count rather than starting at zero.
-  it('draws the badge from unread restored at startup', async () => {
-    dispose()
-    useAppStore.getState().reset()
-    api = createFakeApi()
-    window.codeflai = api
-    api.getSnapshot.mockResolvedValueOnce({
-      platform: 'win32',
-      capabilities: defaultCapabilities(),
-      state: {
-        ...seededState,
-        projects: [project],
-        workspace: {
-          activeProjectId: null,
-          activeSessionId: null,
-          collapsedProjectIds: [],
-          unreadSessionIds: [claudeSession.id]
-        }
-      }
-    })
-    vi.mocked(document.hasFocus).mockReturnValue(false)
-
-    dispose = useAppStore.getState().initialize()
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
-  })
-
-  // The badge does not self-heal from a local prune the way it does from onStateChanged's
-  // broadcast, so removeProject (and stopSession/deleteSession alongside it) has to re-sync it
-  // explicitly after dropping the project's own unread sessions.
-  it('resyncs the badge when removing a project drops its only unread session', async () => {
-    seedProject()
-    vi.mocked(document.hasFocus).mockReturnValue(false)
-
-    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
-    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(1, '1 unread session(s)')
-
-    await useAppStore.getState().removeProject(project.id)
-
-    expect(api.setUnreadBadge).toHaveBeenLastCalledWith(0, '')
-  })
 
   it('switches to the session a clicked notification names', () => {
     seedProject()

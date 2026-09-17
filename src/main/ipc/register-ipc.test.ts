@@ -174,16 +174,12 @@ class FakeUpdaterService {
 
 class FakeNotificationService {
   readonly notified: Array<{ sessionId: string; title: string; body: string }> = []
-  readonly unread: Array<{ count: number; label: string }> = []
   private readonly listeners = new Set<(sessionId: string) => void>()
 
   notify(notification: { sessionId: string; title: string; body: string }): void {
     this.notified.push(notification)
   }
 
-  setUnread(count: number, label: string): void {
-    this.unread.push({ count, label })
-  }
 
   onActivate(listener: (sessionId: string) => void): () => void {
     this.listeners.add(listener)
@@ -990,21 +986,7 @@ describe('registerIpc: notification:idle / notification:unread / notification:ac
     expect(notificationService.notified).toEqual([])
   })
 
-  it('forwards an unread count to the badge', () => {
-    const { ipcMain, notificationService } = buildHarness()
 
-    ipcMain.emit(IPC.notificationUnread, { count: 3, label: '3 unread session(s)' })
-
-    expect(notificationService.unread).toEqual([{ count: 3, label: '3 unread session(s)' }])
-  })
-
-  it('drops a negative unread count', () => {
-    const { ipcMain, notificationService } = buildHarness()
-
-    ipcMain.emit(IPC.notificationUnread, { count: -1, label: '' })
-
-    expect(notificationService.unread).toEqual([])
-  })
 
   it('publishes a notification click to the renderer', () => {
     const { window, notificationService } = buildHarness()

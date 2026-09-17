@@ -430,11 +430,6 @@ session yourself does not raise a notification for that exit; only one you did n
 Clicking a notification brings Codeflai to the front — restoring the window first if it was
 minimized — and switches to the session that finished.
 
-The taskbar icon on Windows and the Dock icon on macOS also carry an unread indicator while
-any session is unread: Windows shows a dot (the overlay icon has no way to draw digits), macOS
-shows the total number of unread sessions. Either way it is a single app-wide indicator, not a
-per-project breakdown; the sidebar is still where you see the count broken down by project.
-
 The switch is **Notify when a session finishes**, under **General** in Settings, and it is on
 by default.
 

@@ -66,7 +66,6 @@ export type CodeflaiApi = {
   writeTerminal(sessionId: string, data: string): void
   // One-way like the terminal writes: a notification nobody can raise is not worth a round trip.
   notifySessionIdle(sessionId: string, title: string, body: string): void
-  setUnreadBadge(count: number, label: string): void
   onNotificationActivate(listener: (event: { sessionId: string }) => void): () => void
   resizeTerminal(sessionId: string, cols: number, rows: number): void
   // Answers `undefined` — never rejects — for a session the pty-host is not holding, which is
@@ -120,9 +119,6 @@ const api: CodeflaiApi = {
   },
   notifySessionIdle: (sessionId, title, body) => {
     ipcRenderer.send(IPC.notificationIdle, { sessionId, title, body })
-  },
-  setUnreadBadge: (count, label) => {
-    ipcRenderer.send(IPC.notificationUnread, { count, label })
   },
   resizeTerminal: (sessionId, cols, rows) => {
     ipcRenderer.send(IPC.terminalResize, { sessionId, cols, rows })
