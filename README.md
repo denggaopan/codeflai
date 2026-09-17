@@ -423,17 +423,17 @@ successfully.
 A system notification fires when an agent session finishes its turn, or when any session
 exits — the same two triggers that mark those sessions unread in the sidebar. It only appears
 while the window is not in front of you — hidden, minimized, or simply not focused. With the
-window in front of you the sidebar's bold title and unread dot are the signal instead, so
-nothing pops up on top of what you are already looking at. Stopping or deleting a session
-yourself does not raise a notification for that exit; only one you did not ask for does.
+window in front of you the sidebar's bold titles and per-project unread count are the signal
+instead, so nothing pops up on top of what you are already looking at. Stopping or deleting a
+session yourself does not raise a notification for that exit; only one you did not ask for does.
 
 Clicking a notification brings Codeflai to the front — restoring the window first if it was
 minimized — and switches to the session that finished.
 
-The taskbar icon on Windows and the Dock icon on macOS also carry the unread count while any
-session is unread: Windows shows a dot, macOS shows the number itself. The sidebar still has
-the exact count per project; the taskbar or Dock only answers whether there is anything to look
-at.
+The taskbar icon on Windows and the Dock icon on macOS also carry an unread count while any
+session is unread: Windows shows a dot (the overlay icon has no way to draw digits), macOS
+shows the total number of unread sessions. Either way it is one number for the whole app; the
+sidebar is still where you see the count broken down by project.
 
 The switch is **Notify when a session finishes**, under **General** in Settings, and it is on
 by default.
@@ -681,7 +681,7 @@ still on that worktree's branch.
 **No notifications arrive.** Check **Notify when a session finishes** in Settings, and then
 your OS notification settings — Windows Focus assist and macOS Do Not Disturb both suppress
 them without telling the app. Notifications are deliberately silent while the Codeflai window
-is in front of you; the sidebar dot is the signal then.
+is in front of you; the bold session title and unread count are the signal then.
 
 ## License
 
