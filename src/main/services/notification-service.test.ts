@@ -166,4 +166,33 @@ describe('NotificationService', () => {
     expect(logged).toHaveBeenCalled()
     logged.mockRestore()
   })
+
+  it('never throws when the surface fails during click handling', () => {
+    const { surface, factory, service } = build()
+    surface.minimized = true
+    surface.restore = () => {
+      throw new Error('window destroyed')
+    }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+    expect(() => factory.created[0]?.notification.click()).not.toThrow()
+
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+  })
+
+  it('never throws when a listener fails during click handling', () => {
+    const { factory, service } = build()
+    service.onActivate(() => {
+      throw new Error('listener crashed')
+    })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+    expect(() => factory.created[0]?.notification.click()).not.toThrow()
+
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+  })
 })

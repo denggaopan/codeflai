@@ -69,8 +69,12 @@ export class NotificationService {
       if (!this.factory.isSupported()) return
       const toast = this.factory.create(notification.title, notification.body)
       toast.onClick(() => {
-        this.focusWindow()
-        for (const listener of this.activateListeners) listener(notification.sessionId)
+        try {
+          this.focusWindow()
+          for (const listener of this.activateListeners) listener(notification.sessionId)
+        } catch (error) {
+          console.error('NotificationService: failed to handle notification activation.', error)
+        }
       })
       toast.show()
     } catch (error) {
