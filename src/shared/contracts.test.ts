@@ -334,8 +334,11 @@ describe('shared contracts', () => {
       systemShutdown: 'system:shutdown',
       terminalWrite: 'terminal:write',
       terminalResize: 'terminal:resize',
+      notificationIdle: 'notification:idle',
+      notificationUnread: 'notification:unread',
       terminalReplay: 'terminal:replay',
       stateChanged: 'state:changed',
+      notificationActivate: 'notification:activate',
       terminalData: 'terminal:data',
       terminalExit: 'terminal:exit',
       appUpdateProgress: 'app:update-progress'

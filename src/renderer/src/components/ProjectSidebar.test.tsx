@@ -72,12 +72,15 @@ const createFakeApi = (): FakeApi => ({
   setAutoLaunch: vi.fn(async (enabled: boolean): Promise<boolean> => enabled),
   shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
   writeTerminal: vi.fn(),
+  notifySessionIdle: vi.fn(),
+  setUnreadBadge: vi.fn(),
   resizeTerminal: vi.fn(),
   replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
   onStateChanged: vi.fn(() => () => undefined),
   onTerminalData: vi.fn(() => () => undefined),
   onTerminalExit: vi.fn(() => () => undefined),
-  onUpdateProgress: vi.fn(() => () => undefined)
+  onUpdateProgress: vi.fn(() => () => undefined),
+  onNotificationActivate: vi.fn(() => () => undefined)
 })
 
 // A real snapshot carries one entry per agent kind; built from the registry so adding a CLI

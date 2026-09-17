@@ -89,7 +89,13 @@ export function createMainWindow(platform: NodeJS.Platform = process.platform): 
       preload: join(currentDirectory, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // The Done edge that drives notifications is a three-second timer in the renderer, and
+      // Chromium aligns timers in a hidden renderer to roughly one minute once it has been out
+      // of sight for five — which is exactly when a notification matters most. Auto shutdown is
+      // unaffected: `countdownTick` computes from an absolute deadline, so it is correct either
+      // way (that is why it was written that way).
+      backgroundThrottling: false
     }
   })
 

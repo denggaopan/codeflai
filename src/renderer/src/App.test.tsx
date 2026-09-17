@@ -100,6 +100,8 @@ const createFakeApi = (state: AppState, capabilities: CapabilityState, platform:
     setAutoLaunch: vi.fn(async (enabled: boolean): Promise<boolean> => enabled),
     shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
+    notifySessionIdle: vi.fn(),
+    setUnreadBadge: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((listener: (state: AppState) => void) => {
@@ -111,6 +113,7 @@ const createFakeApi = (state: AppState, capabilities: CapabilityState, platform:
     onTerminalData: vi.fn(() => () => undefined),
     onTerminalExit: vi.fn(() => () => undefined),
     onUpdateProgress: vi.fn(() => () => undefined),
+    onNotificationActivate: vi.fn(() => () => undefined),
     emitState: (nextState: AppState) => {
       for (const listener of [...stateListeners]) listener(nextState)
     }

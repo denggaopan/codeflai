@@ -168,6 +168,28 @@ export const terminalResizeRequestSchema = z.strictObject({
   rows: z.number().int().min(1).max(1000)
 })
 
+/**
+ * A finished session, on its way to an OS notification.
+ *
+ * The wording crosses IPC because the i18n dictionaries live entirely in the renderer and the
+ * main process cannot translate. Text is not executable content, so this does not weaken the
+ * rule that keeps URLs and commands out of renderer hands (see UpdaterService resolving its
+ * own installer URL) — but an uncapped string still has no business crossing the boundary,
+ * and `sessionRecordSchema.title` has no upper bound of its own.
+ */
+export const notificationIdleRequestSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(200)
+})
+
+// `label` is the accessible description for the Windows taskbar overlay, translated by the
+// renderer for the same reason as the rest of the wording. It is empty when the count is zero.
+export const notificationUnreadRequestSchema = z.strictObject({
+  count: z.number().int().min(0).max(9999),
+  label: z.string().max(200)
+})
+
 export const firstInputRequestSchema = z.strictObject({
   sessionId: z.string().min(1),
   text: z.string().min(1).max(65536)

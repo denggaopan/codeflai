@@ -100,6 +100,8 @@ const createFakeApi = () => {
     setAutoLaunch: vi.fn(async (enabled: boolean): Promise<boolean> => enabled),
     shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
+    notifySessionIdle: vi.fn(),
+    setUnreadBadge: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((_listener: (state: AppState) => void) => () => undefined),
@@ -121,6 +123,7 @@ const createFakeApi = () => {
         progressListeners.delete(listener)
       }
     }),
+    onNotificationActivate: vi.fn((_listener: (event: { sessionId: string }) => void) => () => undefined),
     emitUpdateProgress: (progress: UpdateDownloadProgress) => {
       for (const listener of [...progressListeners]) listener(progress)
     },

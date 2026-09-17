@@ -22,6 +22,7 @@ import { ProjectNotFoundError, type ProjectService } from '../services/project-s
 import { SessionNotFoundError, type SessionCoordinator } from '../services/session-coordinator'
 import type { AppInfoService } from '../services/app-info-service'
 import type { ExternalAppService } from '../services/external-app-service'
+import type { NotificationService } from '../services/notification-service'
 import type { PowerService } from '../services/power-service'
 import type { TerminalService } from '../services/terminal-service'
 import type { UpdaterService } from '../services/updater-service'
@@ -171,6 +172,35 @@ class FakeUpdaterService {
   }
 }
 
+class FakeNotificationService {
+  readonly notified: Array<{ sessionId: string; title: string; body: string }> = []
+  readonly unread: Array<{ count: number; label: string }> = []
+  private readonly listeners = new Set<(sessionId: string) => void>()
+
+  notify(notification: { sessionId: string; title: string; body: string }): void {
+    this.notified.push(notification)
+  }
+
+  setUnread(count: number, label: string): void {
+    this.unread.push({ count, label })
+  }
+
+  onActivate(listener: (sessionId: string) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  emitActivate(sessionId: string): void {
+    for (const listener of [...this.listeners]) listener(sessionId)
+  }
+
+  listenerCount(): number {
+    return this.listeners.size
+  }
+}
+
 const emptyState = (): AppState => ({ version: 1, projects: [], sessions: [] })
 
 // One entry per agent kind, as the real snapshot always carries; Codex is the missing one so
@@ -222,6 +252,7 @@ type Harness = {
   }
   updaterService: FakeUpdaterService
   powerService: { shutdown: ReturnType<typeof vi.fn> }
+  notificationService: FakeNotificationService
   terminalService: FakeTerminalService
   getSnapshot: ReturnType<typeof vi.fn>
   saveWorkspace: ReturnType<typeof vi.fn>
@@ -257,6 +288,7 @@ const buildHarness = (options: {
   }
   const updaterService = new FakeUpdaterService()
   const powerService = { shutdown: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })) }
+  const notificationService = new FakeNotificationService()
   const terminalService = new FakeTerminalService(options.terminalCanReplay ?? true)
   const getSnapshot = vi.fn(async (): Promise<AppSnapshot> => ({ platform: 'win32', state: emptyState(), capabilities: capabilities() }))
   const applyTheme = vi.fn()
@@ -274,6 +306,7 @@ const buildHarness = (options: {
     appInfoService: appInfoService as unknown as AppInfoService,
     updaterService: updaterService as unknown as UpdaterService,
     powerService: powerService as unknown as PowerService,
+    notificationService: notificationService as unknown as NotificationService,
     terminalService: terminalService as unknown as TerminalService,
     getSnapshot,
     applyTheme,
@@ -292,6 +325,7 @@ const buildHarness = (options: {
     appInfoService,
     updaterService,
     powerService,
+    notificationService,
     terminalService,
     getSnapshot,
     applyTheme,
@@ -921,6 +955,66 @@ describe('registerIpc: terminal:write (send-only)', () => {
   })
 })
 
+describe('registerIpc: notification:idle / notification:unread / notification:activate', () => {
+  it('raises a notification for a well-formed request', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emit(IPC.notificationIdle, { sessionId: 's1', title: 'Add the parser', body: 'demo · Done' })
+
+    expect(notificationService.notified).toEqual([
+      { sessionId: 's1', title: 'Add the parser', body: 'demo · Done' }
+    ])
+  })
+
+  it('drops a notification request from another sender', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emitFrom({}, IPC.notificationIdle, { sessionId: 's1', title: 'Add the parser', body: 'demo · Done' })
+
+    expect(notificationService.notified).toEqual([])
+  })
+
+  it('drops a notification whose title exceeds the cap', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emit(IPC.notificationIdle, { sessionId: 's1', title: 'x'.repeat(201), body: 'demo · Done' })
+
+    expect(notificationService.notified).toEqual([])
+  })
+
+  it('drops a notification carrying an unknown field', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emit(IPC.notificationIdle, { sessionId: 's1', title: 'Add the parser', body: 'demo · Done', urgency: 'critical' })
+
+    expect(notificationService.notified).toEqual([])
+  })
+
+  it('forwards an unread count to the badge', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emit(IPC.notificationUnread, { count: 3, label: '3 unread session(s)' })
+
+    expect(notificationService.unread).toEqual([{ count: 3, label: '3 unread session(s)' }])
+  })
+
+  it('drops a negative unread count', () => {
+    const { ipcMain, notificationService } = buildHarness()
+
+    ipcMain.emit(IPC.notificationUnread, { count: -1, label: '' })
+
+    expect(notificationService.unread).toEqual([])
+  })
+
+  it('publishes a notification click to the renderer', () => {
+    const { window, notificationService } = buildHarness()
+
+    notificationService.emitActivate('s1')
+
+    expect(window.webContents.send).toHaveBeenCalledWith(IPC.notificationActivate, { sessionId: 's1' })
+  })
+})
+
 describe('registerIpc: terminal:replay', () => {
   it('hands back the output the host retained for that session', async () => {
     const { ipcMain, terminalService } = buildHarness()
@@ -1110,5 +1204,13 @@ describe('registerIpc: disposer', () => {
     expect(coordinator.listenerCount()).toBe(0)
     expect(terminalService.listenerCounts()).toEqual({ data: 0, exit: 0 })
     expect(updaterService.listenerCount()).toBe(0)
+  })
+
+  it('stops listening for notification clicks', () => {
+    const { notificationService, dispose } = buildHarness()
+
+    dispose()
+
+    expect(notificationService.listenerCount()).toBe(0)
   })
 })

@@ -17,6 +17,8 @@ import {
   cloneProjectRequestSchema,
   createSessionRequestSchema,
   firstInputRequestSchema,
+  notificationIdleRequestSchema,
+  notificationUnreadRequestSchema,
   openExternalLinkRequestSchema,
   projectIdRequestSchema,
   reorderProjectsRequestSchema,
@@ -33,6 +35,7 @@ import {
 import { IPC } from '../../shared/ipc'
 import type { AppInfoService } from '../services/app-info-service'
 import type { ExternalAppService } from '../services/external-app-service'
+import type { NotificationService } from '../services/notification-service'
 import type { PowerService } from '../services/power-service'
 import type { ProjectService } from '../services/project-service'
 import type { SessionCoordinator } from '../services/session-coordinator'
@@ -64,6 +67,7 @@ export type RegisterIpcDependencies = {
   appInfoService: AppInfoService
   updaterService: UpdaterService
   powerService: PowerService
+  notificationService: NotificationService
   terminalService: IpcTerminal
   getSnapshot: () => Promise<AppSnapshot>
   saveWorkspace: (workspace: WorkspaceState) => Promise<void>
@@ -103,6 +107,7 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     appInfoService,
     updaterService,
     powerService,
+    notificationService,
     terminalService,
     getSnapshot,
     saveWorkspace,
@@ -376,8 +381,24 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     }
   }
 
+  const onNotificationIdle = (event: IpcMainEvent, payload: unknown): void => {
+    if (event.sender !== window.webContents) return
+    const parsed = notificationIdleRequestSchema.safeParse(payload)
+    if (!parsed.success) return
+    notificationService.notify(parsed.data)
+  }
+
+  const onNotificationUnread = (event: IpcMainEvent, payload: unknown): void => {
+    if (event.sender !== window.webContents) return
+    const parsed = notificationUnreadRequestSchema.safeParse(payload)
+    if (!parsed.success) return
+    notificationService.setUnread(parsed.data.count, parsed.data.label)
+  }
+
   ipcMain.on(IPC.terminalWrite, onTerminalWrite)
   ipcMain.on(IPC.terminalResize, onTerminalResize)
+  ipcMain.on(IPC.notificationIdle, onNotificationIdle)
+  ipcMain.on(IPC.notificationUnread, onNotificationUnread)
 
   const unsubscribeState = coordinator.onStateChanged((state) => {
     publish(window, IPC.stateChanged, state)
@@ -391,6 +412,9 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
   const unsubscribeUpdateProgress = updaterService.onProgress((progress) => {
     publish(window, IPC.appUpdateProgress, progress)
   })
+  const unsubscribeNotificationActivate = notificationService.onActivate((sessionId) => {
+    publish(window, IPC.notificationActivate, { sessionId })
+  })
 
   return () => {
     for (const [channel] of invokeHandlers) {
@@ -398,9 +422,12 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     }
     ipcMain.removeListener(IPC.terminalWrite, onTerminalWrite)
     ipcMain.removeListener(IPC.terminalResize, onTerminalResize)
+    ipcMain.removeListener(IPC.notificationIdle, onNotificationIdle)
+    ipcMain.removeListener(IPC.notificationUnread, onNotificationUnread)
     unsubscribeState()
     unsubscribeTerminalData()
     unsubscribeTerminalExit()
     unsubscribeUpdateProgress()
+    unsubscribeNotificationActivate()
   }
 }

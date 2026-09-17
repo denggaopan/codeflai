@@ -24,6 +24,8 @@ import { ExternalAppService } from './services/external-app-service'
 import { ProjectService } from './services/project-service'
 import { migrateWindowsLoginItem } from './services/login-item-migration'
 import { PowerService } from './services/power-service'
+import { NotificationService } from './services/notification-service'
+import { electronNotificationFactory, electronNotificationSurface } from './infrastructure/electron-notifications'
 import { PtyHostClient } from './services/pty-host-client'
 import { PtyHostLauncher } from './services/pty-host-launcher'
 import { PtyHostRuntime } from './services/pty-host-runtime'
@@ -328,6 +330,19 @@ const buildE2EPowerService = (platform: HostPlatform): PowerService =>
     platform
   )
 
+/**
+ * A NotificationService that cannot raise a toast. Notifications default to on and fire when
+ * the window is unattended, which a Playwright-driven window frequently is — without this the
+ * suite would spray real system notifications across the machine running it. The badge is left
+ * alone: it is confined to the app's own taskbar button.
+ */
+const buildE2ENotificationService = (window: BrowserWindow, platform: HostPlatform): NotificationService =>
+  new NotificationService(
+    electronNotificationSurface(window),
+    { isSupported: () => false, create: () => ({ show: () => undefined, onClick: () => undefined }) },
+    platform
+  )
+
 const buildE2EDialog = (projectPath: string | undefined): Dialog =>
   ({
     showOpenDialog: async () =>
@@ -549,6 +564,10 @@ app.whenReady().then(() => {
 
   const window = createMainWindow(runtimePlatform)
 
+  const notificationService = isE2E
+    ? buildE2ENotificationService(window, runtimePlatform)
+    : new NotificationService(electronNotificationSurface(window), electronNotificationFactory(), runtimePlatform)
+
   const disposeIpc = registerIpc({
     ipcMain,
     dialog: dialogForIpc,
@@ -559,6 +578,7 @@ app.whenReady().then(() => {
     appInfoService,
     updaterService,
     powerService,
+    notificationService,
     terminalService: terminal,
     saveWorkspace: (workspace) => store.saveWorkspace(workspace),
     getSnapshot: buildGetSnapshot(

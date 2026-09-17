@@ -64,6 +64,10 @@ export type CodeflaiApi = {
   // name what actually runs. Never rejects — a refusal comes back as an `error` result.
   shutdownSystem(): Promise<ShutdownResult>
   writeTerminal(sessionId: string, data: string): void
+  // One-way like the terminal writes: a notification nobody can raise is not worth a round trip.
+  notifySessionIdle(sessionId: string, title: string, body: string): void
+  setUnreadBadge(count: number, label: string): void
+  onNotificationActivate(listener: (event: { sessionId: string }) => void): () => void
   resizeTerminal(sessionId: string, cols: number, rows: number): void
   // Answers `undefined` — never rejects — for a session the pty-host is not holding, which is
   // every session that is not currently running. A terminal opened for one of those simply
@@ -114,6 +118,12 @@ const api: CodeflaiApi = {
   writeTerminal: (sessionId, data) => {
     ipcRenderer.send(IPC.terminalWrite, { sessionId, data })
   },
+  notifySessionIdle: (sessionId, title, body) => {
+    ipcRenderer.send(IPC.notificationIdle, { sessionId, title, body })
+  },
+  setUnreadBadge: (count, label) => {
+    ipcRenderer.send(IPC.notificationUnread, { count, label })
+  },
   resizeTerminal: (sessionId, cols, rows) => {
     ipcRenderer.send(IPC.terminalResize, { sessionId, cols, rows })
   },
@@ -145,6 +155,13 @@ const api: CodeflaiApi = {
     ipcRenderer.on(IPC.appUpdateProgress, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC.appUpdateProgress, wrapped)
+    }
+  },
+  onNotificationActivate: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: { sessionId: string }): void => listener(payload)
+    ipcRenderer.on(IPC.notificationActivate, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC.notificationActivate, wrapped)
     }
   }
 }
