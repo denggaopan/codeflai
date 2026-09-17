@@ -842,13 +842,17 @@ const reinitializeWith = async (stored: string | null): Promise<void> => {
   })
 ```
 
-Add the two new methods to `createFakeApi`'s returned object, beside `resizeTerminal`, so the type matches `CodeflaiApi` (Task 4 extends this with the activate listener):
+`createFakeApi` in that file already carries the three stubs these tests need — Task 2 added
+them when it extended `CodeflaiApi`, because every fake implementing that type had to grow the
+new methods or `npm run typecheck` would fail:
 
 ```ts
     notifySessionIdle: vi.fn(),
     setUnreadBadge: vi.fn(),
     onNotificationActivate: vi.fn((_listener: (event: { sessionId: string }) => void) => () => undefined),
 ```
+
+Verify they are present; do not add them again.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
@@ -1130,13 +1134,9 @@ describe('session notifications', () => {
 })
 ```
 
-Change `onNotificationActivate` in `createFakeApi` from the stub added in Task 3 to one that records its listener, matching how `onStateChanged` is stubbed:
-
-```ts
-    onNotificationActivate: vi.fn((_listener: (event: { sessionId: string }) => void) => () => undefined),
-```
-
-That stub is already sufficient — the tests above reach the listener through `.mock.calls`, exactly as the existing tests do for `onStateChanged`.
+`createFakeApi` already stubs `onNotificationActivate` (Task 2 added it), and that stub is
+sufficient as it stands — the tests above reach the listener through `.mock.calls`, exactly as
+the file's existing tests do for `onStateChanged`. No change to the fake is needed.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
