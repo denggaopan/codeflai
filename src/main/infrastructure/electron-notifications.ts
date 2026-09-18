@@ -27,5 +27,6 @@ export const electronNotificationSurface = (window: BrowserWindow): Notification
   isMinimized: () => window.isMinimized(),
   restore: () => window.restore(),
   show: () => window.show(),
-  focus: () => window.focus()
+  focus: () => window.focus(),
+  flash: (on) => window.flashFrame(on)
 })

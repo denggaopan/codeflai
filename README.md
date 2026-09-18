@@ -430,6 +430,10 @@ session yourself does not raise a notification for that exit; only one you did n
 Clicking a notification brings Codeflai to the front — restoring the window first if it was
 minimized — and switches to the session that finished.
 
+At the same moment the taskbar button on Windows, or the Dock icon on macOS, asks for your
+attention the way it does for any other app with something new: the operating system decides
+what that looks like, and it clears itself the moment you look at the window.
+
 The switch is **Notify when a session finishes**, under **General** in Settings, and it is on
 by default.
 

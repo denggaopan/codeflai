@@ -21,6 +21,12 @@ export type NotificationSurface = {
   restore(): void
   show(): void
   focus(): void
+  /**
+   * Puts the taskbar button into the OS's "wants attention" state, or takes it out. On Windows
+   * that is the highlighted icon with the longer, coloured underline every other app uses; on
+   * macOS the Dock icon bounces. The visual is the platform's to decide, not ours.
+   */
+  flash(on: boolean): void
 }
 
 /**
@@ -76,11 +82,14 @@ export class NotificationService {
         }
       })
       toast.show()
+      // Deliberately inside notify()'s success path rather than behind its own condition: the
+      // renderer already decided the window is unattended and the preference is on, and this
+      // is the same event. A separate check here would be a second place to keep in sync.
+      this.surface.flash(true)
     } catch (error) {
       console.error('NotificationService: failed to raise a notification.', error)
     }
   }
-
 
   /** How many shown notifications are still referenced. Exposed so the bound stays testable. */
   get retainedCount(): number {
@@ -98,5 +107,10 @@ export class NotificationService {
     if (this.surface.isMinimized()) this.surface.restore()
     this.surface.show()
     this.surface.focus()
+    // Windows stops flashing by itself once the window reaches the foreground, but that rests
+    // on which flags Electron passes to FlashWindowEx — an assumption, and assuming Electron
+    // would hold the notification reference for us is exactly what broke clicks in 0.26.0.
+    // Clearing it explicitly is idempotent and rests on nothing.
+    this.surface.flash(false)
   }
 }

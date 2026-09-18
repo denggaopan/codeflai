@@ -24,6 +24,9 @@ class FakeSurface implements NotificationSurface {
   focus(): void {
     this.calls.push('focus')
   }
+  flash(on: boolean): void {
+    this.calls.push(on ? 'flash:on' : 'flash:off')
+  }
 }
 
 class FakeNotification implements PlatformNotification {
@@ -93,7 +96,7 @@ describe('NotificationService', () => {
     service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
     factory.created[0]?.notification.click()
 
-    expect(surface.calls).toEqual(['restore', 'show', 'focus'])
+    expect(surface.calls).toEqual(['flash:on', 'restore', 'show', 'focus', 'flash:off'])
     expect(activated).toEqual(['s1'])
   })
 
@@ -103,7 +106,7 @@ describe('NotificationService', () => {
     service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
     factory.created[0]?.notification.click()
 
-    expect(surface.calls).toEqual(['show', 'focus'])
+    expect(surface.calls).toEqual(['flash:on', 'show', 'focus', 'flash:off'])
   })
 
   it('stops reporting to a listener that unsubscribed', () => {
@@ -192,5 +195,22 @@ describe('NotificationService', () => {
     expect(service.retainedCount).toBe(MAX_RETAINED_NOTIFICATIONS)
     factory.created.at(-1)!.notification.click()
     expect(activated).toEqual([`s${MAX_RETAINED_NOTIFICATIONS}`])
+  })
+
+  it('asks the taskbar for attention when a notification is shown', () => {
+    const { surface, service } = build()
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+
+    expect(surface.calls).toEqual(['flash:on'])
+  })
+
+  it('does not ask for attention where the platform has no notifications', () => {
+    const { surface, factory, service } = build()
+    factory.supported = false
+
+    service.notify({ sessionId: 's1', title: 'Add the parser', body: 'codeflai · Done' })
+
+    expect(surface.calls).toEqual([])
   })
 })
