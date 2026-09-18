@@ -401,18 +401,25 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <span className="settings-dialog-label" id="settings-language-label">
                   {t('settings.language')}
                 </span>
-                <div className="settings-theme-toggle" role="group" aria-labelledby="settings-language-label">
+                {/* A dropdown rather than the row of buttons this used to be, for the same
+                    reason as the theme above it: a third language no longer fits on one row
+                    beside its label, and the list is expected to keep growing. Each option
+                    keeps its own-language label, so it stays findable from any active locale. */}
+                <select
+                  className="settings-select"
+                  aria-labelledby="settings-language-label"
+                  value={locale}
+                  onChange={(event) => {
+                    const next = LOCALES.find((option) => option.value === event.target.value)
+                    if (next) setLocale(next.value)
+                  }}
+                >
                   {LOCALES.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={locale === option.value}
-                      onClick={() => setLocale(option.value)}
-                    >
+                    <option key={option.value} value={option.value}>
                       {option.label}
-                    </button>
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
 
               <div className="settings-dialog-section">

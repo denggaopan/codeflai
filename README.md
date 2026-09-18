@@ -567,7 +567,9 @@ The gear at the bottom-left of the sidebar opens Settings.
   once. Only the size is configurable, not the typeface: the correction that keeps agent
   startup logos free of hairline gaps is worked out from the default font's exact character
   width, and another typeface would need that redone by eye.
-- **Language** — English or 简体中文. It defaults to English rather than following your OS
+- **Language** — a dropdown: **English**, **简体中文** (Simplified Chinese), and **繁體中文**
+  (Traditional Chinese). Every entry is written in its own language, so yours stays findable
+  whichever one is currently active. It defaults to English rather than following your OS
   language. It covers the interface only: tool-availability hints, session errors, and
   session titles that were already generated stay in the language they were produced in.
 - **Version** — the installed version, plus **Check for updates** on demand. See

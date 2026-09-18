@@ -250,7 +250,7 @@ test('filters live sessions by status and search while retaining the active term
     await expect(filterButton).toBeFocused()
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
     await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('light')
-    await page.getByRole('button', { name: '简体中文', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
     await page.keyboard.press('Escape')
     const chineseFilterButton = page.getByRole('button', { name: '筛选会话', exact: true })
     await expect(chineseFilterButton).toHaveAttribute('title', '会话状态: 运行中')

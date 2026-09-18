@@ -2597,33 +2597,6 @@ body[data-sidebar-resizing='true'] .app-main {
   color-scheme: light;
 }
 
-.settings-theme-toggle {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-panel);
-}
-
-.settings-theme-toggle button {
-  border: none;
-  border-radius: 6px;
-  padding: 5px 14px;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-}
-
-.settings-theme-toggle button[aria-pressed='true'] {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-}
-
-.settings-theme-toggle button[aria-pressed='false']:hover {
-  background: var(--color-panel-elevated);
-  color: var(--color-text);
-}
 /* Startup switch: a role="switch" button, so it is a real toggle to assistive technology
    rather than a styled checkbox. Disabled until the main process reports the current value. */
 .settings-switch {

@@ -269,19 +269,44 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('switch', { name: 'New worktree for Claude' })).toBeEnabled()
   })
 
+  it('offers every shipped language in the dropdown, each labelled in its own language', () => {
+    renderDialog()
+
+    const language = screen.getByRole('combobox', { name: 'Language' })
+    expect(within(language).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'English',
+      '简体中文',
+      '繁體中文'
+    ])
+    expect(language).toHaveValue('en')
+  })
+
   it('switches the whole dialog to Simplified Chinese and back', async () => {
     const user = userEvent.setup()
     renderDialog()
 
-    await user.click(screen.getByRole('button', { name: '简体中文' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'zh-CN')
 
     expect(screen.getByRole('dialog', { name: '设置' })).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: '开机自动启动' })).toBeInTheDocument()
     expect(useAppStore.getState().locale).toBe('zh-CN')
     expect(window.localStorage.getItem('codeflai.locale')).toBe('zh-CN')
 
-    await user.click(screen.getByRole('button', { name: 'English' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: '语言' }), 'en')
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('switches the whole dialog to Traditional Chinese', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'zh-TW')
+
+    expect(screen.getByRole('dialog', { name: '設定' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: '開機時自動啟動' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '語言' })).toHaveValue('zh-TW')
+    expect(useAppStore.getState().locale).toBe('zh-TW')
+    expect(window.localStorage.getItem('codeflai.locale')).toBe('zh-TW')
   })
 
   it('shows the installed version and reports that no release has been published', async () => {

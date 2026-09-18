@@ -329,13 +329,18 @@ test('exposes the startup toggle, version check, About links, and language switc
   )
   await expect(dialog.getByText('https://github.com/denggaopan/codeflai', { exact: true })).toHaveCount(0)
 
-  await dialog.getByRole('button', { name: '简体中文' }).click()
+  await dialog.getByRole('combobox', { name: 'Language' }).selectOption('zh-CN')
   await expect(window.getByRole('dialog', { name: '设置' })).toBeVisible()
   await expect(window.getByRole('switch', { name: '开机自动启动' })).toBeVisible()
   // The whole window re-renders, not just the dialog.
   await expect(window.getByRole('button', { name: '搜索会话', exact: true })).toBeVisible()
 
-  await window.getByRole('button', { name: 'English' }).click()
+  await window.getByRole('combobox', { name: '语言' }).selectOption('zh-TW')
+  await expect(window.getByRole('dialog', { name: '設定' })).toBeVisible()
+  await expect(window.getByRole('switch', { name: '開機時自動啟動' })).toBeVisible()
+  await expect(window.getByRole('button', { name: '搜尋工作階段', exact: true })).toBeVisible()
+
+  await window.getByRole('combobox', { name: '語言' }).selectOption('en')
   await expect(window.getByRole('dialog', { name: 'Settings' })).toBeVisible()
   await expect(window.getByRole('button', { name: 'Search sessions', exact: true })).toBeVisible()
   await window.keyboard.press('Escape')

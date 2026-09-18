@@ -1,18 +1,21 @@
 import { en } from './en'
 import type { TranslationKey, Translations } from './en-types'
 import { zhCN } from './zh-CN'
+import { zhTW } from './zh-TW'
 
 export type { TranslationKey, Translations }
 
-export type Locale = 'en' | 'zh-CN'
+export type Locale = 'en' | 'zh-CN' | 'zh-TW'
 
 /**
  * Selectable languages, in menu order. Each label is written in its OWN language so a user
- * who cannot read the currently active locale can still find theirs.
+ * who cannot read the currently active locale can still find theirs. The values double as
+ * the document's `lang` attribute, so they stay BCP 47 tags.
  */
 export const LOCALES: ReadonlyArray<{ value: Locale; label: string }> = [
   { value: 'en', label: 'English' },
-  { value: 'zh-CN', label: '简体中文' }
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'zh-TW', label: '繁體中文' }
 ]
 
 /**
@@ -22,7 +25,7 @@ export const LOCALES: ReadonlyArray<{ value: Locale; label: string }> = [
  */
 export const DEFAULT_LOCALE: Locale = 'en'
 
-const dictionaries: Record<Locale, Translations> = { en, 'zh-CN': zhCN }
+const dictionaries: Record<Locale, Translations> = { en, 'zh-CN': zhCN, 'zh-TW': zhTW }
 
 export const isLocale = (value: unknown): value is Locale => LOCALES.some((locale) => locale.value === value)
 
