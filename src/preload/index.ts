@@ -4,6 +4,7 @@ import type {
   AppInfo,
   AppSnapshot,
   AppState,
+  CloneProgress,
   CloneProjectRequest,
   DeleteSessionResult,
   ProjectRecord,
@@ -78,6 +79,7 @@ export type CodeflaiApi = {
   onTerminalData(listener: (event: TerminalDataEvent) => void): () => void
   onTerminalExit(listener: (event: { sessionId: string; exitCode: number }) => void): () => void
   onUpdateProgress(listener: (progress: UpdateDownloadProgress) => void): () => void
+  onCloneProgress(listener: (progress: CloneProgress) => void): () => void
 }
 
 // Every method here is a thin bridge over ipcRenderer: no Node APIs, filesystem paths,
@@ -154,6 +156,13 @@ const api: CodeflaiApi = {
     ipcRenderer.on(IPC.appUpdateProgress, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC.appUpdateProgress, wrapped)
+    }
+  },
+  onCloneProgress: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: CloneProgress): void => listener(payload)
+    ipcRenderer.on(IPC.projectCloneProgress, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC.projectCloneProgress, wrapped)
     }
   },
   onNotificationActivate: (listener) => {

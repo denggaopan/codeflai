@@ -2,12 +2,13 @@ import { mkdir, realpath, rm, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import type { ProjectRecord, RepoRemote } from '../../shared/contracts'
+import type { CloneProgress, ProjectRecord, RepoRemote } from '../../shared/contracts'
 import { cloneProjectRequestSchema, type CloneProjectRequest } from '../../shared/contracts'
 import { cloneDirectoryName } from '../../shared/git-clone'
 import { normalizeProjectPath } from '../../shared/project-path'
 import { commandRunner } from '../infrastructure/command-runner'
 import type { CommandRunner } from '../infrastructure/command-runner'
+import { parseCloneProgress } from './git-clone-progress'
 import { parseRemoteWebUrl } from './git-remote'
 import { SessionStore } from './session-store'
 
@@ -54,6 +55,14 @@ const productionFileSystem: ProjectFileSystem = { realpath, stat }
  */
 export const CLONE_IDLE_TIMEOUT_MS = 2 * 60 * 1000
 
+/**
+ * Git repaints its progress line many times a second, and every frame would otherwise cross
+ * IPC and re-render the dialog. Unlike the updater's download there is no guaranteed final
+ * frame: a finished clone closes the dialog and a failed one returns it to the form, so a
+ * swallowed last percentage is never seen.
+ */
+export const CLONE_PROGRESS_INTERVAL_MS = 200
+
 const sameRemote = (left: RepoRemote | undefined, right: RepoRemote | undefined): boolean =>
   left === right || (left !== undefined && right !== undefined && left.host === right.host && left.webUrl === right.webUrl)
 
@@ -65,6 +74,7 @@ const projectWithPath = (projects: readonly ProjectRecord[], candidatePath: stri
 export class ProjectService {
   // Doubles as the "a clone is running" flag, so the guard and the cancel handle can never disagree.
   private cloneRun: AbortController | undefined
+  private readonly progressListeners = new Set<(progress: CloneProgress) => void>()
 
   constructor(
     private readonly store: SessionStore,
@@ -144,6 +154,24 @@ export class ProjectService {
     return this.register(project.path)
   }
 
+  /** Subscribes to clone progress for as long as a clone is running. Returns an unsubscribe. */
+  onProgress(listener: (progress: CloneProgress) => void): () => void {
+    this.progressListeners.add(listener)
+    return () => {
+      this.progressListeners.delete(listener)
+    }
+  }
+
+  private emitProgress(progress: CloneProgress): void {
+    for (const listener of [...this.progressListeners]) {
+      try {
+        listener(progress)
+      } catch {
+        // A subscriber failure must not abort the clone or starve the other subscribers.
+      }
+    }
+  }
+
   async clone(request: CloneProjectRequest): Promise<ProjectRecord> {
     const { repositoryUrl, targetDirectory } = cloneProjectRequestSchema.parse(request)
     if (this.cloneRun) throw new Error('A Git clone is already in progress.')
@@ -162,11 +190,20 @@ export class ProjectService {
         if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`The destination already exists: ${destination}`)
         throw error
       }
+      let lastProgressAt = 0
       try {
         await this.runner.run('git', ['-c', 'credential.interactive=false', 'clone', '--progress', '--', repositoryUrl, destination], parent, {
           idleTimeoutMs: CLONE_IDLE_TIMEOUT_MS,
           env: { GIT_TERMINAL_PROMPT: '0' },
-          signal: controller.signal
+          signal: controller.signal,
+          onOutput: (chunk) => {
+            const progress = parseCloneProgress(chunk)
+            if (!progress) return
+            const at = this.clock().getTime()
+            if (at - lastProgressAt < CLONE_PROGRESS_INTERVAL_MS) return
+            lastProgressAt = at
+            this.emitProgress(progress)
+          }
         })
       } catch (error) {
         // Drop the whole reservation. It is a directory this method created exclusively and

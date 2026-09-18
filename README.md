@@ -187,7 +187,10 @@ Codeflai opens maximized every time and restores a 1180×760 window when you un-
   credentials or SSH configuration, so set that up before cloning. A running clone can be
   stopped with **Cancel clone**, and one that goes two minutes without reporting any
   progress is ended with an error instead of hanging. Either way the partly cloned folder
-  is removed, so the next attempt starts clean.
+  is removed, so the next attempt starts clean. While it runs, Git's own progress is shown
+  under a progress bar. Git counts each phase separately, so the percentage restarts at 0%
+  a few times on its way through counting, compressing, receiving and resolving -- the line
+  underneath says which phase you are in.
 
   If clones stall on a machine that needs a proxy, note that Git does not read the Windows
   system proxy the way a browser does — it only reads its own configuration or the

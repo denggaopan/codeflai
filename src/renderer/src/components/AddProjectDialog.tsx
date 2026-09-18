@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import type { CloneProgress } from '../../../shared/contracts'
+
 import { cloneDirectoryName } from '../../../shared/git-clone'
 import { normalizeProjectPath } from '../../../shared/project-path'
 import closeIconUrl from '../assets/close.svg'
@@ -21,6 +23,7 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
   const [targetDirectory, setTargetDirectory] = useState('')
   const [busy, setBusy] = useState<Mode | 'directory' | 'remove' | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  const [progress, setProgress] = useState<CloneProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pending = useRef(false)
   // Set by the Cancel button so the rejection it provokes is not reported back as a failure.
@@ -42,6 +45,13 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (busy) panel.current?.focus()
   }, [busy])
+
+  useEffect(() => window.codeflai.onCloneProgress((next) => {
+    // Git restarts the percentage at 0% for every phase and omits it entirely on
+    // announcements and summaries. Carrying the previous value forward keeps the bar from
+    // dropping to zero on a line that simply has nothing to say about progress.
+    setProgress((current) => ({ line: next.line, ...(next.percent === undefined ? current?.percent === undefined ? {} : { percent: current.percent } : { percent: next.percent }) }))
+  }), [])
 
   const recentProjects = (appState.recentProjects ?? []).filter((recent) => !appState.projects.some((project) =>
     project.id === recent.id || normalizeProjectPath(project.path, platform) === normalizeProjectPath(recent.path, platform)))
@@ -70,6 +80,8 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
       cancelled.current = false
       setBusy(null)
       setCancelling(false)
+      // A retry must not open on the previous attempt's last line.
+      setProgress(null)
     }
   }
 
@@ -234,13 +246,30 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
 
         {busy && (
           <div className="add-project-activity">
-            <p role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : busy === 'remove' ? 'addProject.removing' : 'addProject.opening')}</p>
+            <p id="add-project-activity-label" role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : busy === 'remove' ? 'addProject.removing' : 'addProject.opening')}</p>
             {busy === 'clone' && (
               <button type="button" className="settings-update-button add-project-cancel" disabled={cancelling} onClick={() => void cancelClone()}>
                 {t('addProject.cancelClone')}
               </button>
             )}
           </div>
+        )}
+        {busy === 'clone' && progress && (
+          <>
+            {/* Labelled by the status line above rather than a string of its own: Git's text is
+                English and the localized "Cloning repository..." already names the activity. */}
+            <div
+              className={progress.percent === undefined ? 'progress-track add-project-progress-track progress-track--indeterminate' : 'progress-track add-project-progress-track'}
+              role="progressbar"
+              aria-labelledby="add-project-activity-label"
+              aria-valuemin={0}
+              aria-valuemax={progress.percent === undefined ? undefined : 100}
+              aria-valuenow={progress.percent}
+            >
+              <div className="progress-fill" style={progress.percent === undefined ? undefined : { width: `${progress.percent}%` }} />
+            </div>
+            <p className="add-project-git-progress">{progress.line}</p>
+          </>
         )}
         {error && <p role="alert" className="settings-dialog-error add-project-error">{error}</p>}
       </div>

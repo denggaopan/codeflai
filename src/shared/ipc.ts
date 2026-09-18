@@ -7,6 +7,7 @@ export const IPC = {
   projectCloneDirectory: 'project:clone-directory',
   projectClone: 'project:clone',
   projectCloneCancel: 'project:clone-cancel',
+  projectCloneProgress: 'project:clone-progress',
   projectReorder: 'project:reorder',
   projectOpenVSCode: 'project:open-vscode',
   projectOpenFolder: 'project:open-folder',

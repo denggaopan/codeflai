@@ -17,6 +17,11 @@ export type CommandOptions = {
   idleTimeoutMs?: number
   env?: NodeJS.ProcessEnv
   signal?: AbortSignal
+  /**
+   * Receives each stdout/stderr chunk as it arrives, for commands whose progress is worth
+   * showing before they finish. The collected result is unaffected.
+   */
+  onOutput?: (chunk: string) => void
 }
 export const COMMAND_MAX_BUFFER_BYTES = 16 * 1024 * 1024
 
@@ -138,9 +143,14 @@ export const commandRunner: CommandRunner = {
         idleTimer = setTimeout(() => terminate('idle-timeout'), options.idleTimeoutMs)
       }
 
+      const onChunk = (chunk: unknown): void => {
+        resetIdleTimer()
+        options?.onOutput?.(String(chunk))
+      }
+
       options?.signal?.addEventListener('abort', onAbort, { once: true })
-      child.stdout?.on('data', resetIdleTimer)
-      child.stderr?.on('data', resetIdleTimer)
+      child.stdout?.on('data', onChunk)
+      child.stderr?.on('data', onChunk)
       // Start the clock at spawn: a transport that blocks before its first byte is the
       // exact failure this guards against.
       resetIdleTimer()

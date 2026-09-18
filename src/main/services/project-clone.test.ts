@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { CloneProgress } from '../../shared/contracts'
 import { CommandError, commandRunner, type CommandRunner } from '../infrastructure/command-runner'
 import { CLONE_IDLE_TIMEOUT_MS, ProjectService } from './project-service'
 import { SessionStore } from './session-store'
@@ -46,7 +47,8 @@ describe('ProjectService.clone', () => {
     expect(run).toHaveBeenCalledWith('git', ['-c', 'credential.interactive=false', 'clone', '--progress', '--', repositoryUrl, project.path], directory, {
       idleTimeoutMs: CLONE_IDLE_TIMEOUT_MS,
       env: { GIT_TERMINAL_PROMPT: '0' },
-      signal: expect.any(AbortSignal)
+      signal: expect.any(AbortSignal),
+      onOutput: expect.any(Function)
     })
   }, 30_000)
 
@@ -139,6 +141,57 @@ describe('ProjectService.clone', () => {
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
     service.cancelClone()
     await second
+  })
+
+  it('forwards parsed Git progress to subscribers, throttled', async () => {
+    const CR = String.fromCharCode(13)
+    const seen: CloneProgress[] = []
+    const run = vi.fn<CommandRunner['run']>(async (_file, _args, _cwd, options) => {
+      options?.onOutput?.(`remote: Counting objects:   1% (1/100)        ${CR}`)
+      options?.onOutput?.(`Receiving objects:   2% (2/100)${CR}`)
+      options?.onOutput?.(`Receiving objects:   3% (3/100)${CR}`)
+      throw new Error('Connection lost')
+    })
+    const service = new ProjectService(store, { run })
+    service.onProgress((progress) => seen.push(progress))
+
+    await expect(service.clone({ repositoryUrl, targetDirectory: directory })).rejects.toThrow('Connection lost')
+
+    // Git repaints many times a second; three refreshes inside one millisecond collapse to
+    // the first rather than sending every frame across IPC.
+    expect(seen).toEqual([{ line: 'remote: Counting objects:   1% (1/100)', percent: 1 }])
+  })
+
+  it('stops delivering progress once a subscriber unsubscribes', async () => {
+    const CR = String.fromCharCode(13)
+    const seen: CloneProgress[] = []
+    const run = vi.fn<CommandRunner['run']>(async (_file, _args, _cwd, options) => {
+      options?.onOutput?.(`Receiving objects:   1% (1/100)${CR}`)
+      throw new Error('Connection lost')
+    })
+    const service = new ProjectService(store, { run })
+    const unsubscribe = service.onProgress((progress) => seen.push(progress))
+    unsubscribe()
+
+    await expect(service.clone({ repositoryUrl, targetDirectory: directory })).rejects.toThrow('Connection lost')
+
+    expect(seen).toEqual([])
+  })
+
+  it('keeps the clone and the other subscribers alive when one listener throws', async () => {
+    const CR = String.fromCharCode(13)
+    const seen: CloneProgress[] = []
+    const run = vi.fn<CommandRunner['run']>(async (_file, _args, _cwd, options) => {
+      options?.onOutput?.(`Receiving objects:   1% (1/100)${CR}`)
+      throw new Error('Connection lost')
+    })
+    const service = new ProjectService(store, { run })
+    service.onProgress(() => { throw new Error('subscriber exploded') })
+    service.onProgress((progress) => seen.push(progress))
+
+    await expect(service.clone({ repositoryUrl, targetDirectory: directory })).rejects.toThrow('Connection lost')
+
+    expect(seen).toEqual([{ line: 'Receiving objects:   1% (1/100)', percent: 1 }])
   })
 
   it('ignores a cancel request when no clone is running', () => {

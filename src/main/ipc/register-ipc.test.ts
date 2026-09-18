@@ -6,6 +6,7 @@ import type {
   AppInfo,
   AppSnapshot,
   AppState,
+  CloneProgress,
   DeleteSessionResult,
   ProjectRecord,
   SessionRecord,
@@ -236,7 +237,7 @@ type Harness = {
   ipcMain: FakeIpcMain
   window: ReturnType<typeof fakeWindow>
   dialog: ReturnType<typeof fakeDialog>
-  projectService: { register: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; reorder: ReturnType<typeof vi.fn>; reopen: ReturnType<typeof vi.fn>; removeRecent: ReturnType<typeof vi.fn>; clone: ReturnType<typeof vi.fn>; cancelClone: ReturnType<typeof vi.fn> }
+  projectService: { register: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; reorder: ReturnType<typeof vi.fn>; reopen: ReturnType<typeof vi.fn>; removeRecent: ReturnType<typeof vi.fn>; clone: ReturnType<typeof vi.fn>; cancelClone: ReturnType<typeof vi.fn>; emitProgress: (progress: CloneProgress) => void; progressListenerCount: () => number }
   coordinator: FakeCoordinator
   externalAppService: { openInVSCode: ReturnType<typeof vi.fn>; openInExplorer: ReturnType<typeof vi.fn>; openRepository: ReturnType<typeof vi.fn> }
   appInfoService: {
@@ -268,7 +269,24 @@ const buildHarness = (options: {
   const window = fakeWindow(options.windowDestroyed ?? false)
   const ipcMain = new FakeIpcMain(window.webContents)
   const dialog = fakeDialog(options.dialogResult ?? { canceled: true, filePaths: [] })
-  const projectService = { register: vi.fn(async () => project), get: vi.fn(async () => project), reorder: vi.fn(async () => [project]), reopen: vi.fn(async () => project), removeRecent: vi.fn(async () => undefined), clone: vi.fn(async () => project), cancelClone: vi.fn() }
+  const progressListeners = new Set<(progress: CloneProgress) => void>()
+  const projectService = {
+    register: vi.fn(async () => project),
+    get: vi.fn(async () => project),
+    reorder: vi.fn(async () => [project]),
+    reopen: vi.fn(async () => project),
+    removeRecent: vi.fn(async () => undefined),
+    clone: vi.fn(async () => project),
+    cancelClone: vi.fn(),
+    onProgress: (listener: (progress: CloneProgress) => void) => {
+      progressListeners.add(listener)
+      return () => progressListeners.delete(listener)
+    },
+    emitProgress: (progress: CloneProgress) => {
+      for (const listener of [...progressListeners]) listener(progress)
+    },
+    progressListenerCount: () => progressListeners.size
+  }
   const coordinator = new FakeCoordinator()
   const externalAppService = {
     openInVSCode: vi.fn(async () => undefined),
@@ -1128,6 +1146,23 @@ describe('registerIpc: event publication', () => {
     expect(window.webContents.send).toHaveBeenCalledWith(IPC.appUpdateProgress, progress)
   })
 
+  it('publishes clone progress only to a non-destroyed window', () => {
+    const { window, projectService } = buildHarness({ windowDestroyed: false })
+    const progress: CloneProgress = { line: 'Receiving objects:  42% (1553/3697)', percent: 42 }
+
+    projectService.emitProgress(progress)
+
+    expect(window.webContents.send).toHaveBeenCalledWith(IPC.projectCloneProgress, progress)
+  })
+
+  it('does not publish clone progress when the window webContents is destroyed', () => {
+    const { window, projectService } = buildHarness({ windowDestroyed: true })
+
+    projectService.emitProgress({ line: 'Receiving objects:  42% (1553/3697)', percent: 42 })
+
+    expect(window.webContents.send).not.toHaveBeenCalled()
+  })
+
   it('does not publish download progress when the window webContents is destroyed', () => {
     const { window, updaterService } = buildHarness({ windowDestroyed: true })
 
@@ -1171,6 +1206,15 @@ describe('registerIpc: disposer', () => {
     ]) {
       expect(ipcMain.handlers.has(channel)).toBe(false)
     }
+  })
+
+  it('drops the clone progress subscription', () => {
+    const { projectService, dispose } = buildHarness()
+    expect(projectService.progressListenerCount()).toBe(1)
+
+    dispose()
+
+    expect(projectService.progressListenerCount()).toBe(0)
   })
 
   it('removes every registered send-only listener', () => {

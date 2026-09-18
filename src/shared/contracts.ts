@@ -322,6 +322,16 @@ export type UpdateCheckResult =
   | { status: 'none'; currentVersion: string }
   | { status: 'error'; message: string }
 
+// Streamed to the renderer while a clone runs. `line` is Git's own progress text, shown
+// verbatim: it already names the phase, the counts and the transfer rate better than a
+// re-rendered version would, and it survives Git adding phases. `percent` is absent on
+// phase announcements and summary lines, where the bar holds its previous value rather
+// than dropping to zero -- Git restarts the count at 0% for every phase as it is.
+export type CloneProgress = {
+  line: string
+  percent?: number
+}
+
 // Streamed to the renderer while an installer downloads. `totalBytes` is 0 when the server
 // sends no length, which the progress bar renders as indeterminate rather than as 0%.
 export type UpdateDownloadProgress = {

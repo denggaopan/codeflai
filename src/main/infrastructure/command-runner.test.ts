@@ -139,3 +139,35 @@ describe.skipIf(process.platform !== 'win32')('commandRunner: cancellation kills
     }
   })
 })
+
+describe('commandRunner: streamed output', () => {
+  it('hands the caller each chunk as it arrives, without disturbing the collected result', async () => {
+    const chunks: string[] = []
+
+    const result = await commandRunner.run(
+      process.execPath,
+      ['-e', "process.stderr.write('first|'); setTimeout(() => process.stderr.write('second|'), 40)"],
+      undefined,
+      { onOutput: (chunk) => chunks.push(chunk) }
+    )
+
+    // Arrival in separate chunks is the point; the boundaries themselves are the OS's business.
+    expect(chunks.length).toBeGreaterThanOrEqual(2)
+    expect(chunks.join('')).toBe('first|second|')
+    expect(result.stderr).toBe('first|second|')
+  })
+
+  it('keeps feeding the idle timer while streaming, so a live command is not killed', async () => {
+    const chunks: string[] = []
+
+    const result = await commandRunner.run(
+      process.execPath,
+      ['-e', "let n = 0; const t = setInterval(() => { process.stderr.write('.'); if (++n === 40) clearInterval(t) }, 25)"],
+      undefined,
+      { idleTimeoutMs: 1500, onOutput: (chunk) => chunks.push(chunk) }
+    )
+
+    expect(chunks.join('')).toBe('.'.repeat(40))
+    expect(result.exitCode).toBe(0)
+  }, 30_000)
+})

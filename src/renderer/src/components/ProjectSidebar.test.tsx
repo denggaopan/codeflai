@@ -9,6 +9,7 @@ import type {
   AppSnapshot,
   AppState,
   CapabilityState,
+  CloneProgress,
   DeleteSessionResult,
   ProjectRecord,
   SessionRecord,
@@ -43,6 +44,7 @@ const createFakeApi = (): FakeApi => ({
   removeRecentProject: vi.fn(async (): Promise<void> => undefined),
   selectCloneDirectory: vi.fn(async (): Promise<string | null> => null),
   cancelProjectClone: vi.fn(async (): Promise<void> => undefined),
+  onCloneProgress: vi.fn((): (() => void) => () => undefined),
   cloneProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('cloneProject not stubbed') }),
   reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
   openProjectInVSCode: vi.fn(async (_projectId: string): Promise<void> => undefined),
@@ -694,6 +696,57 @@ describe('ProjectSidebar', () => {
     expect(screen.getByRole('button', { name: 'Cancel clone' })).toBeEnabled()
     await act(async () => rejectClone(new Error('Authentication failed')))
     expect(screen.getByRole('alert')).toHaveTextContent('Authentication failed')
+  })
+
+  it('shows Git progress verbatim and drives the bar from its percentage', async () => {
+    const user = userEvent.setup()
+    let emit!: (progress: CloneProgress) => void
+    vi.mocked(api.onCloneProgress).mockImplementation((listener) => { emit = listener; return () => undefined })
+    vi.mocked(api.cloneProject).mockImplementation(() => new Promise(() => undefined))
+    vi.mocked(api.selectCloneDirectory).mockResolvedValue('C:\Projects')
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Clone Git repository' }))
+    await user.type(screen.getByLabelText('Git repository URL'), 'https://example.com/repo.git')
+    await user.click(screen.getByRole('button', { name: 'Browse...' }))
+    await user.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    const line = 'Receiving objects:  42% (1553/3697), 118.24 MiB | 3.51 MiB/s'
+    act(() => emit({ line, percent: 42 }))
+
+    expect(screen.getByText(line, { normalizer: (text) => text })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
+
+    // Git restarts the count at 0% per phase and prints summary lines with no percentage at
+    // all; those must leave the bar where it was instead of dropping it to zero.
+    const summary = 'remote: Total 3697 (delta 1545), reused 1326 (delta 1127)'
+    act(() => emit({ line: summary }))
+
+    expect(screen.getByText(summary, { normalizer: (text) => text })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
+  })
+
+  it('clears the progress line when the clone ends', async () => {
+    const user = userEvent.setup()
+    let emit!: (progress: CloneProgress) => void
+    let rejectClone!: (error: Error) => void
+    vi.mocked(api.onCloneProgress).mockImplementation((listener) => { emit = listener; return () => undefined })
+    vi.mocked(api.cloneProject).mockImplementation(() => new Promise((_resolve, reject) => { rejectClone = reject }))
+    vi.mocked(api.selectCloneDirectory).mockResolvedValue('C:\Projects')
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Clone Git repository' }))
+    await user.type(screen.getByLabelText('Git repository URL'), 'https://example.com/repo.git')
+    await user.click(screen.getByRole('button', { name: 'Browse...' }))
+    await user.click(screen.getByRole('button', { name: 'Clone and open' }))
+    act(() => emit({ line: 'Receiving objects:  42% (1553/3697)', percent: 42 }))
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+
+    await act(async () => rejectClone(new Error('Connection lost')))
+
+    // A retry must not open on the previous attempt's last line.
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Receiving objects/u)).not.toBeInTheDocument()
   })
 
   it('retains clone form values on failure and preserves a chosen directory when browsing is cancelled', async () => {

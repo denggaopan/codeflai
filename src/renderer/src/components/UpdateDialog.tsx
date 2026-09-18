@@ -110,7 +110,7 @@ export default function UpdateDialog() {
             {/* A server that sends no length leaves totalBytes at 0: the bar goes
                 indeterminate (no aria-valuenow, no width) rather than claiming 0%. */}
             <div
-              className={updater.totalBytes > 0 ? 'update-progress-track' : 'update-progress-track update-progress-track--indeterminate'}
+              className={updater.totalBytes > 0 ? 'progress-track' : 'progress-track progress-track--indeterminate'}
               role="progressbar"
               aria-label={t('update.downloadProgressLabel')}
               aria-valuemin={0}
@@ -118,7 +118,7 @@ export default function UpdateDialog() {
               aria-valuenow={updater.totalBytes > 0 ? updater.receivedBytes : undefined}
             >
               <div
-                className="update-progress-fill"
+                className="progress-fill"
                 style={
                   updater.totalBytes > 0
                     ? { width: `${Math.min(100, (updater.receivedBytes / updater.totalBytes) * 100)}%` }

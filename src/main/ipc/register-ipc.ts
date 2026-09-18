@@ -413,6 +413,9 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
   const unsubscribeUpdateProgress = updaterService.onProgress((progress) => {
     publish(window, IPC.appUpdateProgress, progress)
   })
+  const unsubscribeCloneProgress = projectService.onProgress((progress) => {
+    publish(window, IPC.projectCloneProgress, progress)
+  })
   const unsubscribeNotificationActivate = notificationService.onActivate((sessionId) => {
     publish(window, IPC.notificationActivate, { sessionId })
   })
@@ -428,6 +431,7 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     unsubscribeTerminalData()
     unsubscribeTerminalExit()
     unsubscribeUpdateProgress()
+    unsubscribeCloneProgress()
     unsubscribeNotificationActivate()
   }
 }
