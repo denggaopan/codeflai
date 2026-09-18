@@ -154,6 +154,7 @@ export default function TerminalWorkspace() {
   const sessionFocusRequest = useAppStore((state) => state.sessionFocusRequest)
   const restoreSession = useAppStore((state) => state.restoreSession)
   const theme = useAppStore((state) => state.theme)
+  const terminalFontSize = useAppStore((state) => state.terminalFontSize)
 
   const [mountedSessionIds, setMountedSessionIds] = useState<string[]>([])
   const entriesRef = useRef<Map<string, TerminalEntry>>(new Map())
@@ -216,8 +217,9 @@ export default function TerminalWorkspace() {
       // after a full-screen panel such as Claude Code's /usage is dismissed.
       cursorBlink: true,
       fontFamily: TERMINAL_FONT_FAMILY,
-      // Read via getState() rather than the subscribed `theme`: ensureEntry runs inside a
-      // stable ref callback, and the theme-change effect below re-themes live entries anyway.
+      // Both read via getState() rather than the subscribed values: ensureEntry runs inside a
+      // stable ref callback, and the effects below push later changes to live entries anyway.
+      fontSize: useAppStore.getState().terminalFontSize,
       theme: xtermTheme(useAppStore.getState().theme)
     })
     const fitAddon = new FitAddon()
@@ -429,6 +431,18 @@ export default function TerminalWorkspace() {
       entry.terminal.options.theme = xtermTheme(theme)
     }
   }, [theme])
+
+  // Resize every live terminal when the font size preference changes. Unlike a theme change
+  // this alters cell geometry, so the visible pane has to be re-fitted: that recomputes the
+  // block-glyph alignment for the new cell width and pushes the new cols/rows to its PTY.
+  // Hidden panes are deliberately not fitted — applyFit refuses them because display:none
+  // yields degenerate dimensions — and the activation effect fits them when they come back.
+  useEffect(() => {
+    for (const entry of entriesRef.current.values()) {
+      entry.terminal.options.fontSize = terminalFontSize
+    }
+    if (activeSessionIdRef.current) applyFit(activeSessionIdRef.current)
+  }, [terminalFontSize])
 
   // Dispose entries whose session no longer exists (deleted), and drop their pane.
   useEffect(() => {

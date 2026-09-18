@@ -201,6 +201,7 @@ export const en = {
   'settings.themeTomorrowNightBlue': 'Tomorrow Night Blue',
   'settings.language': 'Language',
   'settings.showQuickPrompts': 'Show quick prompt bar',
+  'settings.terminalFontSize': 'Terminal font size',
   'settings.notifications': 'Notify when a session finishes',
   'settings.version': 'Version',
   'settings.versionUnknown': 'Unknown',

@@ -25,6 +25,7 @@ import {
   AGENT_IDLE_MS,
   AUTO_SHUTDOWN_STORAGE_KEY,
   NOTIFICATIONS_STORAGE_KEY,
+  TERMINAL_FONT_SIZE_STORAGE_KEY,
   SESSION_KINDS_STORAGE_KEY,
   WINDOW_PINNED_STORAGE_KEY,
   useAppStore
@@ -1708,5 +1709,27 @@ describe('session notifications', () => {
     api.onNotificationActivate.mock.calls.at(-1)![0]({ sessionId: 'deleted-session' })
 
     expect(useAppStore.getState().activeSessionId).toBe(powershellSession.id)
+  })
+})
+
+describe('terminal font size', () => {
+  it('stores a size from the offered table', () => {
+    useAppStore.getState().setTerminalFontSize(20)
+
+    expect(useAppStore.getState().terminalFontSize).toBe(20)
+    expect(window.localStorage.getItem(TERMINAL_FONT_SIZE_STORAGE_KEY)).toBe('20')
+  })
+
+  it('refuses a size the dropdown does not offer', () => {
+    const before = useAppStore.getState().terminalFontSize
+
+    // 17 is off-grid and 0 would make fitAddon propose degenerate cols/rows; neither may be
+    // stored, and neither may leave the <select> rendering a value it has no option for.
+    useAppStore.getState().setTerminalFontSize(17)
+    useAppStore.getState().setTerminalFontSize(0)
+    useAppStore.getState().setTerminalFontSize(Number.NaN)
+
+    expect(useAppStore.getState().terminalFontSize).toBe(before)
+    expect(window.localStorage.getItem(TERMINAL_FONT_SIZE_STORAGE_KEY)).toBeNull()
   })
 })

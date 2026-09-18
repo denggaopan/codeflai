@@ -563,6 +563,10 @@ The gear at the bottom-left of the sidebar opens Settings.
   **Visual Studio Dark**, **Abyss**, **Monokai**, **Solarized Dark**, and
   **Tomorrow Night Blue** are ports of the familiar editor themes. The choice covers the whole
   window, terminals included.
+- **Terminal font size** — a dropdown from 10 to 24 points, applied to every open terminal at
+  once. Only the size is configurable, not the typeface: the correction that keeps agent
+  startup logos free of hairline gaps is worked out from the default font's exact character
+  width, and another typeface would need that redone by eye.
 - **Language** — English or 简体中文. It defaults to English rather than following your OS
   language. It covers the interface only: tool-availability hints, session errors, and
   session titles that were already generated stay in the language they were produced in.

@@ -8,6 +8,7 @@ import { LOCALES, type TranslationKey, type Translator } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
 import { sessionKindOptions, type SessionKindOption } from '../session-kind-options'
 import { resolveActiveSection, SETTINGS_SECTIONS, type SettingsSectionId } from '../settings-sections'
+import { TERMINAL_FONT_SIZES } from '../terminal-font'
 import { useAppStore } from '../store/use-app-store'
 
 type SettingsDialogProps = {
@@ -81,6 +82,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const platform = useAppStore((state) => state.platform)
   const theme = useAppStore((state) => state.theme)
   const setTheme = useAppStore((state) => state.setTheme)
+  const terminalFontSize = useAppStore((state) => state.terminalFontSize)
+  const setTerminalFontSize = useAppStore((state) => state.setTerminalFontSize)
   const locale = useAppStore((state) => state.locale)
   const setLocale = useAppStore((state) => state.setLocale)
   const showQuickPrompts = useAppStore((state) => state.showQuickPrompts)
@@ -368,6 +371,27 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {THEME_PREFERENCES.map((option) => (
                     <option key={option} value={option}>
                       {t(THEME_LABEL_KEYS[option])}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-terminal-font-size-label">
+                  {t('settings.terminalFontSize')}
+                </span>
+                {/* Only the size is offered, not the family: block-glyph-alignment.ts re-derives
+                    itself on every fit so a size change is safe, but its analysis is specific to
+                    Cascadia Mono's advance width and another family would invalidate it. */}
+                <select
+                  className="settings-select"
+                  aria-labelledby="settings-terminal-font-size-label"
+                  value={String(terminalFontSize)}
+                  onChange={(event) => setTerminalFontSize(Number(event.target.value))}
+                >
+                  {TERMINAL_FONT_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
                     </option>
                   ))}
                 </select>

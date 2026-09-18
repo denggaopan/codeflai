@@ -34,6 +34,7 @@ import {
 } from '../auto-shutdown'
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
+import { DEFAULT_TERMINAL_FONT_SIZE, isTerminalFontSize, parseStoredTerminalFontSize } from '../terminal-font'
 import { defaultSessionKindPreferences } from '../session-kind-options'
 import { QUICK_PROMPTS_STORAGE_KEY, quickPromptsSchema, readStoredQuickPrompts, type QuickPrompt } from '../quick-prompts'
 import { readMigratedStorage } from '../storage-migration'
@@ -88,6 +89,7 @@ export type AppStore = {
   quickPrompts: QuickPrompt[]
   showQuickPrompts: boolean
   notificationsEnabled: boolean
+  terminalFontSize: number
   /** Drives UpdateDialog; `idle` renders nothing at all. */
   updater: UpdaterState
 
@@ -120,6 +122,7 @@ export type AppStore = {
   setQuickPrompts: (prompts: QuickPrompt[]) => boolean
   setShowQuickPrompts: (show: boolean) => void
   setNotificationsEnabled: (enabled: boolean) => void
+  setTerminalFontSize: (size: number) => void
 
   addProject: (source?: { recentProjectId: string } | CloneProjectRequest) => Promise<boolean>
   removeRecentProject: (projectId: string) => Promise<void>
@@ -181,6 +184,7 @@ export const THEME_STORAGE_KEY = 'codeflai.theme'
 export const LOCALE_STORAGE_KEY = 'codeflai.locale'
 export const SESSION_KINDS_STORAGE_KEY = 'codeflai.sessionKinds'
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'codeflai.sidebarWidth'
+export const TERMINAL_FONT_SIZE_STORAGE_KEY = 'codeflai.terminalFontSize'
 export const WINDOW_PINNED_STORAGE_KEY = 'codeflai.windowPinned'
 export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
 export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
@@ -352,6 +356,14 @@ const persistSidebarWidth = (width: number): void => {
     window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width))
   } catch {
     // localStorage unavailable: the preference just won't survive a restart.
+  }
+}
+
+const readStoredTerminalFontSize = (): number => {
+  try {
+    return parseStoredTerminalFontSize(window.localStorage.getItem(TERMINAL_FONT_SIZE_STORAGE_KEY))
+  } catch {
+    return DEFAULT_TERMINAL_FONT_SIZE
   }
 }
 
@@ -602,6 +614,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     quickPrompts: [],
     showQuickPrompts: false,
     notificationsEnabled: true,
+    terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
     updater: { phase: 'idle' },
 
     initialize: () => {
@@ -677,7 +690,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         sidebarWidth: readStoredSidebarWidth(),
         quickPrompts: readStoredQuickPrompts(),
         showQuickPrompts: readStoredShowQuickPrompts(),
-        notificationsEnabled: readStoredNotifications()
+        notificationsEnabled: readStoredNotifications(),
+        terminalFontSize: readStoredTerminalFontSize()
       })
 
       const persistWorkspace = (): void => {
@@ -908,6 +922,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         quickPrompts: [],
         showQuickPrompts: false,
         notificationsEnabled: true,
+        terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
         updater: { phase: 'idle' }
       })
     },
@@ -1079,6 +1094,20 @@ export const useAppStore = create<AppStore>()((set, get) => {
     resetSidebarWidth: () => {
       set({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH })
       persistSidebarWidth(DEFAULT_SIDEBAR_WIDTH)
+    },
+
+    // Gated on the offered table rather than clamped into it: a size this build cannot put in
+    // its dropdown would leave that control rendering blank, and a degenerate one makes
+    // fitAddon propose degenerate cols/rows (the same reason setAutoShutdownInterval refuses
+    // values outside its own table).
+    setTerminalFontSize: (size) => {
+      if (!isTerminalFontSize(size) || size === get().terminalFontSize) return
+      set({ terminalFontSize: size })
+      try {
+        window.localStorage.setItem(TERMINAL_FONT_SIZE_STORAGE_KEY, String(size))
+      } catch {
+        // Match other presentation preferences when localStorage is unavailable.
+      }
     },
 
     setQuickPrompts: (prompts) => {

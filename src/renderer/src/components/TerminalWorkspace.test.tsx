@@ -388,6 +388,33 @@ describe('TerminalWorkspace', () => {
     expect(terminal.options.theme).toMatchObject({ background: '#0b0f14' })
   })
 
+  it('creates terminals at the stored font size and resizes every live one when it changes', async () => {
+    seedStore(runningClaudeSession, runningPowerShellSession)
+    act(() => useAppStore.setState({ activeSessionId: runningClaudeSession.id }))
+    render(<TerminalWorkspace />)
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
+    // A second session so the effect has to reach a hidden pane too, not just the visible one.
+    act(() => useAppStore.setState({ activeSessionId: runningPowerShellSession.id }))
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(2))
+
+    expect(FakeTerminal.instances.map((terminal) => terminal.options.fontSize)).toEqual([15, 15])
+
+    // The visible pane must also be re-fitted — that is the whole difference from a theme
+    // change, which leaves cell geometry alone. FakeFitAddon returns a fixed proposal, so the
+    // post-change dimensions are injected the way the ResizeObserver test below does it.
+    const activeFit = FakeFitAddon.instances[1]
+    activeFit.proposeDimensions.mockReturnValue({ cols: 60, rows: 18 })
+    api.resizeTerminal.mockClear()
+
+    act(() => useAppStore.setState({ terminalFontSize: 20 }))
+
+    // Both, including the one whose pane is display:none — otherwise switching back to it would
+    // show the old size until something else happened to re-fit it.
+    expect(FakeTerminal.instances.map((terminal) => terminal.options.fontSize)).toEqual([20, 20])
+    // Fewer columns fit at a larger size, and the PTY has to be told.
+    expect(api.resizeTerminal).toHaveBeenCalledWith(runningPowerShellSession.id, 60, 18)
+  })
+
   it('focuses the terminal as soon as its session becomes active so typing works without clicking', async () => {
     seedStore(runningPowerShellSession)
     act(() => useAppStore.setState({ activeSessionId: runningPowerShellSession.id }))
