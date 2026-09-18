@@ -561,46 +561,62 @@ app.whenReady().then(() => {
     app.exit(1)
   })
 
-  const window = createMainWindow(runtimePlatform)
+  /**
+   * Opens the main window and wires everything that belongs to *that window*: the notification
+   * service holding a reference to it, and the IPC layer whose sender check and broadcasts both
+   * target its webContents. The services above are application-scoped and are deliberately not
+   * rebuilt here — only the per-window half is.
+   *
+   * This has to be callable more than once. macOS keeps the app running after the last window
+   * closes, so `activate` opens a fresh one — and closing a window runs `disposeIpc`, which
+   * removes every handler and every broadcast subscription. A second window opened without
+   * repeating this wiring gets no IPC at all: its first `getSnapshot()` rejects and the app
+   * never finishes loading.
+   */
+  const openMainWindow = (): void => {
+    const window = createMainWindow(runtimePlatform)
 
-  const notificationService = isE2E
-    ? buildE2ENotificationService(window)
-    : new NotificationService(electronNotificationSurface(window), electronNotificationFactory())
+    const notificationService = isE2E
+      ? buildE2ENotificationService(window)
+      : new NotificationService(electronNotificationSurface(window), electronNotificationFactory())
 
-  const disposeIpc = registerIpc({
-    ipcMain,
-    dialog: dialogForIpc,
-    window,
-    projectService,
-    coordinator,
-    externalAppService,
-    appInfoService,
-    updaterService,
-    powerService,
-    notificationService,
-    terminalService: terminal,
-    saveWorkspace: (workspace) => store.saveWorkspace(workspace),
-    getSnapshot: buildGetSnapshot(
-      coordinator,
+    const disposeIpc = registerIpc({
+      ipcMain,
+      dialog: dialogForIpc,
+      window,
       projectService,
+      coordinator,
       externalAppService,
-      agentLocator,
-      store,
-      runtimePlatform,
-      sessionsReconciled
-    ),
-    applyTheme: (theme) => applyWindowTheme(window, theme, runtimePlatform),
-    applyPinned: (pinned) => applyWindowPinned(window, pinned),
-    copyText: (text) => clipboard.writeText(text)
-  })
+      appInfoService,
+      updaterService,
+      powerService,
+      notificationService,
+      terminalService: terminal,
+      saveWorkspace: (workspace) => store.saveWorkspace(workspace),
+      getSnapshot: buildGetSnapshot(
+        coordinator,
+        projectService,
+        externalAppService,
+        agentLocator,
+        store,
+        runtimePlatform,
+        sessionsReconciled
+      ),
+      applyTheme: (theme) => applyWindowTheme(window, theme, runtimePlatform),
+      applyPinned: (pinned) => applyWindowPinned(window, pinned),
+      copyText: (text) => clipboard.writeText(text)
+    })
 
-  window.on('closed', () => {
-    disposeIpc()
-  })
+    window.on('closed', () => {
+      disposeIpc()
+    })
+  }
+
+  openMainWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow(runtimePlatform)
+      openMainWindow()
     }
   })
 
