@@ -94,6 +94,7 @@ export const zhTW: Translations = {
   'addProject.destination': '儲存至：{path}',
   'addProject.cloneAction': '複製並開啟',
   'addProject.cloning': '正在複製儲存庫，可能需要幾分鐘...',
+  'addProject.cancelClone': '取消複製',
   'addProject.opening': '正在開啟...',
   'addProject.failed': '無法新增專案：{reason}',
 

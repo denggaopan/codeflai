@@ -308,6 +308,7 @@ describe('shared contracts', () => {
       projectRemoveRecent: 'project:remove-recent',
       projectCloneDirectory: 'project:clone-directory',
       projectClone: 'project:clone',
+      projectCloneCancel: 'project:clone-cancel',
       projectOpenVSCode: 'project:open-vscode',
       projectOpenFolder: 'project:open-folder',
       projectOpenRepository: 'project:open-repository',

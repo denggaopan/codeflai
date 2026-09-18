@@ -29,6 +29,8 @@ export type CodeflaiApi = {
   removeRecentProject(projectId: string): Promise<void>
   selectCloneDirectory(): Promise<string | null>
   cloneProject(request: CloneProjectRequest): Promise<ProjectRecord>
+  /** Ends the running clone. Takes no argument: the renderer never names a process to kill. */
+  cancelProjectClone(): Promise<void>
   reorderProjects(orderedProjectIds: readonly string[]): Promise<ProjectRecord[]>
   openProjectInVSCode(projectId: string): Promise<void>
   openProjectFolder(projectId: string): Promise<void>
@@ -89,6 +91,7 @@ const api: CodeflaiApi = {
   removeRecentProject: (projectId) => ipcRenderer.invoke(IPC.projectRemoveRecent, { projectId }),
   selectCloneDirectory: () => ipcRenderer.invoke(IPC.projectCloneDirectory),
   cloneProject: (request) => ipcRenderer.invoke(IPC.projectClone, request),
+  cancelProjectClone: () => ipcRenderer.invoke(IPC.projectCloneCancel),
   reorderProjects: (orderedProjectIds) => ipcRenderer.invoke(IPC.projectReorder, { orderedProjectIds: [...orderedProjectIds] }),
   openProjectInVSCode: (projectId) => ipcRenderer.invoke(IPC.projectOpenVSCode, { projectId }),
   openProjectFolder: (projectId) => ipcRenderer.invoke(IPC.projectOpenFolder, { projectId }),

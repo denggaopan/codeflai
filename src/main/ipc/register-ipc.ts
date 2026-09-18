@@ -159,6 +159,15 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ],
 
     [
+      // No payload: the renderer can only ask for "stop the clone you are running", never name
+      // a process to kill -- the same shape as the parameterless shutdown and update requests.
+      IPC.projectCloneCancel,
+      async (): Promise<void> => {
+        projectService.cancelClone()
+      }
+    ],
+
+    [
       IPC.projectReorder,
       async (_event, payload): Promise<ProjectRecord[]> => {
         const { orderedProjectIds } = reorderProjectsRequestSchema.parse(payload)

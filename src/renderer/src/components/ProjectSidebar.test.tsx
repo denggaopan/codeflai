@@ -42,6 +42,7 @@ const createFakeApi = (): FakeApi => ({
   reopenProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('reopenProject not stubbed') }),
   removeRecentProject: vi.fn(async (): Promise<void> => undefined),
   selectCloneDirectory: vi.fn(async (): Promise<string | null> => null),
+  cancelProjectClone: vi.fn(async (): Promise<void> => undefined),
   cloneProject: vi.fn(async (): Promise<ProjectRecord> => { throw new Error('cloneProject not stubbed') }),
   reorderProjects: vi.fn(async (): Promise<ProjectRecord[]> => []),
   openProjectInVSCode: vi.fn(async (_projectId: string): Promise<void> => undefined),
@@ -647,6 +648,52 @@ describe('ProjectSidebar', () => {
     await act(async () => resolveClone(project1))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(useAppStore.getState().activeProjectId).toBe(project1.id)
+  })
+
+  it('cancels a running clone and returns to a usable form without an error', async () => {
+    const user = userEvent.setup()
+    let rejectClone!: (error: Error) => void
+    vi.mocked(api.cloneProject).mockImplementation(() => new Promise((_resolve, reject) => { rejectClone = reject }))
+    vi.mocked(api.selectCloneDirectory).mockResolvedValue('C:\Projects')
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Clone Git repository' }))
+    await user.type(screen.getByLabelText('Git repository URL'), 'https://example.com/repo.git')
+    await user.click(screen.getByRole('button', { name: 'Browse...' }))
+    await user.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    await user.click(screen.getByRole('button', { name: 'Cancel clone' }))
+    expect(api.cancelProjectClone).toHaveBeenCalledTimes(1)
+
+    // The main process rejects the clone it was just told to kill. That rejection is the
+    // expected outcome of the click, not a failure worth showing the user.
+    await act(async () => rejectClone(new Error('Command cancelled: git')))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Git repository URL')).toHaveValue('https://example.com/repo.git')
+    expect(screen.getByRole('button', { name: 'Clone and open' })).toBeEnabled()
+  })
+
+  it('stays cancellable and still reports failures when the cancel request itself fails', async () => {
+    const user = userEvent.setup()
+    let rejectClone!: (error: Error) => void
+    vi.mocked(api.cloneProject).mockImplementation(() => new Promise((_resolve, reject) => { rejectClone = reject }))
+    vi.mocked(api.selectCloneDirectory).mockResolvedValue('C:\Projects')
+    vi.mocked(api.cancelProjectClone).mockRejectedValue(new Error('IPC unavailable'))
+    render(<ProjectSidebar />)
+    await user.click(screen.getByRole('button', { name: 'Add Project' }))
+    await user.click(screen.getByRole('button', { name: 'Clone Git repository' }))
+    await user.type(screen.getByLabelText('Git repository URL'), 'https://example.com/repo.git')
+    await user.click(screen.getByRole('button', { name: 'Browse...' }))
+    await user.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    await user.click(screen.getByRole('button', { name: 'Cancel clone' }))
+
+    // Nothing was cancelled, so the button has to stay usable and the clone's own failure
+    // must still surface -- otherwise a failed cancel silently swallows the real error.
+    expect(screen.getByRole('button', { name: 'Cancel clone' })).toBeEnabled()
+    await act(async () => rejectClone(new Error('Authentication failed')))
+    expect(screen.getByRole('alert')).toHaveTextContent('Authentication failed')
   })
 
   it('retains clone form values on failure and preserves a chosen directory when browsing is cancelled', async () => {

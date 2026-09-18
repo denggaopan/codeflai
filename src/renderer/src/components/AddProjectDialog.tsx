@@ -20,8 +20,11 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
   const [repositoryUrl, setRepositoryUrl] = useState('')
   const [targetDirectory, setTargetDirectory] = useState('')
   const [busy, setBusy] = useState<Mode | 'directory' | 'remove' | null>(null)
+  const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pending = useRef(false)
+  // Set by the Cancel button so the rejection it provokes is not reported back as a failure.
+  const cancelled = useRef(false)
   const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -50,22 +53,45 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
   const run = async (operation: () => Promise<boolean>, activity: typeof busy): Promise<void> => {
     if (pending.current) return
     pending.current = true
+    cancelled.current = false
     setBusy(activity)
     setError(null)
     try {
       if (await operation()) onClose()
     } catch (failure) {
-      setError(t(activity === 'remove' ? 'addProject.removeFailed' : 'addProject.failed', {
-        reason: failure instanceof Error ? failure.message : t('notice.genericError')
-      }))
+      // A cancelled clone always rejects -- that is the requested outcome, not an error.
+      if (!cancelled.current) {
+        setError(t(activity === 'remove' ? 'addProject.removeFailed' : 'addProject.failed', {
+          reason: failure instanceof Error ? failure.message : t('notice.genericError')
+        }))
+      }
     } finally {
       pending.current = false
+      cancelled.current = false
       setBusy(null)
+      setCancelling(false)
     }
   }
 
   const close = (): void => {
     if (!pending.current) onClose()
+  }
+
+  /**
+   * Asks the main process to end the clone. The dialog stays open and busy until the clone's
+   * own rejection lands, which is what releases the form.
+   */
+  const cancelClone = async (): Promise<void> => {
+    cancelled.current = true
+    setCancelling(true)
+    try {
+      await window.codeflai.cancelProjectClone()
+    } catch {
+      // Nothing was cancelled, so undo the suppression: the clone is still running and its
+      // eventual failure is a real one the user needs to see.
+      cancelled.current = false
+      setCancelling(false)
+    }
   }
 
   return createPortal(
@@ -206,7 +232,16 @@ export default function AddProjectDialog({ onClose }: { onClose: () => void }) {
           </form>
         )}
 
-        {busy && <p role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : busy === 'remove' ? 'addProject.removing' : 'addProject.opening')}</p>}
+        {busy && (
+          <div className="add-project-activity">
+            <p role="status" className="add-project-progress">{t(busy === 'clone' ? 'addProject.cloning' : busy === 'remove' ? 'addProject.removing' : 'addProject.opening')}</p>
+            {busy === 'clone' && (
+              <button type="button" className="settings-update-button add-project-cancel" disabled={cancelling} onClick={() => void cancelClone()}>
+                {t('addProject.cancelClone')}
+              </button>
+            )}
+          </div>
+        )}
         {error && <p role="alert" className="settings-dialog-error add-project-error">{error}</p>}
       </div>
     </div>,

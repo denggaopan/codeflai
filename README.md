@@ -184,7 +184,20 @@ Codeflai opens maximized every time and restores a 1180×760 window when you un-
   works) and choose where to put it. Codeflai shows the full destination, creates a
   subdirectory named after the repository, and adds the project once Git finishes. An
   existing folder is never overwritten. Private repositories use your existing Git
-  credentials or SSH configuration, so set that up before cloning.
+  credentials or SSH configuration, so set that up before cloning. A running clone can be
+  stopped with **Cancel clone**, and one that goes two minutes without reporting any
+  progress is ended with an error instead of hanging. Either way the partly cloned folder
+  is removed, so the next attempt starts clean.
+
+  If clones stall on a machine that needs a proxy, note that Git does not read the Windows
+  system proxy the way a browser does — it only reads its own configuration or the
+  `HTTP_PROXY`/`HTTPS_PROXY` environment variables, and a desktop app started from the Start
+  menu does not inherit variables you set in a terminal. Point Git at the proxy explicitly,
+  per host so internal Git servers keep going direct:
+
+  ```
+  git config --global http.https://github.com.proxy http://127.0.0.1:<port>
+  ```
 
 ## Starting a session
 

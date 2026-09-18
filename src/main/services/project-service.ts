@@ -1,4 +1,4 @@
-import { mkdir, realpath, rmdir, stat } from 'node:fs/promises'
+import { mkdir, realpath, rm, stat } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -45,6 +45,15 @@ export class InvalidProjectPathError extends Error {
 
 const productionFileSystem: ProjectFileSystem = { realpath, stat }
 
+/**
+ * A clone is declared stuck once Git reports no progress for this long. This replaces a total
+ * time budget on purpose: a large repository may legitimately run for hours, but it never runs
+ * silently once `--progress` is passed, so "no bytes at all" is the honest stall signal. The
+ * failure it catches is a transport that never connects -- e.g. Git ignores the Windows system
+ * proxy, so a machine that only has one configured there hangs with zero output.
+ */
+export const CLONE_IDLE_TIMEOUT_MS = 2 * 60 * 1000
+
 const sameRemote = (left: RepoRemote | undefined, right: RepoRemote | undefined): boolean =>
   left === right || (left !== undefined && right !== undefined && left.host === right.host && left.webUrl === right.webUrl)
 
@@ -54,7 +63,8 @@ const projectWithPath = (projects: readonly ProjectRecord[], candidatePath: stri
 }
 
 export class ProjectService {
-  private cloning = false
+  // Doubles as the "a clone is running" flag, so the guard and the cancel handle can never disagree.
+  private cloneRun: AbortController | undefined
 
   constructor(
     private readonly store: SessionStore,
@@ -136,8 +146,9 @@ export class ProjectService {
 
   async clone(request: CloneProjectRequest): Promise<ProjectRecord> {
     const { repositoryUrl, targetDirectory } = cloneProjectRequestSchema.parse(request)
-    if (this.cloning) throw new Error('A Git clone is already in progress.')
-    this.cloning = true
+    if (this.cloneRun) throw new Error('A Git clone is already in progress.')
+    const controller = new AbortController()
+    this.cloneRun = controller
     try {
       const paths = this.platform === 'win32' ? win32 : posix
       if (!paths.isAbsolute(targetDirectory)) throw new InvalidProjectPathError(targetDirectory)
@@ -152,19 +163,31 @@ export class ProjectService {
         throw error
       }
       try {
-        await this.runner.run('git', ['-c', 'credential.interactive=false', 'clone', '--', repositoryUrl, destination], parent, {
-          timeoutMs: 10 * 60 * 1000,
-          env: { GIT_TERMINAL_PROMPT: '0' }
+        await this.runner.run('git', ['-c', 'credential.interactive=false', 'clone', '--progress', '--', repositoryUrl, destination], parent, {
+          idleTimeoutMs: CLONE_IDLE_TIMEOUT_MS,
+          env: { GIT_TERMINAL_PROMPT: '0' },
+          signal: controller.signal
         })
       } catch (error) {
-        // Remove only an empty reservation. Partial repository data is kept for inspection.
-        await rmdir(destination).catch(() => undefined)
+        // Drop the whole reservation. It is a directory this method created exclusively and
+        // nothing but clone output ever lands in it, so keeping a half-fetched repository only
+        // makes the next attempt fail at mkdir with "already exists" -- which the user can then
+        // only escape by deleting the folder by hand.
+        await rm(destination, { recursive: true, force: true }).catch(() => undefined)
         throw error
       }
       return await this.register(destination)
     } finally {
-      this.cloning = false
+      this.cloneRun = undefined
     }
+  }
+
+  /**
+   * Ends a running clone along with the Git child processes holding the connection. A no-op
+   * when nothing is running, so a late click after the clone already finished is harmless.
+   */
+  cancelClone(): void {
+    this.cloneRun?.abort()
   }
 
   /**

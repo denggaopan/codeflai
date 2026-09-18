@@ -95,6 +95,7 @@ export const en = {
   'addProject.destination': 'Save to: {path}',
   'addProject.cloneAction': 'Clone and open',
   'addProject.cloning': 'Cloning repository. This may take several minutes...',
+  'addProject.cancelClone': 'Cancel clone',
   'addProject.opening': 'Opening...',
   'addProject.failed': 'Could not add project: {reason}',
 

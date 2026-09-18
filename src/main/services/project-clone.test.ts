@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { commandRunner, type CommandRunner } from '../infrastructure/command-runner'
-import { ProjectService } from './project-service'
+import { CommandError, commandRunner, type CommandRunner } from '../infrastructure/command-runner'
+import { CLONE_IDLE_TIMEOUT_MS, ProjectService } from './project-service'
 import { SessionStore } from './session-store'
 
 describe('ProjectService.clone', () => {
@@ -20,8 +20,8 @@ describe('ProjectService.clone', () => {
   })
 
   afterEach(async () => {
-    await rm(directory, { recursive: true, force: true })
-  })
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }, 30_000)
 
   it('clones with real Git and registers the checked-out directory after success', async () => {
     const source = join(directory, 'source')
@@ -41,10 +41,14 @@ describe('ProjectService.clone', () => {
     expect(project.repoRoot).toBe(project.path)
     expect((await readFile(join(project.path, 'README.md'), 'utf8')).replace(/\r\n/gu, '\n')).toBe('cloned content\n')
     expect((await store.load()).projects).toEqual([project])
-    expect(run).toHaveBeenCalledWith('git', ['-c', 'credential.interactive=false', 'clone', '--', repositoryUrl, project.path], directory, {
-      timeoutMs: 600000, env: { GIT_TERMINAL_PROMPT: '0' }
+    // --progress is what makes the idle timeout meaningful: without it Git stays silent on a
+    // pipe, so every healthy clone would look exactly like a stalled transport.
+    expect(run).toHaveBeenCalledWith('git', ['-c', 'credential.interactive=false', 'clone', '--progress', '--', repositoryUrl, project.path], directory, {
+      idleTimeoutMs: CLONE_IDLE_TIMEOUT_MS,
+      env: { GIT_TERMINAL_PROMPT: '0' },
+      signal: expect.any(AbortSignal)
     })
-  })
+  }, 30_000)
 
   it('leaves an existing destination untouched, even when it is empty', async () => {
     const destination = join(directory, 'my-repo')
@@ -80,16 +84,67 @@ describe('ProjectService.clone', () => {
     expect((await store.load()).projects).toEqual([])
   })
 
-  it('keeps partial files on failure without adding a project', async () => {
+  it('clears a partially cloned directory so the next attempt can start', async () => {
     const run = vi.fn(async () => {
-      await writeFile(join(directory, 'my-repo', 'partial'), 'retained')
+      await writeFile(join(directory, 'my-repo', 'partial'), 'half a repository')
       throw new Error('Connection lost')
     })
     const service = new ProjectService(store, { run })
+    const request = { repositoryUrl, targetDirectory: directory }
 
-    await expect(service.clone({ repositoryUrl, targetDirectory: directory })).rejects.toThrow('Connection lost')
-    expect(await readFile(join(directory, 'my-repo', 'partial'), 'utf8')).toBe('retained')
+    await expect(service.clone(request)).rejects.toThrow('Connection lost')
+    await expect(stat(join(directory, 'my-repo'))).rejects.toMatchObject({ code: 'ENOENT' })
+    // Retrying must reach Git again rather than tripping over its own leftover reservation.
+    await expect(service.clone(request)).rejects.toThrow('Connection lost')
+    expect(run).toHaveBeenCalledTimes(2)
     expect((await store.load()).projects).toEqual([])
+  })
+
+  it('cancels a running clone and clears the reserved directory', async () => {
+    let started!: () => void
+    const running = new Promise<void>((resolve) => { started = resolve })
+    const run = vi.fn<CommandRunner['run']>((file, args, _cwd, options) => new Promise((_resolve, reject) => {
+      started()
+      options?.signal?.addEventListener('abort', () => {
+        reject(new CommandError('Command cancelled: git', file, args, { stdout: '', stderr: '', exitCode: -1 }, { reason: 'cancelled' }))
+      })
+    }))
+    const service = new ProjectService(store, { run })
+
+    const pending = service.clone({ repositoryUrl, targetDirectory: directory })
+    const failed = expect(pending).rejects.toMatchObject({ reason: 'cancelled' })
+    await running
+    service.cancelClone()
+    await failed
+
+    await expect(stat(join(directory, 'my-repo'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await store.load()).projects).toEqual([])
+  })
+
+  it('accepts a new clone after the previous one was cancelled', async () => {
+    const run = vi.fn<CommandRunner['run']>((file, args, _cwd, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => {
+        reject(new CommandError('Command cancelled: git', file, args, { stdout: '', stderr: '', exitCode: -1 }, { reason: 'cancelled' }))
+      })
+    }))
+    const service = new ProjectService(store, { run })
+    const request = { repositoryUrl, targetDirectory: directory }
+
+    const first = expect(service.clone(request)).rejects.toMatchObject({ reason: 'cancelled' })
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1))
+    service.cancelClone()
+    await first
+
+    const second = expect(service.clone(request)).rejects.toMatchObject({ reason: 'cancelled' })
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
+    service.cancelClone()
+    await second
+  })
+
+  it('ignores a cancel request when no clone is running', () => {
+    const service = new ProjectService(store, { run: vi.fn() })
+
+    expect(() => service.cancelClone()).not.toThrow()
   })
 
   it('rejects duplicate submissions while a clone is running', async () => {

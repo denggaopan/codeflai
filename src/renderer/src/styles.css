@@ -2481,6 +2481,24 @@ body[data-sidebar-resizing='true'] .app-main {
   white-space: pre-wrap;
 }
 
+/* Keeps the cancel button beside the activity line instead of below it, so a clone that is
+   taking its time always shows its way out on the same row as the status text. */
+.add-project-activity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.add-project-activity .add-project-progress {
+  flex: 1;
+}
+
+.add-project-cancel {
+  flex: none;
+  margin-top: 12px;
+}
+
 .settings-dialog-section {
   display: flex;
   align-items: center;

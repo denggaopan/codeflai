@@ -90,6 +90,7 @@ export const zhCN: Translations = {
   'addProject.destination': '保存到：{path}',
   'addProject.cloneAction': '克隆并打开',
   'addProject.cloning': '正在克隆仓库，可能需要几分钟…',
+  'addProject.cancelClone': '取消克隆',
   'addProject.opening': '正在打开…',
   'addProject.failed': '无法添加项目：{reason}',
 
