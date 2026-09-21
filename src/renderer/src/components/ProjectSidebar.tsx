@@ -62,7 +62,6 @@ export default function ProjectSidebar() {
   const searchQuery = useAppStore((state) => state.searchQuery)
   const idleAgentSessionIds = useAppStore((state) => state.idleAgentSessionIds)
   const unreadSessionIds = useAppStore((state) => state.unreadSessionIds)
-  const notice = useAppStore((state) => state.notice)
   const creatingSession = useAppStore((state) => state.creatingSession)
   const setSearchQuery = useAppStore((state) => state.setSearchQuery)
   const setActiveProject = useAppStore((state) => state.setActiveProject)
@@ -78,7 +77,6 @@ export default function ProjectSidebar() {
   const openProjectRepository = useAppStore((state) => state.openProjectRepository)
   const removeProject = useAppStore((state) => state.removeProject)
   const createSession = useAppStore((state) => state.createSession)
-  const dismissNotice = useAppStore((state) => state.dismissNotice)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const launcherOpen = useAppStore((state) => state.launcherOpen)
   const openLauncher = useAppStore((state) => state.openLauncher)
@@ -482,15 +480,6 @@ export default function ProjectSidebar() {
               {appState.projects.find((project) => project.id === creatingSession.projectId)?.name}
             </span>
           </div>
-        </div>
-      )}
-
-      {notice && (
-        <div className="sidebar-notice" role="alert">
-          <span>{notice.message}</span>
-          <button type="button" aria-label={t('sidebar.dismissNotice')} onClick={dismissNotice}>
-            ×
-          </button>
         </div>
       )}
 

@@ -42,7 +42,6 @@ export const zhCN: Translations = {
   'sidebar.stoppedStatus': '已停止',
   'sidebar.noMatchingSessions': '没有符合条件的会话',
   'sidebar.clearFilters': '清除筛选',
-  'sidebar.dismissNotice': '关闭提示',
   'sidebar.projectOptions': '{project} 的项目选项',
   'sidebar.newSession': '新建会话',
   'sidebar.openInVSCode': '在 VS Code 中打开项目',
@@ -164,6 +163,7 @@ export const zhCN: Translations = {
   'quickPrompts.limit': '最多可保存 {count} 条提示词，请编辑或删除已有提示词后再添加。',
 
   'notice.shutdownFailed': '无法关机：{reason}。自动关机已关闭。',
+  'notice.dismiss': '关闭提示',
   'notice.genericError': '出错了。',
   'notice.projectPathCopied': '已复制项目目录地址：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',

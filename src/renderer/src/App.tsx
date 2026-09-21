@@ -1,5 +1,6 @@
 import { useEffect, type CSSProperties } from 'react'
 
+import NoticeToast from './components/NoticeToast'
 import ProjectSidebar from './components/ProjectSidebar'
 import ShutdownCountdownDialog from './components/ShutdownCountdownDialog'
 import SidebarResizer from './components/SidebarResizer'
@@ -37,6 +38,9 @@ export default function App() {
       {/* Portals to document.body like UpdateDialog, and renders nothing unless the
           auto-shutdown watcher has actually started a countdown. */}
       <ShutdownCountdownDialog />
+      {/* Portals to document.body as well, and floats above every dialog: a notice raised by a
+          dialog's own action has to stay readable. Renders nothing while `notice` is null. */}
+      <NoticeToast />
     </div>
   )
 }

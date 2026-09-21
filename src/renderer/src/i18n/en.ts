@@ -46,7 +46,6 @@ export const en = {
   'sidebar.stoppedStatus': 'Stopped',
   'sidebar.noMatchingSessions': 'No matching sessions',
   'sidebar.clearFilters': 'Clear filters',
-  'sidebar.dismissNotice': 'Dismiss notice',
   'sidebar.projectOptions': 'Project options for {project}',
   'sidebar.newSession': 'New session',
   'sidebar.openInVSCode': 'Open project in VS Code',
@@ -169,6 +168,7 @@ export const en = {
   'quickPrompts.limit': 'You can save up to {count} prompts. Edit or delete an existing prompt to make room.',
 
   'notice.shutdownFailed': 'Could not shut the computer down: {reason}. Auto shutdown has been switched off.',
+  'notice.dismiss': 'Dismiss notice',
   'notice.genericError': 'Something went wrong.',
   'notice.projectPathCopied': 'Project path copied: {path}',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',

@@ -148,6 +148,12 @@ action when it is not running, and the bypass warning while an agent runs), the 
 itself, and the optional [quick prompts](#quick-prompts) bar underneath. With nothing
 selected it reads *"Select or start a session to see its terminal here."*
 
+**Messages** — anything Codeflai has to tell you about an action you just took (a path it
+copied, a delete it refused, a shutdown the system would not run) appears as a small panel
+floating near the top of the window, above everything else on screen. It closes itself after
+a few seconds — errors linger longer than confirmations — and the countdown pauses while your
+pointer is on it, so a long path stays put while you read it. The **×** closes one early.
+
 Drag the seam between the sidebar and the terminal to resize it. It also takes the keyboard:
 focus it, then **←/→** nudge, **Home/End** jump to the limits, and a double-click restores
 the default width. The sidebar stays between 200 and 640 pixels and never squeezes the

@@ -45,7 +45,6 @@ export const zhTW: Translations = {
   'sidebar.stoppedStatus': '已停止',
   'sidebar.noMatchingSessions': '沒有符合條件的工作階段',
   'sidebar.clearFilters': '清除篩選',
-  'sidebar.dismissNotice': '關閉提示',
   'sidebar.projectOptions': '{project} 的專案選項',
   'sidebar.newSession': '新增工作階段',
   'sidebar.openInVSCode': '在 VS Code 中開啟專案',
@@ -168,6 +167,7 @@ export const zhTW: Translations = {
   'quickPrompts.limit': '最多可儲存 {count} 條提示詞，請先編輯或刪除既有的提示詞再新增。',
 
   'notice.shutdownFailed': '無法關機：{reason}。自動關機已關閉。',
+  'notice.dismiss': '關閉提示',
   'notice.genericError': '發生錯誤。',
   'notice.projectPathCopied': '已複製專案路徑：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 個檔案已變更。請先提交或捨棄這些變更，再刪除工作階段。',

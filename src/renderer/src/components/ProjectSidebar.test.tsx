@@ -28,7 +28,8 @@ import gitlabIconUrl from '../assets/gitlab.svg'
 import optionsIconUrl from '../assets/options.svg'
 import removeIconUrl from '../assets/remove.svg'
 import { useAppStore } from '../store/use-app-store'
-import ProjectSidebar from './ProjectSidebar'
+import NoticeToast from './NoticeToast'
+import ProjectSidebarPanel from './ProjectSidebar'
 
 type FakeApi = Window['codeflai']
 
@@ -506,6 +507,18 @@ const openSearch = async (user: ReturnType<typeof userEvent.setup>) => {
   if (trigger.getAttribute('aria-expanded') !== 'true') await user.click(trigger)
   return screen.getByRole('searchbox', { name: 'Search sessions' })
 }
+
+/**
+ * The sidebar as App mounts it. Notices left the sidebar in favour of a global toast
+ * (NoticeToast, portalled to the body), so the tests that assert one was raised render both
+ * halves exactly like the app does.
+ */
+const ProjectSidebar = () => (
+  <>
+    <ProjectSidebarPanel />
+    <NoticeToast />
+  </>
+)
 
 describe('ProjectSidebar', () => {
   it('renders Add Project, search, and the project group', () => {

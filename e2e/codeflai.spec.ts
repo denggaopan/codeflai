@@ -873,13 +873,13 @@ test('mocked VS Code, Explorer, and repository project-row actions do not toggle
 
   const vscodeMenu = await openProjectOptions()
   await vscodeMenu.getByRole('menuitem', { name: 'Open project in VS Code' }).click()
-  await expect(window.locator('.sidebar-notice')).toHaveCount(0)
+  await expect(window.locator('.notice-toast')).toHaveCount(0)
   await expect(window.locator('.session-row')).toHaveCount(sessionRowCount)
   await expect(window.locator('.session-row-content[aria-current="true"] .session-kind-icon')).toHaveAttribute('data-kind', activeKindBefore!)
 
   const explorerMenu = await openProjectOptions()
   await explorerMenu.getByRole('menuitem', { name: 'Open project folder' }).click()
-  await expect(window.locator('.sidebar-notice')).toHaveCount(0)
+  await expect(window.locator('.notice-toast')).toHaveCount(0)
   await expect(window.locator('.session-row')).toHaveCount(sessionRowCount)
   await expect(window.locator('.session-row-content[aria-current="true"] .session-kind-icon')).toHaveAttribute('data-kind', activeKindBefore!)
 
@@ -887,7 +887,7 @@ test('mocked VS Code, Explorer, and repository project-row actions do not toggle
   // derived https URL to the (mocked) browser: no notice means it was accepted end to end.
   const repositoryMenu = await openProjectOptions()
   await repositoryMenu.getByRole('menuitem', { name: 'Open Git repository' }).click()
-  await expect(window.locator('.sidebar-notice')).toHaveCount(0)
+  await expect(window.locator('.notice-toast')).toHaveCount(0)
   await expect(window.locator('.session-row')).toHaveCount(sessionRowCount)
   await expect(window.locator('.session-row-content[aria-current="true"] .session-kind-icon')).toHaveAttribute('data-kind', activeKindBefore!)
 })
@@ -899,16 +899,18 @@ test('copies the project path to the system clipboard and names it in a notice',
   // ProjectService records the realpath of the picked directory, which on Windows is the
   // long-name form of the 8.3-shortened temp path `mkdtemp` may hand back.
   const projectPath = realpathSync(repoPath)
-  const notice = window.locator('.sidebar-notice')
+  const notice = window.locator('.notice-toast')
   await expect(notice).toContainText(`Project path copied: ${projectPath}`)
 
   // The renderer only names the project: the text that reaches the real system clipboard is
   // written in the main process from the path it has on record.
   expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toBe(projectPath)
 
-  // The notice stays until dismissed, and later tests assert on an empty notice area.
-  await notice.getByRole('button', { name: 'Dismiss notice' }).click()
-  await expect(notice).toHaveCount(0)
+  // The toast dismisses itself after a few seconds (NoticeToast owns that timer); waiting it
+  // out here is both the assertion for that and what leaves later tests an empty window. The
+  // timer pauses under the pointer, so keep it off the toast while waiting.
+  await window.mouse.move(0, 0)
+  await expect(notice).toHaveCount(0, { timeout: 15_000 })
 })
 
 test('blocks deleting a dirty worktree, then deletes cleanly and retains the branch', async () => {
@@ -928,11 +930,12 @@ test('blocks deleting a dirty worktree, then deletes cleanly and retains the bra
   await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole('button', { name: 'Delete' }).click()
 
-  await expect(window.locator('.sidebar-notice')).toContainText(/changed files/i, { timeout: 20_000 })
+  await expect(window.locator('.notice-toast')).toContainText(/changed files/i, { timeout: 20_000 })
   await expect(sessionRowByKind('cmd')).toHaveCount(1)
   expect(existsSync(worktreePath)).toBe(true)
 
   await window.getByRole('button', { name: 'Dismiss notice' }).click()
+  await expect(window.locator('.notice-toast')).toHaveCount(0)
   rmSync(scratchFile)
 
   await cmdRow.locator('.session-options-trigger').click()
