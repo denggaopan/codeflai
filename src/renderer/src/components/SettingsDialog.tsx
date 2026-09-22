@@ -90,6 +90,9 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const setShowQuickPrompts = useAppStore((state) => state.setShowQuickPrompts)
   const notificationsEnabled = useAppStore((state) => state.notificationsEnabled)
   const setNotificationsEnabled = useAppStore((state) => state.setNotificationsEnabled)
+  const rocket = useAppStore((state) => state.rocket)
+  const setRocketEnabled = useAppStore((state) => state.setRocketEnabled)
+  const setRocketHourlyEnabled = useAppStore((state) => state.setRocketHourlyEnabled)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const setSessionKindPreference = useAppStore((state) => state.setSessionKindPreference)
   const beginUpdate = useAppStore((state) => state.beginUpdate)
@@ -453,6 +456,43 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <span className="settings-switch-thumb" aria-hidden="true" />
                 </button>
               </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-rocket-label">
+                  {t('settings.rocket')}
+                </span>
+                <button
+                  type="button"
+                  className="settings-switch"
+                  role="switch"
+                  aria-checked={rocket.enabled}
+                  aria-labelledby="settings-rocket-label"
+                  onClick={() => setRocketEnabled(!rocket.enabled)}
+                >
+                  <span className="settings-switch-thumb" aria-hidden="true" />
+                </button>
+              </div>
+
+              {/* Indented under the master switch and disabled with it, like the worktree
+                  column under an enabled kind: the chime keeps its stored value while there is
+                  no easter egg for it to be part of. */}
+              <div className="settings-dialog-section settings-dialog-subsection">
+                <span className="settings-dialog-label" id="settings-rocket-hourly-label">
+                  {t('settings.rocketHourly')}
+                </span>
+                <button
+                  type="button"
+                  className="settings-switch"
+                  role="switch"
+                  aria-checked={rocket.hourlyEnabled}
+                  aria-labelledby="settings-rocket-hourly-label"
+                  disabled={!rocket.enabled}
+                  onClick={() => setRocketHourlyEnabled(!rocket.hourlyEnabled)}
+                >
+                  <span className="settings-switch-thumb" aria-hidden="true" />
+                </button>
+              </div>
+              <p className="settings-dialog-hint settings-dialog-subsection-hint">{t('settings.rocketHourlyHint')}</p>
             </section>
 
             <section className="settings-section" ref={registerSection('sessionKinds')} aria-labelledby="settings-session-kinds-label">

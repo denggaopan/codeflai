@@ -32,6 +32,7 @@ import {
   type AutoShutdownPreference,
   type AutoShutdownTimeRange
 } from '../auto-shutdown'
+import { DEFAULT_ROCKET, parseStoredRocket, type RocketPreference } from '../rocket-chime'
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { DEFAULT_TERMINAL_FONT_SIZE, isTerminalFontSize, parseStoredTerminalFontSize } from '../terminal-font'
@@ -80,6 +81,8 @@ export type AppStore = {
   windowPinned: boolean
   /** The title bar's auto-shutdown switch and how often it checks for running sessions. */
   autoShutdown: AutoShutdownPreference
+  /** The rocket easter egg: the whole thing, and the chime that drops one per hour. */
+  rocket: RocketPreference
   /** Seconds left on the shutdown countdown, or null when no countdown is running. */
   shutdownCountdown: number | null
   /** Which kinds the New session launcher lists, and which of them offer a worktree entry. */
@@ -111,6 +114,9 @@ export type AppStore = {
   /** Switches the time-of-day restriction on or off; the window itself is kept either way. */
   setAutoShutdownTimeRangeEnabled: (enabled: boolean) => void
   setAutoShutdownTimeRange: (timeRange: AutoShutdownTimeRange) => void
+  /** Switches the whole easter egg; the hourly chime keeps its own value either way. */
+  setRocketEnabled: (enabled: boolean) => void
+  setRocketHourlyEnabled: (enabled: boolean) => void
   /** Stops the countdown and switches auto shutdown off, which is what "Cancel" means here. */
   cancelAutoShutdown: () => void
   /** Skips the rest of the countdown and shuts the machine down now. */
@@ -189,6 +195,7 @@ export const WINDOW_PINNED_STORAGE_KEY = 'codeflai.windowPinned'
 export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
 export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
 export const NOTIFICATIONS_STORAGE_KEY = 'codeflai.notifications'
+export const ROCKET_STORAGE_KEY = 'codeflai.rocket'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -301,6 +308,26 @@ const readStoredAutoShutdown = (): AutoShutdownPreference => {
 const persistAutoShutdown = (preference: AutoShutdownPreference): void => {
   try {
     window.localStorage.setItem(AUTO_SHUTDOWN_STORAGE_KEY, JSON.stringify(preference))
+  } catch {
+    // localStorage unavailable: the preference just won't survive a restart.
+  }
+}
+
+// The rocket easter egg is renderer-owned (localStorage) like the theme and the pin: pure
+// decoration that never crosses into the persisted AppState. Unlike auto shutdown, unreadable
+// storage means *on* — nothing depends on a rocket, and the switches exist to turn the egg
+// down rather than to discover it (see parseStoredRocket).
+const readStoredRocket = (): RocketPreference => {
+  try {
+    return parseStoredRocket(window.localStorage.getItem(ROCKET_STORAGE_KEY))
+  } catch {
+    return { ...DEFAULT_ROCKET }
+  }
+}
+
+const persistRocket = (preference: RocketPreference): void => {
+  try {
+    window.localStorage.setItem(ROCKET_STORAGE_KEY, JSON.stringify(preference))
   } catch {
     // localStorage unavailable: the preference just won't survive a restart.
   }
@@ -608,6 +635,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     locale: DEFAULT_LOCALE,
     windowPinned: false,
     autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
+    rocket: { ...DEFAULT_ROCKET },
     shutdownCountdown: null,
     sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
@@ -691,7 +719,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         quickPrompts: readStoredQuickPrompts(),
         showQuickPrompts: readStoredShowQuickPrompts(),
         notificationsEnabled: readStoredNotifications(),
-        terminalFontSize: readStoredTerminalFontSize()
+        terminalFontSize: readStoredTerminalFontSize(),
+        rocket: readStoredRocket()
       })
 
       const persistWorkspace = (): void => {
@@ -916,6 +945,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         locale: DEFAULT_LOCALE,
         windowPinned: false,
         autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
+        rocket: { ...DEFAULT_ROCKET },
         shutdownCountdown: null,
         sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
         sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
@@ -1064,6 +1094,23 @@ export const useAppStore = create<AppStore>()((set, get) => {
       const next = { ...get().autoShutdown, timeRange: { start: timeRange.start, end: timeRange.end } }
       set({ autoShutdown: next })
       persistAutoShutdown(next)
+    },
+
+    /**
+     * The easter egg's master switch. The hourly switch is left exactly as it was: it is the
+     * chime's own configuration, and turning the egg off and on again must not silently
+     * reconfigure it (same reasoning as the auto-shutdown window).
+     */
+    setRocketEnabled: (enabled) => {
+      const next = { ...get().rocket, enabled }
+      set({ rocket: next })
+      persistRocket(next)
+    },
+
+    setRocketHourlyEnabled: (hourlyEnabled) => {
+      const next = { ...get().rocket, hourlyEnabled }
+      set({ rocket: next })
+      persistRocket(next)
     },
 
     // "Cancel shutdown" is the user saying the machine is in use, so it switches the whole

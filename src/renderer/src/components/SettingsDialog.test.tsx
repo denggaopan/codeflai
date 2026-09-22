@@ -132,6 +132,52 @@ describe('SettingsDialog', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'false')
   })
 
+  // Both rocket switches default on: a rocket costs nothing and cannot be found from a
+  // switch that is already off, so the switches are there to turn the easter egg down.
+  it('offers the rocket switches in the general section, both on', async () => {
+    renderDialog()
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Launch at startup' })).toBeEnabled())
+
+    const master = screen.getByRole('switch', { name: 'Rocket easter egg' })
+    const hourly = screen.getByRole('switch', { name: 'Drop rockets on the hour' })
+    expect(master).toHaveAttribute('aria-checked', 'true')
+    expect(hourly).toHaveAttribute('aria-checked', 'true')
+    expect(hourly).toBeEnabled()
+    expect(screen.getByText('One rocket per hour on the dial: nine at 09:00, five at 17:00, twelve at noon.')).toBeInTheDocument()
+  })
+
+  // Same shape as a worktree switch under a disabled kind: the chime keeps its stored value
+  // so switching the easter egg back on restores the configuration, not a default.
+  it('disables the hourly chime with the easter egg but keeps its value', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.click(screen.getByRole('switch', { name: 'Rocket easter egg' }))
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: false, hourlyEnabled: true })
+    const hourly = screen.getByRole('switch', { name: 'Drop rockets on the hour' })
+    expect(hourly).toBeDisabled()
+    expect(hourly).toHaveAttribute('aria-checked', 'true')
+    expect(JSON.parse(window.localStorage.getItem('codeflai.rocket') ?? '{}')).toEqual({
+      enabled: false,
+      hourlyEnabled: true
+    })
+  })
+
+  it('switches the hourly chime off on its own', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.click(screen.getByRole('switch', { name: 'Drop rockets on the hour' }))
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: true, hourlyEnabled: false })
+    expect(screen.getByRole('switch', { name: 'Rocket easter egg' })).toHaveAttribute('aria-checked', 'true')
+    expect(JSON.parse(window.localStorage.getItem('codeflai.rocket') ?? '{}')).toEqual({
+      enabled: true,
+      hourlyEnabled: false
+    })
+  })
+
   // Ten kinds in one flat list would bury the four that matter, and the opt-in CLIs are off
   // anyway — so they are collapsed away entirely, not merely dimmed.
   it('hides the opt-in agent CLIs behind a collapsed group', async () => {

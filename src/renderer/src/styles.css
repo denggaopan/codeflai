@@ -373,6 +373,17 @@ html[data-platform='darwin'] .title-bar {
   background: var(--color-panel-elevated);
 }
 
+/* The brand with the easter egg switched off: not a button, so it takes no pointer affordance
+   and hands its strip back to the window's drag region (see TitleBar.tsx). */
+.title-bar-brand--static {
+  -webkit-app-region: drag;
+  cursor: default;
+}
+
+.title-bar-brand--static:hover {
+  background: transparent;
+}
+
 .title-bar-brand:hover .title-bar-app-name {
   color: var(--color-text);
 }
@@ -2576,6 +2587,22 @@ body[data-sidebar-resizing='true'] .app-main {
 
 .settings-dialog-section + .settings-dialog-section {
   margin-top: 14px;
+}
+
+/* A row that only means something while the row above it is on (the hourly chime under the
+   rocket switch): indented so the dependency is visible without a second heading, and pulled
+   closer to its parent than to the unrelated rows around them. */
+.settings-dialog-subsection {
+  padding-left: 16px;
+}
+
+.settings-dialog-section + .settings-dialog-subsection {
+  margin-top: 8px;
+}
+
+.settings-dialog-subsection-hint {
+  padding-left: 16px;
+  margin-top: 4px;
 }
 
 .settings-dialog-label {

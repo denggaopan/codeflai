@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 
 import logoUrl from '../assets/logo.svg'
 import {
@@ -8,6 +8,15 @@ import {
   parseTimeOfDay
 } from '../auto-shutdown'
 import { useTranslation } from '../i18n/use-translation'
+import {
+  CHIME_GRACE_MS,
+  CHIME_STAGGER_MS,
+  chimeLaunchOrigins,
+  msFromNearestHour,
+  msUntilNextHour,
+  nearestHourStart,
+  rocketsAtHour
+} from '../rocket-chime'
 import { recordRocketClick, type RocketClickStreak } from '../rocket-click-streak'
 import type { Point } from '../rocket-flight'
 import { useAppStore } from '../store/use-app-store'
@@ -33,9 +42,16 @@ export default function TitleBar() {
   const setAutoShutdownInterval = useAppStore((state) => state.setAutoShutdownInterval)
   const setAutoShutdownTimeRangeEnabled = useAppStore((state) => state.setAutoShutdownTimeRangeEnabled)
   const setAutoShutdownTimeRange = useAppStore((state) => state.setAutoShutdownTimeRange)
+  const rocket = useAppStore((state) => state.rocket)
   const [launches, setLaunches] = useState<RocketLaunch[]>([])
   const nextLaunchId = useRef(1)
   const clickStreak = useRef<RocketClickStreak>({ clicks: [], rocketCount: 1 })
+  // The brand strip is the launch pad for both kinds of flight: a click drops from it, and a
+  // chime uses its lower edge as the height the whole row falls from.
+  const brandRef = useRef<HTMLElement | null>(null)
+  // The rockets of a chime are appended one short stagger apart, so the timers of one that is
+  // still counting itself out have to be cancellable on unmount.
+  const chimeTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
 
   // The brand button is the easter egg's launch pad: every click drops another rocket from
   // wherever the logo currently sits. Multi-rocket launches last until clicks pause for over 3s.
@@ -54,6 +70,69 @@ export default function TitleBar() {
   const endLaunch = useCallback((id: number) => {
     setLaunches((current) => current.filter((launch) => launch.id !== id))
   }, [])
+
+  /**
+   * The clock's own rockets: one per hour on the dial, fanned across the top of the window and
+   * counted out a stagger apart.
+   *
+   * Rescheduled from the wall clock after every chime rather than run off a one-hour interval:
+   * an interval drifts, and drift is the one thing a clock may not do. A machine that slept
+   * through an hour simply misses it — see rocket-chime.ts for why a late chime is worse than
+   * no chime.
+   */
+  useEffect(() => {
+    if (!rocket.enabled || !rocket.hourlyEnabled) return undefined
+
+    const staggered = chimeTimers.current
+    let scheduled: ReturnType<typeof setTimeout> | undefined
+    let lastChimedHour: number | null = null
+
+    const chime = (hour: Date): void => {
+      const origins = chimeLaunchOrigins({
+        count: rocketsAtHour(hour),
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        y: brandRef.current?.getBoundingClientRect().bottom ?? 0
+      })
+      const launch = (origin: Point): void => {
+        setLaunches((current) => [...current, { id: nextLaunchId.current++, origin, burst: false }])
+      }
+      origins.forEach((origin, index) => {
+        // The first rocket leaves on the hour itself rather than one macrotask after it; the
+        // rest count themselves out behind it.
+        if (index === 0) {
+          launch(origin)
+          return
+        }
+        const timer = setTimeout(() => {
+          staggered.delete(timer)
+          launch(origin)
+        }, index * CHIME_STAGGER_MS)
+        staggered.add(timer)
+      })
+    }
+
+    const schedule = (): void => {
+      scheduled = setTimeout(() => {
+        const now = new Date()
+        const hour = nearestHourStart(now)
+        // Guarded on the hour the tick belongs to as well as on its lateness: a timer is
+        // allowed to fire a hair early, and the reschedule that follows would then land on the
+        // same hour a millisecond later and chime it twice.
+        if (hour.getTime() !== lastChimedHour && msFromNearestHour(now) <= CHIME_GRACE_MS) {
+          lastChimedHour = hour.getTime()
+          chime(hour)
+        }
+        schedule()
+      }, msUntilNextHour(new Date()))
+    }
+    schedule()
+
+    return () => {
+      if (scheduled !== undefined) clearTimeout(scheduled)
+      for (const timer of staggered) clearTimeout(timer)
+      staggered.clear()
+    }
+  }, [rocket.enabled, rocket.hourlyEnabled])
 
   // One label per state rather than a fixed name plus aria-pressed alone: the tooltip is
   // where most users read what the button will do next.
@@ -107,12 +186,42 @@ export default function TitleBar() {
     )
   }
 
+  // One face for both shapes the brand takes, so the button and the inert strip can never
+  // drift apart visually.
+  const brandFace = (
+    <>
+      <img className="title-bar-logo" src={logoUrl} alt="" aria-hidden="true" />
+      <span className="title-bar-app-name">Codeflai</span>
+    </>
+  )
+
   return (
     <header className="title-bar">
-      <button type="button" className="title-bar-brand" aria-label={t('titleBar.launchRocket')} onClick={launchRocket}>
-        <img className="title-bar-logo" src={logoUrl} alt="" aria-hidden="true" />
-        <span className="title-bar-app-name">Codeflai</span>
-      </button>
+      {/* With the easter egg switched off the brand has nothing to do, so it stops being a
+          button rather than staying one that ignores clicks — and it gives its strip back to
+          the window's drag region, which the no-drag button had taken out of it. */}
+      {rocket.enabled ? (
+        <button
+          type="button"
+          className="title-bar-brand"
+          aria-label={t('titleBar.launchRocket')}
+          ref={(node) => {
+            brandRef.current = node
+          }}
+          onClick={launchRocket}
+        >
+          {brandFace}
+        </button>
+      ) : (
+        <span
+          className="title-bar-brand title-bar-brand--static"
+          ref={(node) => {
+            brandRef.current = node
+          }}
+        >
+          {brandFace}
+        </span>
+      )}
       {/* Draggable filler: the brand button and the action buttons are all no-drag, so
           without this the window would have almost no grab area left. */}
       <span className="title-bar-drag-area" aria-hidden="true" />

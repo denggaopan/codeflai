@@ -211,6 +211,99 @@ test('the 48th click launches three independent rockets and a real three-second 
   }
 })
 
+/**
+ * The chime and the two switches that govern it. The clock is faked before the renderer
+ * reloads, so the hourly timer is armed against it — the only way to watch an hour come round
+ * in a real window without waiting an hour for it.
+ */
+test('drops one rocket per hour on the dial, and the master switch takes the easter egg away', async ({}, testInfo) => {
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await page.clock.install({ time: new Date('2026-09-22T16:59:30') })
+    await page.reload()
+    const brand = page.locator('.title-bar-brand')
+    await expect(brand).toBeVisible()
+    const restoreAnimations = await holdRocketFlights(page)
+    await expect(page.locator('.rocket-flight')).toHaveCount(0)
+
+    // 17:00 — five on the dial, counted out a stagger apart.
+    await page.clock.fastForward(30_000)
+    await expect(page.locator('.rocket-flight')).toHaveCount(1)
+    await page.clock.fastForward(4 * 140)
+    const rockets = page.locator('.rocket-flight')
+    await expect(rockets).toHaveCount(5)
+    await expect(page.locator('.rocket-flight-burst')).toHaveCount(0)
+
+    // Fanned across the window rather than stacked on the brand button, all of them inside it.
+    const layout = await rockets.evaluateAll((nodes) => ({
+      centers: nodes.map((node) => {
+        const rect = node.querySelector('.rocket-flight-body')!.getBoundingClientRect()
+        return rect.x + rect.width / 2
+      }),
+      viewportWidth: window.innerWidth
+    }))
+    for (let index = 1; index < layout.centers.length; index++) {
+      expect(layout.centers[index]).toBeGreaterThan(layout.centers[index - 1])
+    }
+    expect(layout.centers[0]).toBeGreaterThan(0)
+    expect(layout.centers[4]).toBeLessThan(layout.viewportWidth)
+    await page.screenshot({ path: testInfo.outputPath('hourly-chime.png') })
+
+    await page.locator('.rocket-flight-body').evaluateAll((nodes) => {
+      for (const node of nodes) node.getAnimations()[0]?.finish()
+    })
+    await expect(rockets).toHaveCount(0)
+
+    // 18:00 follows on its own: the timer is rescheduled from the clock, not counted from
+    // whenever the app started.
+    await page.clock.fastForward(60 * 60_000 + 5 * 140)
+    await expect(rockets).toHaveCount(6)
+    await page.locator('.rocket-flight-body').evaluateAll((nodes) => {
+      for (const node of nodes) node.getAnimations()[0]?.finish()
+    })
+
+    const dialog = page.getByRole('dialog', { name: 'Settings' })
+    await page.locator('.sidebar-settings').click()
+    const master = dialog.getByRole('switch', { name: 'Rocket easter egg' })
+    const hourly = dialog.getByRole('switch', { name: 'Drop rockets on the hour' })
+    await expect(master).toHaveAttribute('aria-checked', 'true')
+    await expect(hourly).toHaveAttribute('aria-checked', 'true')
+    await expect(hourly).toBeEnabled()
+
+    // Switching the chime off leaves the brand button alone.
+    await hourly.click()
+    await dialog.getByRole('button', { name: 'Close settings' }).click()
+    await page.clock.fastForward(60 * 60_000 + 5 * 140)
+    await expect(rockets).toHaveCount(0)
+    await brand.click()
+    await expect(rockets).toHaveCount(1)
+    await page.locator('.rocket-flight-body').evaluateAll((nodes) => {
+      for (const node of nodes) node.getAnimations()[0]?.finish()
+    })
+
+    // Switching the easter egg off takes the button with it: nothing left to click, and the
+    // strip goes back to the window's drag region.
+    await page.locator('.sidebar-settings').click()
+    await master.click()
+    await expect(hourly).toBeDisabled()
+    // The chime keeps its own value while there is no easter egg to be part of.
+    await expect(hourly).toHaveAttribute('aria-checked', 'false')
+    await dialog.getByRole('button', { name: 'Close settings' }).click()
+    await expect(page.getByRole('button', { name: 'Codeflai — launch a rocket' })).toHaveCount(0)
+    await expect(page.locator('.title-bar-brand--static')).toBeVisible()
+    await expect(page.locator('.title-bar-brand--static')).toHaveCSS('cursor', 'default')
+    await page.clock.fastForward(60 * 60_000 + 5 * 140)
+    await expect(rockets).toHaveCount(0)
+
+    await restoreAnimations.evaluate((restore) => restore())
+    await restoreAnimations.dispose()
+  } finally {
+    await app.close()
+  }
+})
+
 test('reduced motion skips both ordinary and burst rockets', async () => {
   const app = await launch()
   try {

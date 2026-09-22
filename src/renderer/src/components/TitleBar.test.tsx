@@ -108,6 +108,7 @@ describe('TitleBar', () => {
 
   afterEach(() => {
     Element.prototype.animate = originalAnimate
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -424,6 +425,109 @@ describe('TitleBar', () => {
     fireEvent.click(brand)
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(0)
     expect(flights[31].keyframes).toHaveLength(5)
+  })
+
+  // The chime: one rocket per hour on the dial, fanned across the top of the window and
+  // counted out a stagger apart. Driven off the wall clock, so these tests move the clock.
+  it('drops one rocket per hour on the dial when the hour comes round', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 16, 59, 30))
+    render(<TitleBar />)
+    expect(rockets()).toHaveLength(0)
+
+    // 17:00 — five on the dial, and the first one leaves on its own.
+    act(() => vi.advanceTimersByTime(30_000))
+    expect(rockets()).toHaveLength(1)
+    act(() => vi.advanceTimersByTime(4 * 140))
+    expect(rockets()).toHaveLength(5)
+
+    // Spread evenly across the window rather than stacked on the brand button, and none of
+    // them wearing the multi-click burst's badge.
+    const lefts = [...rockets()].map((rocket) => (rocket as HTMLElement).style.left)
+    expect(lefts).toEqual(['128px', '320px', '512px', '704px', '896px'])
+    expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(0)
+    expect(flights).toHaveLength(5)
+  })
+
+  // Rescheduled from the clock after every chime, so the hour count follows the clock rather
+  // than an interval counted from whenever the app happened to start.
+  it('chimes each hour with that hour on the dial', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 8, 59, 59))
+    render(<TitleBar />)
+
+    act(() => vi.advanceTimersByTime(1_000 + 8 * 140))
+    expect(rockets()).toHaveLength(9)
+
+    act(() => {
+      for (const flight of flights) flight.animation.emit('finish')
+    })
+    expect(rockets()).toHaveLength(0)
+
+    act(() => vi.advanceTimersByTime(60 * 60_000 + 9 * 140))
+    expect(rockets()).toHaveLength(10)
+  })
+
+  // A machine that slept through 09:00 runs its overdue timer the moment it wakes, and nine
+  // rockets at twenty past are a lie about the time rather than a chime.
+  it('skips an hour it slept through and waits for the next one', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 8, 59, 30))
+    render(<TitleBar />)
+
+    act(() => {
+      vi.setSystemTime(new Date(2026, 8, 22, 9, 20, 0))
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(rockets()).toHaveLength(0)
+
+    // The next hour still arrives on time.
+    act(() => vi.advanceTimersByTime(40 * 60_000 + 11 * 140))
+    expect(rockets()).toHaveLength(10)
+  })
+
+  it('stays quiet on the hour once the chime is switched off', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 16, 59, 30))
+    useAppStore.setState({ rocket: { enabled: true, hourlyEnabled: false } })
+    render(<TitleBar />)
+
+    act(() => vi.advanceTimersByTime(30_000 + 12 * 140))
+
+    expect(rockets()).toHaveLength(0)
+    // The brand is still the launch pad it always was: only the clock was switched off.
+    expect(screen.getByRole('button', { name: 'Codeflai — launch a rocket' })).toBeInTheDocument()
+  })
+
+  // Switched off, the brand has nothing to do — so it is not a button that ignores clicks,
+  // and it gives its strip back to the window's drag region.
+  it('takes the whole easter egg away with the master switch', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 16, 59, 30))
+    useAppStore.setState({ rocket: { enabled: false, hourlyEnabled: true } })
+    render(<TitleBar />)
+
+    expect(screen.queryByRole('button', { name: 'Codeflai — launch a rocket' })).not.toBeInTheDocument()
+    const brand = document.querySelector('.title-bar-brand')
+    expect(brand?.tagName).toBe('SPAN')
+    expect(brand?.classList.contains('title-bar-brand--static')).toBe(true)
+    expect(screen.getByText('Codeflai')).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(30_000 + 12 * 140))
+    expect(rockets()).toHaveLength(0)
+  })
+
+  it('cancels a chime still counting itself out when the title bar goes away', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 8, 22, 16, 59, 30))
+    const view = render(<TitleBar />)
+
+    act(() => vi.advanceTimersByTime(30_000))
+    expect(rockets()).toHaveLength(1)
+    view.unmount()
+    act(() => vi.advanceTimersByTime(60 * 60_000))
+
+    expect(rockets()).toHaveLength(0)
   })
 
   it('cleans the rocket up once its flight finishes', async () => {

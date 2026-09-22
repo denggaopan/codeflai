@@ -25,6 +25,7 @@ import {
   AGENT_IDLE_MS,
   AUTO_SHUTDOWN_STORAGE_KEY,
   NOTIFICATIONS_STORAGE_KEY,
+  ROCKET_STORAGE_KEY,
   TERMINAL_FONT_SIZE_STORAGE_KEY,
   SESSION_KINDS_STORAGE_KEY,
   WINDOW_PINNED_STORAGE_KEY,
@@ -1523,6 +1524,51 @@ describe('useAppStore notifications', () => {
 
     expect(useAppStore.getState().notificationsEnabled).toBe(false)
     expect(window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)).toBe('false')
+  })
+})
+
+describe('useAppStore rocket easter egg', () => {
+  const reinitializeRocket = async (stored: string | null): Promise<void> => {
+    dispose()
+    useAppStore.getState().reset()
+    if (stored === null) window.localStorage.removeItem(ROCKET_STORAGE_KEY)
+    else window.localStorage.setItem(ROCKET_STORAGE_KEY, stored)
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+  }
+
+  // Both switches default on, unlike auto shutdown next to them: a rocket is harmless, and a
+  // switch that is already off is not something anyone would go looking for.
+  it('gives an install with nothing stored the whole easter egg', async () => {
+    await reinitializeRocket(null)
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: true, hourlyEnabled: true })
+  })
+
+  it('restores both switches from storage', async () => {
+    await reinitializeRocket('{"enabled":true,"hourlyEnabled":false}')
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: true, hourlyEnabled: false })
+  })
+
+  it('keeps the easter egg for a preference it cannot read', async () => {
+    await reinitializeRocket('{"enabled":')
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: true, hourlyEnabled: true })
+  })
+
+  // The chime is the easter egg's own configuration: switching the egg off and on again must
+  // give back the setup that was there, not a default.
+  it('leaves the chime switch alone when the easter egg is switched off', () => {
+    useAppStore.getState().setRocketHourlyEnabled(false)
+    useAppStore.getState().setRocketEnabled(false)
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: false, hourlyEnabled: false })
+    expect(window.localStorage.getItem(ROCKET_STORAGE_KEY)).toBe('{"enabled":false,"hourlyEnabled":false}')
+
+    useAppStore.getState().setRocketEnabled(true)
+
+    expect(useAppStore.getState().rocket).toEqual({ enabled: true, hourlyEnabled: false })
   })
 })
 
