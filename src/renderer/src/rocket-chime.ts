@@ -1,5 +1,3 @@
-import type { Point, Viewport } from './rocket-flight'
-
 /**
  * The rocket easter egg's clock: on every wall-clock hour it drops one rocket per hour on the
  * dial — nine at 09:00, five at 17:00, twelve at noon and at midnight — and the two switches
@@ -15,9 +13,6 @@ export const HOUR_MS = 60 * 60_000
 
 /** Twelve at noon and at midnight, not zero: this is the dial, not the 24-hour clock. */
 export const rocketsAtHour = (hour: Date): number => hour.getHours() % 12 || 12
-
-/** The most rockets one chime can put in the air, i.e. `rocketsAtHour` at 12. */
-export const MAX_CHIME_ROCKETS = 12
 
 /**
  * How long until the next wall-clock hour.
@@ -65,33 +60,15 @@ export const msFromNearestHour = (now: Date): number => Math.abs(now.getTime() -
 export const CHIME_GRACE_MS = 5 * 60_000
 
 /**
- * The gap between one rocket of a chime and the next. Twelve rockets leaving at once read as
- * a single blur; a short stagger makes them count themselves out, which is the whole point of
- * dropping one per hour on the dial.
+ * The gap between one rocket of a chime and the next.
+ *
+ * Every rocket of a chime leaves from the logo, the same pad a clicked one does, so the
+ * stagger is what keeps them from being one launch: twelve leaving at once read as a single
+ * blur, while one every seventh of a second counts itself out. They still separate on the way
+ * down — each flight picks its own drop distance and course — so a shared pad fans out rather
+ * than stacking up.
  */
 export const CHIME_STAGGER_MS = 140
-
-/** Keeps the outermost rockets of a chime clear of the window's own edges. */
-const CHIME_EDGE_MARGIN = 32
-
-/**
- * Where a chime's rockets start: spread evenly across the top of the window rather than
- * stacked on the brand button the click easter egg launches from. Twelve rockets fanned out
- * from one point would be off the left edge before the first one fell, and a chime is about
- * the whole window anyway — it is the clock striking, not somebody poking the logo.
- *
- * Each rocket sits in the middle of its own share of the usable width, so one rocket is
- * centred and twelve are evenly pitched with half-gaps at both ends.
- */
-export const chimeLaunchOrigins = (input: { count: number; viewport: Viewport; y: number }): Point[] => {
-  const { count, viewport, y } = input
-  if (count <= 0) return []
-  const usable = Math.max(0, viewport.width - CHIME_EDGE_MARGIN * 2)
-  return Array.from({ length: count }, (_, index) => ({
-    x: CHIME_EDGE_MARGIN + (usable * (index + 0.5)) / count,
-    y
-  }))
-}
 
 /**
  * The two switches in Settings. `hourlyEnabled` is kept apart from `enabled` — and survives

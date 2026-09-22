@@ -11,7 +11,6 @@ import { useTranslation } from '../i18n/use-translation'
 import {
   CHIME_GRACE_MS,
   CHIME_STAGGER_MS,
-  chimeLaunchOrigins,
   msFromNearestHour,
   msUntilNextHour,
   nearestHourStart,
@@ -88,27 +87,28 @@ export default function TitleBar() {
     let lastChimedHour: number | null = null
 
     const chime = (hour: Date): void => {
-      const origins = chimeLaunchOrigins({
-        count: rocketsAtHour(hour),
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-        y: brandRef.current?.getBoundingClientRect().bottom ?? 0
-      })
-      const launch = (origin: Point): void => {
+      // Every rocket of a chime leaves from the logo, the same pad a clicked one does.
+      // Measured once, on the hour: a window moved or resized during the second and a half a
+      // chime takes would otherwise launch the rest of it from somewhere else.
+      const box = brandRef.current?.getBoundingClientRect()
+      const origin: Point = { x: (box?.left ?? 0) + (box?.width ?? 0) / 2, y: box?.bottom ?? 0 }
+      const launch = (): void => {
         setLaunches((current) => [...current, { id: nextLaunchId.current++, origin, burst: false }])
       }
-      origins.forEach((origin, index) => {
+      for (let index = 0; index < rocketsAtHour(hour); index++) {
         // The first rocket leaves on the hour itself rather than one macrotask after it; the
-        // rest count themselves out behind it.
+        // rest count themselves out behind it, and each one's own random drop and course is
+        // what fans a shared pad out into a flock.
         if (index === 0) {
-          launch(origin)
-          return
+          launch()
+          continue
         }
         const timer = setTimeout(() => {
           staggered.delete(timer)
-          launch(origin)
+          launch()
         }, index * CHIME_STAGGER_MS)
         staggered.add(timer)
-      })
+      }
     }
 
     const schedule = (): void => {

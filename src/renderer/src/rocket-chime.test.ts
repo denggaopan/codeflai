@@ -4,8 +4,6 @@ import {
   CHIME_GRACE_MS,
   DEFAULT_ROCKET,
   HOUR_MS,
-  MAX_CHIME_ROCKETS,
-  chimeLaunchOrigins,
   msFromNearestHour,
   msUntilNextHour,
   nearestHourStart,
@@ -16,8 +14,6 @@ import {
 /** A local wall-clock moment, which is the only clock this module reads. */
 const at = (hours: number, minutes = 0, seconds = 0, ms = 0): Date =>
   new Date(2026, 8, 22, hours, minutes, seconds, ms)
-
-const VIEWPORT = { width: 1440, height: 900 }
 
 describe('rocketsAtHour', () => {
   it('drops one rocket per hour on the dial', () => {
@@ -31,7 +27,6 @@ describe('rocketsAtHour', () => {
   it('reads noon and midnight as twelve', () => {
     expect(rocketsAtHour(at(12))).toBe(12)
     expect(rocketsAtHour(at(0))).toBe(12)
-    expect(MAX_CHIME_ROCKETS).toBe(12)
   })
 })
 
@@ -67,41 +62,6 @@ describe('nearestHourStart', () => {
     // The far side of the half-hour belongs to the next hour, so the distance shrinks again.
     expect(msFromNearestHour(at(9, 50))).toBe(10 * 60_000)
     expect(msFromNearestHour(at(9, 20))).toBeGreaterThan(CHIME_GRACE_MS)
-  })
-})
-
-describe('chimeLaunchOrigins', () => {
-  it('spreads a chime evenly across the top of the window', () => {
-    const origins = chimeLaunchOrigins({ count: 4, viewport: VIEWPORT, y: 36 })
-
-    expect(origins).toHaveLength(4)
-    expect(origins.every((origin) => origin.y === 36)).toBe(true)
-    const gaps = origins.slice(1).map((origin, index) => origin.x - origins[index].x)
-    expect(new Set(gaps.map((gap) => gap.toFixed(6))).size).toBe(1)
-    // Half a share of clearance at each end, so the fan is symmetric about the centre.
-    expect(origins[0].x - 32).toBeCloseTo(VIEWPORT.width - 32 - origins[3].x, 6)
-  })
-
-  it('keeps every rocket inside the window, twelve of them included', () => {
-    const origins = chimeLaunchOrigins({ count: MAX_CHIME_ROCKETS, viewport: VIEWPORT, y: 36 })
-
-    expect(origins).toHaveLength(MAX_CHIME_ROCKETS)
-    expect(origins.every((origin) => origin.x > 0 && origin.x < VIEWPORT.width)).toBe(true)
-  })
-
-  it('centres a single rocket', () => {
-    expect(chimeLaunchOrigins({ count: 1, viewport: VIEWPORT, y: 36 })[0].x).toBeCloseTo(VIEWPORT.width / 2, 6)
-  })
-
-  it('survives a window narrower than its own margins', () => {
-    const origins = chimeLaunchOrigins({ count: 3, viewport: { width: 40, height: 400 }, y: 36 })
-
-    expect(origins).toHaveLength(3)
-    expect(origins.every((origin) => origin.x === 32)).toBe(true)
-  })
-
-  it('has nothing to launch for an empty chime', () => {
-    expect(chimeLaunchOrigins({ count: 0, viewport: VIEWPORT, y: 36 })).toEqual([])
   })
 })
 

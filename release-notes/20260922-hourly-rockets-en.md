@@ -9,7 +9,7 @@ The rockets can now tell the time. On every hour, the top of the window drops on
 ### Rockets on the hour
 
 - **Why it matters:** A rocket used to appear only when you clicked the brand mark in the top-left corner, so unless you happened to click it you never knew it was there. It is meant to be a small moment of fun, and something hidden that well may as well not exist.
-- **What it is:** On every hour, the top of the window drops one rocket **per hour on the clock**: nine at 09:00, five at 17:00, twelve at noon and at midnight. They are spread along the top of the window and leave one after another, so the count is easy to read, and they only pass over the interface — nothing they fly across stops being clickable.
+- **What it is:** On every hour, the top of the window drops one rocket **per hour on the clock**: nine at 09:00, five at 17:00, twelve at noon and at midnight. They leave the brand mark in the top-left corner one after another — the same spot a clicked one comes from — and spread out as they fall, so the count is easy to read, and they only pass over the interface — nothing they fly across stops being clickable.
 - **When to use it:** When you have a few sessions working away on long tasks, a row of rockets going past tells you another hour has gone by.
 - **Where to find it:** On by default, nothing to set up. To stop it, go to Settings → General → "Drop rockets on the hour".
 

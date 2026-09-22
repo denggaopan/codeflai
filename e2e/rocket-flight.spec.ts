@@ -236,19 +236,23 @@ test('drops one rocket per hour on the dial, and the master switch takes the eas
     await expect(rockets).toHaveCount(5)
     await expect(page.locator('.rocket-flight-burst')).toHaveCount(0)
 
-    // Fanned across the window rather than stacked on the brand button, all of them inside it.
-    const layout = await rockets.evaluateAll((nodes) => ({
-      centers: nodes.map((node) => {
-        const rect = node.querySelector('.rocket-flight-body')!.getBoundingClientRect()
-        return rect.x + rect.width / 2
-      }),
-      viewportWidth: window.innerWidth
-    }))
-    for (let index = 1; index < layout.centers.length; index++) {
-      expect(layout.centers[index]).toBeGreaterThan(layout.centers[index - 1])
+    // Every one of them off the logo, the same pad a clicked rocket uses.
+    // Compared as numbers: the browser rounds an inline style's px to four decimals.
+    const pads = await rockets.evaluateAll((nodes) => {
+      const brand = document.querySelector('.title-bar-brand')!.getBoundingClientRect()
+      return {
+        anchors: nodes.map((node) => ({
+          left: Number.parseFloat((node as HTMLElement).style.left),
+          top: Number.parseFloat((node as HTMLElement).style.top)
+        })),
+        expected: { left: brand.left + brand.width / 2, top: brand.bottom }
+      }
+    })
+    expect(pads.anchors).toHaveLength(5)
+    for (const anchor of pads.anchors) {
+      expect(anchor.left).toBeCloseTo(pads.expected.left, 2)
+      expect(anchor.top).toBeCloseTo(pads.expected.top, 2)
     }
-    expect(layout.centers[0]).toBeGreaterThan(0)
-    expect(layout.centers[4]).toBeLessThan(layout.viewportWidth)
     await page.screenshot({ path: testInfo.outputPath('hourly-chime.png') })
 
     await page.locator('.rocket-flight-body').evaluateAll((nodes) => {

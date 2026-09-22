@@ -427,12 +427,16 @@ describe('TitleBar', () => {
     expect(flights[31].keyframes).toHaveLength(5)
   })
 
-  // The chime: one rocket per hour on the dial, fanned across the top of the window and
-  // counted out a stagger apart. Driven off the wall clock, so these tests move the clock.
+  // The chime: one rocket per hour on the dial, all of them off the logo, counted out a
+  // stagger apart. Driven off the wall clock, so these tests move the clock.
   it('drops one rocket per hour on the dial when the hour comes round', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 8, 22, 16, 59, 30))
     render(<TitleBar />)
+    // jsdom measures everything as zero, so the pad is stubbed: the point of the assertion
+    // below is that the chime reads the brand's own box, not that it reads some box.
+    screen.getByRole('button', { name: 'Codeflai — launch a rocket' }).getBoundingClientRect = () =>
+      ({ left: 40, width: 120, bottom: 36 }) as DOMRect
     expect(rockets()).toHaveLength(0)
 
     // 17:00 — five on the dial, and the first one leaves on its own.
@@ -441,10 +445,12 @@ describe('TitleBar', () => {
     act(() => vi.advanceTimersByTime(4 * 140))
     expect(rockets()).toHaveLength(5)
 
-    // Spread evenly across the window rather than stacked on the brand button, and none of
-    // them wearing the multi-click burst's badge.
-    const lefts = [...rockets()].map((rocket) => (rocket as HTMLElement).style.left)
-    expect(lefts).toEqual(['128px', '320px', '512px', '704px', '896px'])
+    // All five off the same pad -- the middle of the brand's lower edge, where a clicked
+    // rocket starts -- and none of them wearing the multi-click burst's badge.
+    for (const rocket of rockets()) {
+      expect((rocket as HTMLElement).style.left).toBe('100px')
+      expect((rocket as HTMLElement).style.top).toBe('36px')
+    }
     expect(document.querySelectorAll('.rocket-flight-burst')).toHaveLength(0)
     expect(flights).toHaveLength(5)
   })
