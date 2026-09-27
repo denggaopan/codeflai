@@ -40,10 +40,10 @@ describe('agent kind registry', () => {
     })
   })
 
-  it('carries each agent CLI its own fixed bypass argv on a fresh session', () => {
-    expect(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, agentLaunchArgs(kind, false)]))).toEqual({
+  it('carries each agent CLI its own launch argv on a fresh session', () => {
+    expect(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, agentLaunchArgs(kind, false, 'win32')]))).toEqual({
       claude: ['--dangerously-skip-permissions'],
-      codex: ['--dangerously-bypass-approvals-and-sandbox'],
+      codex: ['--dangerously-bypass-approvals-and-sandbox', '--no-daemon'],
       gemini: ['--approval-mode=yolo'],
       copilot: ['--allow-all-tools'],
       cursor: ['--force'],
@@ -52,12 +52,22 @@ describe('agent kind registry', () => {
     })
   })
 
+  it('keeps Codex in the current PTY only on Windows', () => {
+    expect(agentLaunchArgs('codex', false, 'win32')).toEqual([
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--no-daemon'
+    ])
+    expect(agentLaunchArgs('codex', false, 'darwin')).toEqual([
+      '--dangerously-bypass-approvals-and-sandbox'
+    ])
+  })
+
   // Codex is the one CLI whose resume is a subcommand rather than a flag, so it has to lead
   // the argv; every other kind appends its flag after the bypass argv.
   it('reattaches the previous conversation with each CLI own resume syntax', () => {
-    expect(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, agentLaunchArgs(kind, true)]))).toEqual({
+    expect(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, agentLaunchArgs(kind, true, 'win32')]))).toEqual({
       claude: ['--dangerously-skip-permissions', '--continue'],
-      codex: ['resume', '--last', '--dangerously-bypass-approvals-and-sandbox'],
+      codex: ['resume', '--last', '--dangerously-bypass-approvals-and-sandbox', '--no-daemon'],
       gemini: ['--approval-mode=yolo', '--resume', 'latest'],
       copilot: ['--allow-all-tools', '--continue'],
       cursor: ['--force', '--resume'],

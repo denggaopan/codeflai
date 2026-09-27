@@ -171,7 +171,7 @@ Gemini、GitHub Copilot、Cursor、Comate 和 Qwen Code 收在设置的 **More a
 
 ## agent 会话与权限绕过
 
-每个交互式 agent 会话都会带上该厂商自己的权限绕过来启动 CLI，除此之外不加任何参数：
+每个交互式 agent 会话都会带上该厂商自己的权限绕过来启动 CLI：
 
 | 会话类型 | 可执行文件 | 每个交互式会话携带的绕过设置 |
 | --- | --- | --- |
@@ -182,6 +182,9 @@ Gemini、GitHub Copilot、Cursor、Comate 和 Qwen Code 收在设置的 **More a
 | Cursor | `agent` | `--force` |
 | Comate | `comatecli` | 会话环境变量 `ZULU_TERMINAL_RUN_MODE=yolo` |
 | Qwen Code | `qwen` | `--approval-mode=yolo`（见下方说明） |
+
+在 Windows 上，Codex 会额外收到 `--no-daemon`。Codex 的后台服务无法继承 Codeflai 的 PTY，
+未沙箱命令可能因此短暂创建系统控制台；让服务留在当前 PTY 可以消除闪烁，同时不改变权限绕过设置。
 
 **这会在整个会话存续期间绕过 agent 自身的权限与沙箱保护。**agent 会在它的目录里读文件、写文件、执行命令，而不再逐次征求你的确认。这是为「快速、低摩擦」的工作流做出的选择，Codeflai 不打算把它藏起来：只要当前会话是正在运行的 agent 会话，它的终端头部就会一直显示 **「Permissions and sandbox bypass enabled（已启用权限与沙箱绕过）」** 警告徽章。
 

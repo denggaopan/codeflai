@@ -30,7 +30,7 @@ import { createRepo } from './create-repo'
  *   3  Claude argv is exactly the bypass flag + warning shown -> test 2
  *   4  First-input title replacement; no bypass flag leaks
  *      into the title-process argv log                       -> test 3
- *   5  Codex argv is exactly its bypass flag                  -> test 4
+ *   5  Codex argv includes the Windows PTY flag               -> test 4
  *   6  PowerShell/CMD sessions: bypass warning absent          -> test 5
  *   7  Second worktree session shows sequence 2 (the Codex
  *      session created in test 4 IS that second worktree)     -> test 4
@@ -666,7 +666,7 @@ test('Ctrl+V pastes the clipboard text into the Claude session instead of sendin
   }
 })
 
-test('creates a Codex session as the second worktree, receiving exactly its own bypass flag', async () => {
+test('creates a Codex session as the second worktree, keeping command runners inside the PTY', async () => {
   const launcher = await openNewSessionLauncher()
   await launcher.getByRole('button', { name: 'Codex (new worktree)', exact: true }).click()
 
@@ -676,7 +676,7 @@ test('creates a Codex session as the second worktree, receiving exactly its own 
 
   await expect
     .poll(() => (existsSync(terminalArgvLog) ? readJsonArgvLog(terminalArgvLog) : undefined), { timeout: 20_000 })
-    .toEqual(['--dangerously-bypass-approvals-and-sandbox'])
+    .toEqual(['--dangerously-bypass-approvals-and-sandbox', '--no-daemon'])
 
   await expect(visibleBypassWarnings()).toHaveText([BYPASS_WARNING_TEXT])
 })

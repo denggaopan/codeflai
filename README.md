@@ -296,8 +296,7 @@ deletes commits, stashes, or anything in your original project.
 
 ## Agent sessions and the permission bypass
 
-Every interactive agent session launches its CLI with that vendor's own permission bypass,
-and nothing else:
+Every interactive agent session launches its CLI with that vendor's own permission bypass:
 
 | Session kind | Executable | Bypass carried on every interactive session |
 | --- | --- | --- |
@@ -308,6 +307,10 @@ and nothing else:
 | Cursor | `agent` | `--force` |
 | Comate | `comatecli` | `ZULU_TERMINAL_RUN_MODE=yolo` in the session's environment |
 | Qwen Code | `qwen` | `--approval-mode=yolo` (see below) |
+
+On Windows, Codex sessions also receive `--no-daemon`. Codex's detached shared server cannot
+inherit Codeflai's PTY, so an unsandboxed shell command could briefly open a system console;
+keeping that server in the session's PTY prevents the flash without changing the bypass.
 
 **This bypasses the agent's own permission and sandbox protections for the whole life of the
 session.** The agent reads, writes, and runs commands in its directory without asking you to

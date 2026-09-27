@@ -39,11 +39,11 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 
 ### Agent 注册表（src/shared/agent-kinds.ts）
 
-7 种 agent kind 的**唯一事实来源**，主进程与 renderer 共用：`AGENT_KINDS`（有序，claude/codex 在前）、`isAgentKind()`、`AGENT_LAUNCH`（每项 `{ command, bypassArgs, bypassEnv?, resumeArgs, resumeSubcommand? }`）、`agentLaunchArgs(kind, resume)`、`agentLaunchEnv(kind)`。加这张表之前，「这是 agent 还是 shell」在 6 处各写一遍 `kind === 'claude' || kind === 'codex'`（PTY argv、capability 探测、标题生成、bypass 徽章、Shift+Enter/Ctrl+V 按键改写、空闲 Done 态），加一个 CLI 要把 6 处都找出来。
+7 种 agent kind 的**唯一事实来源**，主进程与 renderer 共用：`AGENT_KINDS`（有序，claude/codex 在前）、`isAgentKind()`、`AGENT_LAUNCH`（每项 `{ command, bypassArgs, extraArgs?, bypassEnv?, resumeArgs, resumeSubcommand? }`）、`agentLaunchArgs(kind, resume, platform)`、`agentLaunchEnv(kind)`。加这张表之前，「这是 agent 还是 shell」在 6 处各写一遍 `kind === 'claude' || kind === 'codex'`（PTY argv、capability 探测、标题生成、bypass 徽章、Shift+Enter/Ctrl+V 按键改写、空闲 Done 态），加一个 CLI 要把 6 处都找出来。
 
 几条容易踩的约束：
 
-- `resumeSubcommand` 必须**排在 bypassArgs 前面**（codex 是 `resume --last <bypass>`），其余 kind 是 `<bypass> <resumeArgs>`；`agentLaunchArgs` 是唯一决定这个顺序的地方。
+- `resumeSubcommand` 必须**排在 bypassArgs 前面**（codex 是 `resume --last <bypass>`），其余 kind 是 `<bypass> <resumeArgs>`；平台对应的 `extraArgs` 跟在 bypass 后面；`agentLaunchArgs` 是唯一决定这个顺序的地方。
 - `command` 不等于 kind：`cursor → agent`、`comate → comatecli`，按 kind 查会找到错的程序（cursor 是编辑器启动器）或找不到。
 - Comate 没有 bypass 旗标：它的 TUI 每次启动把 run mode 重置为 `process.env.ZULU_TERMINAL_RUN_MODE || 'manual'`，所以全放行只能走 `bypassEnv`；给它传一个编造的 `--yolo` 会被静默忽略。**bypass 徽章因此不能按「有没有 bypass argv」判断，只能按 `isAgentKind`。**
 - Comate 的 `resumeArgs: ['--resume']` 在 comatecli 1.0.8 里**尚未实现**（argv 解析器只认 `-h/-l/-m/-t/-v`，多余参数静默忽略、不报错），是为后续版本预留的，代价为零。
@@ -108,7 +108,7 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 
 ### 关键产品约定（改动前先读 README.md 对应章节）
 
-- 交互式 agent 会话固定携带各自厂商的 bypass（见 `AGENT_LAUNCH`：claude `--dangerously-skip-permissions`、codex `--dangerously-bypass-approvals-and-sandbox`、gemini/qwen `--approval-mode=yolo`、copilot `--allow-all-tools`、cursor `--force`、comate 环境变量 `ZULU_TERMINAL_RUN_MODE=yolo`），运行期间终端头部持续显示 bypass 警告；本版本无关闭开关。
+- 交互式 agent 会话固定携带各自厂商的 bypass（见 `AGENT_LAUNCH`：claude `--dangerously-skip-permissions`、codex `--dangerously-bypass-approvals-and-sandbox`（Windows 另加 `--no-daemon`）、gemini/qwen `--approval-mode=yolo`、copilot `--allow-all-tools`、cursor `--force`、comate 环境变量 `ZULU_TERMINAL_RUN_MODE=yolo`），运行期间终端头部持续显示 bypass 警告；本版本无关闭开关。
 - 新建会话菜单的条目由 Settings 的「会话类型」开关决定：关闭的类型完全不出现（全部关闭时显示空态文案），开启 worktree 的类型有两个条目（普通 = 跑在项目目录，「(new worktree)」= 独立 worktree + 同名分支）。CLI 缺失是另一回事——条目仍在，只是 disabled 并附查找说明（说明里写的是真正被查找的可执行名，不是产品名）。**5 种 opt-in agent 默认 `enabled: false`**，所以默认安装的新建菜单与加它们之前完全一致；但它们的 `worktree` 默认是 `true`，一开启就直接有两个条目。
 - **退出 Codeflai 不结束会话**：PTY 活在常驻的 pty-host 里，关窗/崩溃/就地升级都不打断 agent，下次启动 attach 回去并用 host 保留的输出尾部（每会话 256 KB）重绘终端，再补发一次 resize 让全屏 TUI 自己重画。真正结束会话的只有：会话自己退出、删除会话、把项目移出列表、协议变更导致 host 退役、重启机器。host 在「零会话且零客户端」持续 60 秒后自退——但**「还没有任何客户端连过」是另一个更长的期限**（`STARTUP_GRACE_TIMEOUT_MS`，30 秒，必须大于 launcher 约 9.55 秒的连接预算）：刚被拉起的 host 按任何标准都是空闲的，可它正在等那个把它拉起来的客户端连上来。这两件事共用一个旋钮会**静默地**坏掉——e2e 把空闲期限调成 250ms 时，host 在绑定 endpoint 后约 340ms 就退了，应用悄悄回退到进程内 PTY、什么都没保活，而其它用例照常全过。启动时 host 没有的 `running` 会话仍按原目录重启并续接上次对话（resume 参数）。
 - **自动关机默认关闭**，开启后每 N 分钟检查一次「有没有会话在跑」（按**侧栏显示的状态**判：Done 的 agent 不算在跑，Starting… 和开着的 shell 算），没有就强制关机（倒计时十秒可取消）。**可选的时间范围限制**（频率下拉旁的复选框 + 两个半小时粒度的时间下拉，默认 `20:00–08:00` 但默认不启用）开启后只在这段时间内允许关机，跨午夜按「起点晚于终点」表达，起点含、终点不含；窗口外照常按频率检查、只是不进倒计时，所以中午空下来的机器会在 20:00 之后的第一次检查才关。两个时间下拉**不勾选时也可编辑**（复选框管的是「这个时段生不生效」而不是「能不能选」，先设时段再启用才是自然顺序）。开关、频率与时间范围跨重启保留（取消勾选也保留已选的时间）；两个按钮的 aria-label/title 是完整句子（顶部栏没有正文空间，tooltip 是用户唯一能读到「这会把我的电脑关掉」的地方），改文案要同步 `TitleBar.test.tsx` 与 `e2e/auto-shutdown.spec.ts`。

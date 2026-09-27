@@ -253,7 +253,7 @@ export class TerminalService {
     // any bypass that has to travel as environment instead of a flag.
     const resolved = await this.locator.resolveAgent(kind)
     if (!resolved) throw new Error(`${kind} is not available.`)
-    const logicalArgs = agentLaunchArgs(kind, resume)
+    const logicalArgs = agentLaunchArgs(kind, resume, this.platform)
     const env = agentLaunchEnv(kind)
     const spec = this.platform === 'win32'
       ? await windowsAgentSpec(resolved, logicalArgs, this.environment, this.candidateExists)

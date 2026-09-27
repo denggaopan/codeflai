@@ -28,6 +28,8 @@ export type AgentLaunchSpec = {
    * the same thing through the environment instead; see `bypassEnv`.
    */
   bypassArgs: readonly string[]
+  /** Platform-specific runtime flags required to keep the interactive CLI attached to its PTY. */
+  extraArgs?: Readonly<Partial<Record<NodeJS.Platform, readonly string[]>>>
   /**
    * A bypass that is not an argv flag. Comate's TUI resets its run mode to
    * `process.env.ZULU_TERMINAL_RUN_MODE || 'manual'` on every launch, so full auto-execution
@@ -61,6 +63,9 @@ export const AGENT_LAUNCH: Readonly<Record<AgentKind, AgentLaunchSpec>> = {
   codex: {
     command: 'codex',
     bypassArgs: ['--dangerously-bypass-approvals-and-sandbox'],
+    // Codex's shared Windows daemon runs outside the PTY. Its unsandboxed command runner can
+    // otherwise allocate a visible console window for every shell command it executes.
+    extraArgs: { win32: ['--no-daemon'] },
     resumeArgs: [],
     // Codex exposes resume only as a subcommand, which reopens its most recent session.
     resumeSubcommand: ['resume', '--last']
@@ -115,10 +120,15 @@ export const isAgentKind = (kind: SessionKind): kind is AgentKind =>
  * reattaches its previous conversation instead of starting a new one, which each vendor
  * spells differently — a trailing flag for most, a leading subcommand for Codex.
  */
-export const agentLaunchArgs = (kind: AgentKind, resume: boolean): readonly string[] => {
+export const agentLaunchArgs = (
+  kind: AgentKind,
+  resume: boolean,
+  platform: NodeJS.Platform = process.platform
+): readonly string[] => {
   const spec = AGENT_LAUNCH[kind]
-  if (!resume) return spec.bypassArgs
-  return [...(spec.resumeSubcommand ?? []), ...spec.bypassArgs, ...spec.resumeArgs]
+  const launchArgs = [...spec.bypassArgs, ...(spec.extraArgs?.[platform] ?? [])]
+  if (!resume) return launchArgs
+  return [...(spec.resumeSubcommand ?? []), ...launchArgs, ...spec.resumeArgs]
 }
 
 /**

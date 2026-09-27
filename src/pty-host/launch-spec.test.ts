@@ -171,8 +171,8 @@ describe('LaunchSpecResolver agents', () => {
 describe('LaunchSpecResolver Windows shim chain', () => {
   it.each([
     ['claude' as const, 'C:\\Agents With Spaces\\claude.exe', ['--dangerously-skip-permissions']],
-    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['--dangerously-bypass-approvals-and-sandbox']]
-  ])('runs a direct %s executable as-is', async (kind, executable, expectedArgs) => {
+    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['--dangerously-bypass-approvals-and-sandbox', '--no-daemon']]
+  ])('runs a direct %s executable with its launch arguments', async (kind, executable, expectedArgs) => {
     const candidateExists = vi.fn(async () => false)
     const resolver = resolverWith({ locator: locatorWith({ [kind]: executable }), candidateExists })
 
@@ -186,8 +186,8 @@ describe('LaunchSpecResolver Windows shim chain', () => {
 
   it.each([
     ['claude' as const, 'cmd', '--dangerously-skip-permissions'],
-    ['codex' as const, 'bat', '--dangerously-bypass-approvals-and-sandbox']
-  ])('hosts a resolved %s .%s shim with ComSpec and a raw double-wrapped command', async (kind, extension, bypassFlag) => {
+    ['codex' as const, 'bat', '--dangerously-bypass-approvals-and-sandbox --no-daemon']
+  ])('hosts a resolved %s .%s shim with ComSpec and a raw double-wrapped command', async (kind, extension, launchFlags) => {
     const shim = `C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\${kind}.${extension}`
     const comspec = 'C:\\Windows\\System32\\cmd.exe'
     const resolver = resolverWith({
@@ -198,7 +198,7 @@ describe('LaunchSpecResolver Windows shim chain', () => {
 
     await expect(resolver.resolveLaunchSpec(kind, false)).resolves.toEqual({
       file: comspec,
-      args: `/d /s /c ""${shim}" ${bypassFlag}"`,
+      args: `/d /s /c ""${shim}" ${launchFlags}"`,
       env: {}
     })
   })
@@ -259,7 +259,7 @@ describe('LaunchSpecResolver Windows shim chain', () => {
 
     await expect(resolver.resolveLaunchSpec('codex', false)).resolves.toEqual({
       file: executable,
-      args: ['--dangerously-bypass-approvals-and-sandbox'],
+      args: ['--dangerously-bypass-approvals-and-sandbox', '--no-daemon'],
       env: {}
     })
     expect(candidateExists.mock.calls).toEqual([[executable]])

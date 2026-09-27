@@ -214,8 +214,8 @@ describe('TerminalService launch adapters', () => {
 
   it.each([
     ['claude' as const, 'C:\\Agents With Spaces\\claude.exe', ['--dangerously-skip-permissions']],
-    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['--dangerously-bypass-approvals-and-sandbox']]
-  ])('spawns a direct %s executable with only its fixed bypass arguments', async (kind, executable, expectedArgs) => {
+    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['--dangerously-bypass-approvals-and-sandbox', '--no-daemon']]
+  ])('spawns a direct %s executable with its launch arguments', async (kind, executable, expectedArgs) => {
     const factory = new FakePtyFactory(new FakePty())
     const service = serviceWith(factory, { locator: locatorWith({ [kind]: executable }) })
 
@@ -226,8 +226,8 @@ describe('TerminalService launch adapters', () => {
 
   it.each([
     ['claude' as const, 'cmd', '--dangerously-skip-permissions'],
-    ['codex' as const, 'bat', '--dangerously-bypass-approvals-and-sandbox']
-  ])('hosts a resolved %s .%s shim with ComSpec and a raw double-wrapped command', async (kind, extension, bypassFlag) => {
+    ['codex' as const, 'bat', '--dangerously-bypass-approvals-and-sandbox --no-daemon']
+  ])('hosts a resolved %s .%s shim with ComSpec and a raw double-wrapped command', async (kind, extension, launchFlags) => {
     const shim = `C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\${kind}.${extension}`
     const comspec = 'C:\\Windows\\System32\\cmd.exe'
     const factory = new FakePtyFactory(new FakePty())
@@ -241,7 +241,7 @@ describe('TerminalService launch adapters', () => {
 
     expect(factory.spawn).toHaveBeenCalledWith(
       comspec,
-      `/d /s /c ""${shim}" ${bypassFlag}"`,
+      `/d /s /c ""${shim}" ${launchFlags}"`,
       expect.any(Object)
     )
   })
@@ -282,14 +282,14 @@ describe('TerminalService launch adapters', () => {
     expect(candidateExists.mock.calls).toEqual([[executable]])
     expect(factory.spawn).toHaveBeenCalledWith(
       executable,
-      ['--dangerously-bypass-approvals-and-sandbox'],
+      ['--dangerously-bypass-approvals-and-sandbox', '--no-daemon'],
       expect.any(Object)
     )
   })
 
   it.each([
     ['claude' as const, 'C:\\Agents With Spaces\\claude.exe', ['--dangerously-skip-permissions', '--continue']],
-    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['resume', '--last', '--dangerously-bypass-approvals-and-sandbox']]
+    ['codex' as const, 'C:\\Agents With Spaces\\codex.com', ['resume', '--last', '--dangerously-bypass-approvals-and-sandbox', '--no-daemon']]
   ])('spawns a restored direct %s executable with its conversation resume arguments', async (kind, executable, expectedArgs) => {
     const factory = new FakePtyFactory(new FakePty())
     const service = serviceWith(factory, { locator: locatorWith({ [kind]: executable }) })
