@@ -1788,11 +1788,14 @@ describe('terminal font size', () => {
 })
 
 describe('localStorage availability', () => {
-  const reinitializeWithMarker = async (expected: string | undefined, stored: string | null): Promise<void> => {
+  const reinitializeWithMarker = async (
+    expected: string | undefined, stored: string | null, otherKeys: Record<string, string> = {}
+  ): Promise<void> => {
     dispose()
     useAppStore.getState().reset()
     window.localStorage.clear()
     if (stored !== null) window.localStorage.setItem(STORAGE_MARKER_KEY, stored)
+    for (const [key, value] of Object.entries(otherKeys)) window.localStorage.setItem(key, value)
     api = createFakeApi()
     api.getSnapshot.mockResolvedValue({ platform: 'win32', capabilities: defaultCapabilities(), state: {
       ...seededState,
@@ -1815,6 +1818,17 @@ describe('localStorage availability', () => {
     await reinitializeWithMarker('m1', 'm1')
     expect(useAppStore.getState().notice).toBeNull()
     expect(api.saveWorkspace.mock.calls.at(-1)?.[0].storageMarker).toBe('m1')
+  })
+
+  it('adopts a fresh marker silently when localStorage holds preferences but no marker', async () => {
+    // state.json got its marker from a launch whose store never reached disk (the upgrade race
+    // on the first launch of this build); the preferences themselves are intact.
+    await reinitializeWithMarker('m1', null, { 'codeflai.quickPrompts': '[{"id":"p","starred":true,"content":"keep"}]' })
+    expect(useAppStore.getState().notice).toBeNull()
+    expect(useAppStore.getState().quickPrompts).toEqual([{ id: 'p', starred: true, content: 'keep' }])
+    const marker = window.localStorage.getItem(STORAGE_MARKER_KEY)
+    expect(marker).toBeTruthy()
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0].storageMarker).toBe(marker)
   })
 
   it('warns when saved settings vanished and never overwrites the marker in state.json', async () => {
