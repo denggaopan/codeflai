@@ -165,6 +165,7 @@ export const zhCN: Translations = {
   'notice.shutdownFailed': '无法关机：{reason}。自动关机已关闭。',
   'notice.dismiss': '关闭提示',
   'notice.genericError': '出错了。',
+  'notice.preferencesUnavailable': 'Codeflai 未能读取已保存的设置（快捷提示词、主题、语言等）。请完全退出 Codeflai 后重新打开；在此之前所做的更改不会被保存。',
   'notice.projectPathCopied': '已复制项目目录地址：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',
 

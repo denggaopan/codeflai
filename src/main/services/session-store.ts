@@ -101,6 +101,10 @@ export class SessionStore {
         ...workspace,
         ...(workspace.unreadSessionIds === undefined && state.workspace?.unreadSessionIds !== undefined
           ? { unreadSessionIds: state.workspace.unreadSessionIds }
+          : {}),
+        // Only a renderer that has checked its localStorage sends a marker; omission keeps it.
+        ...(workspace.storageMarker === undefined && state.workspace?.storageMarker !== undefined
+          ? { storageMarker: state.workspace.storageMarker }
           : {})
       }, state)
     }))

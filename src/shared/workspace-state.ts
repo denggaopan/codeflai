@@ -26,6 +26,7 @@ export const reconcileWorkspace = (workspace: WorkspaceState, state: AppState): 
       unreadSessionIds: unreadSessionIds.length === workspace.unreadSessionIds!.length
         ? workspace.unreadSessionIds
         : unreadSessionIds
-    } : {})
+    } : {}),
+    ...(workspace.storageMarker !== undefined ? { storageMarker: workspace.storageMarker } : {})
   }
 }

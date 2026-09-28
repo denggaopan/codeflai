@@ -169,6 +169,7 @@ export const zhTW: Translations = {
   'notice.shutdownFailed': '無法關機：{reason}。自動關機已關閉。',
   'notice.dismiss': '關閉提示',
   'notice.genericError': '發生錯誤。',
+  'notice.preferencesUnavailable': 'Codeflai 無法讀取已儲存的設定（快速提示詞、主題、語言等）。請完全結束 Codeflai 後重新開啟；在此之前所做的變更不會被保存。',
   'notice.projectPathCopied': '已複製專案路徑：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 個檔案已變更。請先提交或捨棄這些變更，再刪除工作階段。',
 

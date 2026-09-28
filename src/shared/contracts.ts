@@ -82,7 +82,10 @@ export const workspaceStateSchema = z.strictObject({
   activeProjectId: z.string().min(1).nullable(),
   activeSessionId: z.string().min(1).nullable(),
   collapsedProjectIds: z.array(z.string().min(1)),
-  unreadSessionIds: z.array(z.string().min(1)).optional()
+  unreadSessionIds: z.array(z.string().min(1)).optional(),
+  // Mirrors a value kept in the renderer's localStorage, so a startup that sees this marker but
+  // not its twin knows Chromium handed it an empty (possibly memory-only) store.
+  storageMarker: z.string().min(1).max(64).optional()
 })
 
 export type WorkspaceState = z.infer<typeof workspaceStateSchema>

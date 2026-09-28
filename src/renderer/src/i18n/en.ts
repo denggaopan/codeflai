@@ -170,6 +170,7 @@ export const en = {
   'notice.shutdownFailed': 'Could not shut the computer down: {reason}. Auto shutdown has been switched off.',
   'notice.dismiss': 'Dismiss notice',
   'notice.genericError': 'Something went wrong.',
+  'notice.preferencesUnavailable': 'Codeflai could not load your saved settings (quick prompts, theme, language…). Quit Codeflai completely and start it again; changes made before then will not be kept.',
   'notice.projectPathCopied': 'Project path copied: {path}',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',
 

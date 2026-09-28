@@ -37,6 +37,7 @@ import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { DEFAULT_TERMINAL_FONT_SIZE, isTerminalFontSize, parseStoredTerminalFontSize } from '../terminal-font'
 import { defaultSessionKindPreferences } from '../session-kind-options'
+import { checkStorageMarker } from '../storage-marker'
 import { QUICK_PROMPTS_STORAGE_KEY, quickPromptsSchema, readStoredQuickPrompts, type QuickPrompt } from '../quick-prompts'
 import { readMigratedStorage } from '../storage-migration'
 
@@ -652,6 +653,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
       let workspaceChanged = false
       let latestBroadcast: AppState | undefined
       let unreadPersisted = false
+      // Sent only once this launch has compared localStorage with state.json; omission keeps it.
+      let storageMarker: string | undefined
       const pendingActivity = new Map<string, TerminalDataEvent[]>()
       const pendingUnread = new Set<string>()
       const startupRead = new Set<string>()
@@ -728,7 +731,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         if (snapshotLoaded && unreadSessionIds.length > 0) unreadPersisted = true
         void window.codeflai.saveWorkspace({
           activeProjectId, activeSessionId, collapsedProjectIds,
-          ...(snapshotLoaded && unreadPersisted ? { unreadSessionIds } : {})
+          ...(snapshotLoaded && unreadPersisted ? { unreadSessionIds } : {}),
+          ...(storageMarker !== undefined ? { storageMarker } : {})
         }).catch((error: unknown) => {
           if (!disposed) set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
         })
@@ -786,6 +790,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (disposed) return
           const appState = latestBroadcast ?? snapshot.state
           unreadPersisted = snapshot.state.workspace?.unreadSessionIds !== undefined
+          const storageCheck = checkStorageMarker(snapshot.state.workspace?.storageMarker)
+          storageMarker = storageCheck.marker
           document.documentElement.dataset.platform = snapshot.platform
           hydratingWorkspace = true
           set((state) => ({
@@ -795,9 +801,14 @@ export const useAppStore = create<AppStore>()((set, get) => {
             sessionKindPreferences: readStoredSessionKindPreferences(snapshot.platform),
             ...reconcileWorkspace({
               ...(workspaceChanged ? state : snapshot.state.workspace ?? emptyWorkspace()),
+              storageMarker: undefined,
               unreadSessionIds: (snapshot.state.workspace?.unreadSessionIds ?? []).filter((id) => !startupRead.has(id))
             }, appState),
-            notice: snapshot.recoveryWarning ? { message: snapshot.recoveryWarning, tone: 'info' } : state.notice
+            notice: snapshot.recoveryWarning
+              ? { message: snapshot.recoveryWarning, tone: 'info' }
+              : storageCheck.lost
+                ? { message: translate(state.locale, 'notice.preferencesUnavailable'), tone: 'error' }
+                : state.notice
           }))
           hydratingWorkspace = false
           snapshotLoaded = true

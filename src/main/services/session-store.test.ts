@@ -106,6 +106,16 @@ describe('SessionStore', () => {
     expect((await new SessionStore(filePath).load()).workspace?.unreadSessionIds).toEqual([])
   })
 
+  it('keeps the storage marker when a write omits it and replaces it only when one is supplied', async () => {
+    const store = new SessionStore(filePath)
+    const workspace = { activeProjectId: 'p1', activeSessionId: null, collapsedProjectIds: [] as string[], storageMarker: 'm1' }
+    await store.save({ ...stateWith(), workspace })
+    await store.saveWorkspace({ activeProjectId: 'p1', activeSessionId: 's1', collapsedProjectIds: [] })
+    expect((await new SessionStore(filePath).load()).workspace?.storageMarker).toBe('m1')
+    await store.saveWorkspace({ ...workspace, storageMarker: 'm2' })
+    expect((await new SessionStore(filePath).load()).workspace?.storageMarker).toBe('m2')
+  })
+
   it.each([null, [], { collapsedProjectIds: [42] }])('ignores invalid workspace metadata without losing sessions: %j', async (workspace) => {
     await writeFile(filePath, JSON.stringify({ ...stateWith(), workspace }))
     const store = new SessionStore(filePath)

@@ -21,6 +21,7 @@ import type { TerminalDataEvent, TerminalReplay } from '../../../shared/pty-prot
 import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
 import { DEFAULT_SESSION_KIND_PREFERENCES } from '../../../shared/contracts'
 import { DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS, SHUTDOWN_COUNTDOWN_SECONDS } from '../auto-shutdown'
+import { STORAGE_MARKER_KEY } from '../storage-marker'
 import {
   AGENT_IDLE_MS,
   AUTO_SHUTDOWN_STORAGE_KEY,
@@ -384,7 +385,11 @@ describe('workspace persistence', () => {
     platform: 'win32', capabilities: defaultCapabilities(),
     state: { ...seededState, projects: [secondProject, project] }
   }
-  const stored = () => api.saveWorkspace.mock.calls.at(-1)![0]
+  // Navigation is under test here; the storage marker has its own describe block.
+  const stored = (): WorkspaceState => {
+    const { storageMarker: _marker, ...workspace } = api.saveWorkspace.mock.calls.at(-1)![0]
+    return workspace
+  }
   const restart = async () => {
     dispose()
     useAppStore.getState().reset()
@@ -1779,5 +1784,47 @@ describe('terminal font size', () => {
 
     expect(useAppStore.getState().terminalFontSize).toBe(before)
     expect(window.localStorage.getItem(TERMINAL_FONT_SIZE_STORAGE_KEY)).toBeNull()
+  })
+})
+
+describe('localStorage availability', () => {
+  const reinitializeWithMarker = async (expected: string | undefined, stored: string | null): Promise<void> => {
+    dispose()
+    useAppStore.getState().reset()
+    window.localStorage.clear()
+    if (stored !== null) window.localStorage.setItem(STORAGE_MARKER_KEY, stored)
+    api = createFakeApi()
+    api.getSnapshot.mockResolvedValue({ platform: 'win32', capabilities: defaultCapabilities(), state: {
+      ...seededState,
+      ...(expected !== undefined ? { workspace: { activeProjectId: null, activeSessionId: null, collapsedProjectIds: [], storageMarker: expected } } : {})
+    } })
+    window.codeflai = api
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+  }
+
+  it('seeds a marker on the first launch without a notice', async () => {
+    await reinitializeWithMarker(undefined, null)
+    const marker = window.localStorage.getItem(STORAGE_MARKER_KEY)
+    expect(marker).toBeTruthy()
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0].storageMarker).toBe(marker)
+    expect(useAppStore.getState().notice).toBeNull()
+  })
+
+  it('stays quiet when localStorage still holds the marker state.json expects', async () => {
+    await reinitializeWithMarker('m1', 'm1')
+    expect(useAppStore.getState().notice).toBeNull()
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0].storageMarker).toBe('m1')
+  })
+
+  it('warns when saved settings vanished and never overwrites the marker in state.json', async () => {
+    await reinitializeWithMarker('m1', null)
+    expect(useAppStore.getState().notice).toEqual({ message: expect.stringContaining('could not load your saved settings'), tone: 'error' })
+    expect(api.saveWorkspace).toHaveBeenCalled()
+    for (const [workspace] of api.saveWorkspace.mock.calls) expect(workspace).not.toHaveProperty('storageMarker')
+    // Later navigation writes must not smuggle the marker in either.
+    useAppStore.getState().setActiveSession(powershellSession.id)
+    expect(api.saveWorkspace.mock.calls.at(-1)?.[0]).not.toHaveProperty('storageMarker')
+    expect(useAppStore.getState()).not.toHaveProperty('storageMarker')
   })
 })
