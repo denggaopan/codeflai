@@ -579,7 +579,9 @@ The gear at the bottom-left of the sidebar opens Settings.
 
 - **Launch at startup** — registers Codeflai as a login item. The switch shows the value read
   back from the system *after* writing it, so a change the OS refuses is never displayed as
-  if it took effect.
+  if it took effect. Codeflai runs one copy per profile: launching it again while it is
+  already open — from the shortcut after startup opened it, say — brings the running window
+  to the front instead of starting a second one.
 - **Session kinds** — two switches per kind: whether it appears in the New session menu at
   all, and whether it also offers a **(new worktree)** entry. See
   [Starting a session](#starting-a-session).
@@ -707,6 +709,13 @@ on the CLI. Comate has none at all.
 **A session vanished after a restart.** Deleting a session, or removing its project from the
 list, removes the record — but never anything on disk. Any work an agent did in a worktree is
 still on that worktree's branch.
+
+**Every setting showed its default — the quick prompt bar off, theme and language reset.**
+Two copies of Codeflai were open on the same profile, typically one launched at startup and a
+second from the shortcut. The second could not open the saved preferences, so it showed
+defaults — nothing was lost, and closing both and opening Codeflai once brought everything
+back. Codeflai now refuses to run a second copy: launching it again brings the running window
+forward instead.
 
 **No notifications arrive.** Check **Notify when a session finishes** in Settings, and then
 your OS notification settings — Windows Focus assist and macOS Do Not Disturb both suppress

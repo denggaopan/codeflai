@@ -18,6 +18,7 @@ import { legacyPtyHostEndpoint, type TerminalReplay } from '../shared/pty-protoc
 import { cliLocator, type CliLocator } from './infrastructure/cli-locator'
 import { registerIpc } from './ipc/register-ipc'
 import { createBeforeQuitHandler } from './shutdown-controller'
+import { createSecondInstanceHandler } from './single-instance'
 import { AppInfoService } from './services/app-info-service'
 import { completeLegacyHostMigration, isLegacyUiRunning, prepareBrandMigration, type BrandMigrationResult } from './services/brand-migration'
 import { ExternalAppService } from './services/external-app-service'
@@ -476,164 +477,189 @@ try {
   app.exit(1)
 }
 
-app.whenReady().then(() => {
-  try {
-    migrateWindowsLoginItem({
-      platform: runtimePlatform, isPackaged: app.isPackaged,
-      executablePath: process.execPath, customProfile: Boolean(customUserData) || isE2E, loginItems: app
-    })
-  } catch (error) {
-    // Leave the legacy startup entry in place so migration can retry next launch.
-    console.error('Codeflai could not migrate launch-at-login settings.', error)
-  }
-  const statePath = join(app.getPath('userData'), 'state.json')
-  const store = new SessionStore(statePath)
-  const projectService = new ProjectService(store, undefined, undefined, undefined, undefined, runtimePlatform)
-  const worktreeService = new WorktreeService()
-
-  const e2eAgentCommand = isE2E ? process.env.CODEFLAI_E2E_AGENT_CMD : undefined
-
-  const agentLocator: AgentLocator = e2eAgentCommand ? buildE2ETerminalLocator(e2eAgentCommand) : cliLocator
-  const terminalService = e2eAgentCommand
-    ? new TerminalService(buildE2ETerminalLocator(e2eAgentCommand), undefined, undefined, runtimePlatform)
-    : new TerminalService(cliLocator, undefined, undefined, runtimePlatform)
-  const titleService = e2eAgentCommand
-    ? new TitleService(buildE2ETitleAdapters(e2eAgentCommand, process.env.CODEFLAI_E2E_TITLE_ARGV_LOG, runtimePlatform))
-    : new TitleService()
-  const externalAppService = isE2E
-    ? buildE2EExternalAppService(runtimePlatform)
-    : new ExternalAppService(undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
-  const appInfoService = isE2E
-    ? buildE2EAppInfoService(runtimePlatform)
-    : new AppInfoService(undefined, undefined, undefined, undefined, undefined, runtimePlatform)
-  const updaterService = isE2E
-    ? buildE2EUpdaterService(e2eReleaseFixture, runtimePlatform)
-    : new UpdaterService(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
-  const powerService = isE2E ? buildE2EPowerService(runtimePlatform) : new PowerService(undefined, runtimePlatform)
-  const dialogForIpc = isE2E ? buildE2EDialog(process.env.CODEFLAI_E2E_PROJECT) : dialog
-
-  /**
-   * The resident pty-host: it holds every PTY, so closing this window, reloading the renderer,
-   * or installing an update leaves the agents running and the next launch attaches to them.
-   *
-   * The endpoint is derived from the userData path, which keeps a second Windows account and
-   * the E2E suite's own --user-data-dir on hosts of their own. A dev run is separated from an
-   * installed build explicitly, even though both use the same userData: their `out/` builds
-   * differ, and a `npm run dev` window adopting the sessions of the installed Codeflai (or the
-   * reverse) would run this build's UI against the other build's host.
-   */
-  const ptyHostRuntime = new PtyHostRuntime({
-    platform: runtimePlatform,
-    isPackaged: app.isPackaged,
-    execPath: process.execPath,
-    appPath: app.getAppPath(),
-    userDataPath,
-    appVersion: app.getVersion()
-  })
-  const ptyHostLauncher = new PtyHostLauncher(
-    app.isPackaged ? userDataPath : `${userDataPath}::dev`,
-    app.getVersion(),
-    async () => ({ ...(await ptyHostRuntime.resolve()), logPath: join(userDataPath, 'pty-host.log') }),
-    undefined, undefined, runtimePlatform, undefined, undefined, undefined, undefined,
-    brandMigration.legacyHostUserDataPath
-      ? [legacyPtyHostEndpoint(brandMigration.legacyHostUserDataPath, runtimePlatform)]
-      : [],
-    () => completeLegacyHostMigration(userDataPath)
-  )
-  const ptyHostClient = new PtyHostClient(ptyHostLauncher)
-  ptyHostClient.onDisconnected(() => {
-    // Deliberately not turned into 'stopped' status or a reconnect: a dropped socket says
-    // nothing about whether the PTYs behind it died, and guessing either way is worse than
-    // waiting. Restarting Codeflai reconciles against whatever is really there.
-    console.error('Codeflai: the pty-host connection dropped. Restart Codeflai to reattach or resume its sessions.')
-  })
-
-  const terminal = new DeferredTerminal()
-  const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService)
-  const sessionsReconciled = attachSessions({
-    terminal,
-    coordinator,
-    client: ptyHostClient,
-    fallback: terminalService,
-    onHostAttached: recordE2EHostPid
-  }).catch((error: unknown) => {
-    dialog.showErrorBox('Codeflai could not reconnect your terminals', error instanceof Error ? error.message : String(error))
-    app.exit(1)
-  })
-
-  /**
-   * Opens the main window and wires everything that belongs to *that window*: the notification
-   * service holding a reference to it, and the IPC layer whose sender check and broadcasts both
-   * target its webContents. The services above are application-scoped and are deliberately not
-   * rebuilt here — only the per-window half is.
-   *
-   * This has to be callable more than once. macOS keeps the app running after the last window
-   * closes, so `activate` opens a fresh one — and closing a window runs `disposeIpc`, which
-   * removes every handler and every broadcast subscription. A second window opened without
-   * repeating this wiring gets no IPC at all: its first `getSnapshot()` rejects and the app
-   * never finishes loading.
-   */
-  const openMainWindow = (): void => {
-    const window = createMainWindow(runtimePlatform)
-
-    const notificationService = isE2E
-      ? buildE2ENotificationService(window)
-      : new NotificationService(electronNotificationSurface(window), electronNotificationFactory())
-
-    const disposeIpc = registerIpc({
-      ipcMain,
-      dialog: dialogForIpc,
-      window,
-      projectService,
-      coordinator,
-      externalAppService,
-      appInfoService,
-      updaterService,
-      powerService,
-      notificationService,
-      terminalService: terminal,
-      saveWorkspace: (workspace) => store.saveWorkspace(workspace),
-      getSnapshot: buildGetSnapshot(
-        coordinator,
-        projectService,
-        externalAppService,
-        agentLocator,
-        store,
-        runtimePlatform,
-        sessionsReconciled
-      ),
-      applyTheme: (theme) => applyWindowTheme(window, theme, runtimePlatform),
-      applyPinned: (pinned) => applyWindowPinned(window, pinned),
-      copyText: (text) => clipboard.writeText(text)
-    })
-
-    window.on('closed', () => {
-      disposeIpc()
-    })
-  }
-
-  openMainWindow()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      openMainWindow()
+/**
+ * One Codeflai per profile. A second launch against a profile that is already open — the
+ * shortcut clicked after launch-at-login had opened the app, or a double launch — must not run
+ * at all: Chromium cannot lock the Local Storage database the first process holds, so it
+ * silently hands the second window an empty in-memory store, and every renderer preference
+ * (theme, language, quick prompts, the quick prompt bar switch…) reads as its default, while
+ * two SessionStores take turns rewriting one state.json. The lock is keyed on the userData path
+ * (Electron uses DIR_USER_DATA), which keeps the E2E suite's --user-data-dir instances and a
+ * second Windows account independent of the installed profile — so it comes after setPath.
+ * It also comes after the brand migration: on Windows the lock creates a `lockfile` inside
+ * userData, and a profile that already has a file in it is one the migration treats as
+ * migrated. The losing process runs that (idempotent) migration and then quits; the winner gets
+ * a `second-instance` event and brings its window forward (wired next to `activate` below).
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.whenReady().then(() => {
+    try {
+      migrateWindowsLoginItem({
+        platform: runtimePlatform, isPackaged: app.isPackaged,
+        executablePath: process.execPath, customProfile: Boolean(customUserData) || isE2E, loginItems: app
+      })
+    } catch (error) {
+      // Leave the legacy startup entry in place so migration can retry next launch.
+      console.error('Codeflai could not migrate launch-at-login settings.', error)
     }
-  })
+    const statePath = join(app.getPath('userData'), 'state.json')
+    const store = new SessionStore(statePath)
+    const projectService = new ProjectService(store, undefined, undefined, undefined, undefined, runtimePlatform)
+    const worktreeService = new WorktreeService()
 
-  app.on(
-    'before-quit',
-    createBeforeQuitHandler({
-      shutdown: () => coordinator.shutdown(),
-      quit: () => app.quit(),
-      onError: (error) => {
-        console.error('Failed to shut down SessionCoordinator cleanly before quit.', error)
+    const e2eAgentCommand = isE2E ? process.env.CODEFLAI_E2E_AGENT_CMD : undefined
+
+    const agentLocator: AgentLocator = e2eAgentCommand ? buildE2ETerminalLocator(e2eAgentCommand) : cliLocator
+    const terminalService = e2eAgentCommand
+      ? new TerminalService(buildE2ETerminalLocator(e2eAgentCommand), undefined, undefined, runtimePlatform)
+      : new TerminalService(cliLocator, undefined, undefined, runtimePlatform)
+    const titleService = e2eAgentCommand
+      ? new TitleService(buildE2ETitleAdapters(e2eAgentCommand, process.env.CODEFLAI_E2E_TITLE_ARGV_LOG, runtimePlatform))
+      : new TitleService()
+    const externalAppService = isE2E
+      ? buildE2EExternalAppService(runtimePlatform)
+      : new ExternalAppService(undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
+    const appInfoService = isE2E
+      ? buildE2EAppInfoService(runtimePlatform)
+      : new AppInfoService(undefined, undefined, undefined, undefined, undefined, runtimePlatform)
+    const updaterService = isE2E
+      ? buildE2EUpdaterService(e2eReleaseFixture, runtimePlatform)
+      : new UpdaterService(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, runtimePlatform)
+    const powerService = isE2E ? buildE2EPowerService(runtimePlatform) : new PowerService(undefined, runtimePlatform)
+    const dialogForIpc = isE2E ? buildE2EDialog(process.env.CODEFLAI_E2E_PROJECT) : dialog
+
+    /**
+     * The resident pty-host: it holds every PTY, so closing this window, reloading the renderer,
+     * or installing an update leaves the agents running and the next launch attaches to them.
+     *
+     * The endpoint is derived from the userData path, which keeps a second Windows account and
+     * the E2E suite's own --user-data-dir on hosts of their own. A dev run is separated from an
+     * installed build explicitly, even though both use the same userData: their `out/` builds
+     * differ, and a `npm run dev` window adopting the sessions of the installed Codeflai (or the
+     * reverse) would run this build's UI against the other build's host.
+     */
+    const ptyHostRuntime = new PtyHostRuntime({
+      platform: runtimePlatform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      userDataPath,
+      appVersion: app.getVersion()
+    })
+    const ptyHostLauncher = new PtyHostLauncher(
+      app.isPackaged ? userDataPath : `${userDataPath}::dev`,
+      app.getVersion(),
+      async () => ({ ...(await ptyHostRuntime.resolve()), logPath: join(userDataPath, 'pty-host.log') }),
+      undefined, undefined, runtimePlatform, undefined, undefined, undefined, undefined,
+      brandMigration.legacyHostUserDataPath
+        ? [legacyPtyHostEndpoint(brandMigration.legacyHostUserDataPath, runtimePlatform)]
+        : [],
+      () => completeLegacyHostMigration(userDataPath)
+    )
+    const ptyHostClient = new PtyHostClient(ptyHostLauncher)
+    ptyHostClient.onDisconnected(() => {
+      // Deliberately not turned into 'stopped' status or a reconnect: a dropped socket says
+      // nothing about whether the PTYs behind it died, and guessing either way is worse than
+      // waiting. Restarting Codeflai reconciles against whatever is really there.
+      console.error('Codeflai: the pty-host connection dropped. Restart Codeflai to reattach or resume its sessions.')
+    })
+
+    const terminal = new DeferredTerminal()
+    const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService)
+    const sessionsReconciled = attachSessions({
+      terminal,
+      coordinator,
+      client: ptyHostClient,
+      fallback: terminalService,
+      onHostAttached: recordE2EHostPid
+    }).catch((error: unknown) => {
+      dialog.showErrorBox('Codeflai could not reconnect your terminals', error instanceof Error ? error.message : String(error))
+      app.exit(1)
+    })
+
+    /**
+     * Opens the main window and wires everything that belongs to *that window*: the notification
+     * service holding a reference to it, and the IPC layer whose sender check and broadcasts both
+     * target its webContents. The services above are application-scoped and are deliberately not
+     * rebuilt here — only the per-window half is.
+     *
+     * This has to be callable more than once. macOS keeps the app running after the last window
+     * closes, so `activate` opens a fresh one — and closing a window runs `disposeIpc`, which
+     * removes every handler and every broadcast subscription. A second window opened without
+     * repeating this wiring gets no IPC at all: its first `getSnapshot()` rejects and the app
+     * never finishes loading.
+     */
+    const openMainWindow = (): void => {
+      const window = createMainWindow(runtimePlatform)
+
+      const notificationService = isE2E
+        ? buildE2ENotificationService(window)
+        : new NotificationService(electronNotificationSurface(window), electronNotificationFactory())
+
+      const disposeIpc = registerIpc({
+        ipcMain,
+        dialog: dialogForIpc,
+        window,
+        projectService,
+        coordinator,
+        externalAppService,
+        appInfoService,
+        updaterService,
+        powerService,
+        notificationService,
+        terminalService: terminal,
+        saveWorkspace: (workspace) => store.saveWorkspace(workspace),
+        getSnapshot: buildGetSnapshot(
+          coordinator,
+          projectService,
+          externalAppService,
+          agentLocator,
+          store,
+          runtimePlatform,
+          sessionsReconciled
+        ),
+        applyTheme: (theme) => applyWindowTheme(window, theme, runtimePlatform),
+        applyPinned: (pinned) => applyWindowPinned(window, pinned),
+        copyText: (text) => clipboard.writeText(text)
+      })
+
+      window.on('closed', () => {
+        disposeIpc()
+      })
+    }
+
+    openMainWindow()
+
+    // The user launched Codeflai again while this one held the single-instance lock (see
+    // requestSingleInstanceLock above): that process has quit, so show them this window.
+    app.on('second-instance', createSecondInstanceHandler({
+      windows: () => BrowserWindow.getAllWindows(),
+      openWindow: openMainWindow
+    }))
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        openMainWindow()
       }
     })
-  )
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+    app.on(
+      'before-quit',
+      createBeforeQuitHandler({
+        shutdown: () => coordinator.shutdown(),
+        quit: () => app.quit(),
+        onError: (error) => {
+          console.error('Failed to shut down SessionCoordinator cleanly before quit.', error)
+        }
+      })
+    )
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
+}
