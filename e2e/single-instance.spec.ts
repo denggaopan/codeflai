@@ -62,8 +62,18 @@ test('a second launch quits in favour of the running instance and brings its win
       () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((window) => window.isMinimized())),
       { timeout: 10_000 }
     ).toEqual([false])
-    // The original symptom's signature: the resident pty-host logging two attached clients.
-    expect(readFileSync(join(userDataDir, 'pty-host.log'), 'utf8')).not.toContain('2 connected')
+    // The original symptom's signature: the resident pty-host logging two attached clients. A
+    // packaged build stages the host's runtime into the profile before starting it, so the log
+    // can appear well after the window did — wait for the first client before reading it.
+    const hostLog = (): string => {
+      try {
+        return readFileSync(join(userDataDir, 'pty-host.log'), 'utf8')
+      } catch {
+        return ''
+      }
+    }
+    await expect.poll(hostLog, { timeout: 30_000 }).toContain('Client attached (1 connected)')
+    expect(hostLog()).not.toContain('2 connected')
   } finally {
     if (second && second.exitCode === null) second.kill()
     await app.close().catch(() => undefined)
