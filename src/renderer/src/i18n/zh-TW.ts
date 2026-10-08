@@ -51,6 +51,10 @@ export const zhTW: Translations = {
   'sidebar.openProjectFolder': '開啟專案資料夾',
   'sidebar.copyProjectPath': '複製專案路徑',
   'sidebar.openRepository': '開啟 Git 儲存庫',
+  'sidebar.deleteAllSessions': '刪除所有工作階段',
+  'sidebar.deleteAllSessionsTitle': '刪除所有工作階段',
+  'sidebar.deleteAllSessionsPrompt':
+    '確定要刪除「{project}」的全部 {count} 個工作階段嗎？此操作無法復原。Worktree 中有未提交變更的工作階段會被保留。',
   'sidebar.removeProject': '從清單中移除',
   'sidebar.removeProjectTitle': '移除專案',
   'sidebar.removeProjectPrompt': '確定要將「{project}」從清單中移除嗎？不會刪除磁碟上的任何內容。',
@@ -172,6 +176,7 @@ export const zhTW: Translations = {
   'notice.preferencesUnavailable': 'Codeflai 無法讀取已儲存的設定（快速提示詞、主題、語言等）。請完全結束 Codeflai 後重新開啟；在此之前所做的變更不會被保存。',
   'notice.projectPathCopied': '已複製專案路徑：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 個檔案已變更。請先提交或捨棄這些變更，再刪除工作階段。',
+  'notice.sessionsKeptDirty': '已保留 {count} 個工作階段：其 Worktree 中有未提交的變更。請先提交或捨棄這些變更，再刪除工作階段。',
 
   'notification.agentDone': '{project} · 已完成',
   'notification.sessionExited': '{project} · 工作階段已結束',

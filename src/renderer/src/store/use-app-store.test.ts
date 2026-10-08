@@ -303,6 +303,66 @@ describe('unread session activity', () => {
     expect(useAppStore.getState().unreadSessionIds).toEqual([])
   })
 
+  describe('deleting every session of a project', () => {
+    it('deletes them one by one in sidebar order and stays quiet when all of them go', async () => {
+      useAppStore.setState({ activeSessionId: claudeSession.id })
+      api.emitTerminalExit({ sessionId: powershellSession.id, exitCode: 1 })
+      expect(useAppStore.getState().unreadSessionIds).toEqual([powershellSession.id])
+
+      await useAppStore.getState().deleteProjectSessions('project-1')
+
+      expect(api.deleteSession).toHaveBeenCalledTimes(2)
+      expect(api.deleteSession).toHaveBeenNthCalledWith(1, claudeSession.id)
+      expect(api.deleteSession).toHaveBeenNthCalledWith(2, powershellSession.id)
+      expect(useAppStore.getState().appState.sessions).toEqual([])
+      expect(useAppStore.getState().unreadSessionIds).toEqual([])
+      expect(useAppStore.getState().activeSessionId).toBeNull()
+      expect(useAppStore.getState().notice).toBeNull()
+    })
+
+    it('leaves the sessions of other projects alone', async () => {
+      await useAppStore.getState().deleteProjectSessions('project-2')
+
+      expect(api.deleteSession).not.toHaveBeenCalled()
+      expect(useAppStore.getState().appState.sessions).toHaveLength(2)
+      expect(useAppStore.getState().notice).toBeNull()
+    })
+
+    it('keeps the sessions whose worktree is dirty and says how many stayed', async () => {
+      api.deleteSession.mockResolvedValueOnce({ status: 'dirty', changedFiles: 3 })
+
+      await useAppStore.getState().deleteProjectSessions('project-1')
+
+      expect(api.deleteSession).toHaveBeenCalledTimes(2)
+      expect(useAppStore.getState().appState.sessions).toEqual([claudeSession])
+      expect(useAppStore.getState().notice).toEqual({
+        message: '1 session(s) kept: their worktrees have uncommitted changes. Commit or discard them before deleting.',
+        tone: 'error'
+      })
+    })
+
+    it('reports a failed deletion instead of the dirty summary', async () => {
+      api.deleteSession
+        .mockResolvedValueOnce({ status: 'failed', message: 'pty host unreachable' })
+        .mockResolvedValueOnce({ status: 'dirty', changedFiles: 1 })
+
+      await useAppStore.getState().deleteProjectSessions('project-1')
+
+      expect(useAppStore.getState().appState.sessions).toHaveLength(2)
+      expect(useAppStore.getState().notice).toEqual({ message: 'pty host unreachable', tone: 'error' })
+    })
+
+    it('keeps going after one request rejects and reports that rejection', async () => {
+      api.deleteSession.mockRejectedValueOnce(new Error('disk full'))
+
+      await useAppStore.getState().deleteProjectSessions('project-1')
+
+      expect(api.deleteSession).toHaveBeenCalledTimes(2)
+      expect(useAppStore.getState().appState.sessions).toEqual([claudeSession])
+      expect(useAppStore.getState().notice).toEqual({ message: 'disk full', tone: 'error' })
+    })
+  })
+
   it('restores unread IDs, discards deleted IDs, and never marks historical replay unread', async () => {
     dispose()
     useAppStore.getState().reset()
@@ -1691,6 +1751,17 @@ describe('session notifications', () => {
     api.deleteSession.mockResolvedValueOnce({ status: 'dirty', changedFiles: 2 })
 
     await useAppStore.getState().deleteSession(claudeSession.id)
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')
+  })
+
+  it('still notifies after a delete-all that the main process partly refused', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+    api.deleteSession.mockResolvedValueOnce({ status: 'dirty', changedFiles: 2 })
+
+    await useAppStore.getState().deleteProjectSessions('project-1')
     api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
 
     expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')

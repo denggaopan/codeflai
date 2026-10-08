@@ -1130,6 +1130,7 @@ describe('ProjectSidebar', () => {
       'Open project in VS Code',
       'Open project folder',
       'Copy project path',
+      'Delete all sessions',
       'Remove from list'
     ])
 
@@ -1168,6 +1169,7 @@ describe('ProjectSidebar', () => {
       'Open project folder',
       'Copy project path',
       'Open Git repository',
+      'Delete all sessions',
       'Remove from list'
     ])
     const item = within(menu).getByRole('menuitem', { name: 'Open Git repository' })
@@ -1251,6 +1253,59 @@ describe('ProjectSidebar', () => {
     expect(screen.getByText(project1.name)).toBeInTheDocument()
   })
 
+  it('disables Delete all sessions while the project has none', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const item = within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Delete all sessions' })
+    expect(item).toBeDisabled()
+    expect(item.querySelector('svg')).not.toBeNull()
+  })
+
+  it('asks for confirmation before deleting every session of a project and deletes them in order on confirm', async () => {
+    const user = userEvent.setup()
+    const project2: ProjectRecord = { ...project1, id: 'project-2', name: 'other-project', path: 'C:\\work\\other-project' }
+    const elsewhere: SessionRecord = { ...stoppedSession, id: 'session-elsewhere', projectId: project2.id, title: 'Elsewhere' }
+    seedStore({ version: 1, projects: [project1, project2], sessions: [stoppedSession, runningWorktreeSession, elsewhere] })
+    render(<ProjectSidebar />)
+
+    const trigger = screen.getByRole('button', { name: projectOptionsName(project1.name) })
+    await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Delete all sessions' }))
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(api.deleteSession).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete all sessions' })
+    expect(dialog).toHaveTextContent(
+      `Delete all 2 session(s) of "${project1.name}"? This cannot be undone. Sessions whose worktree has uncommitted changes are kept.`
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    expect(api.deleteSession).toHaveBeenCalledTimes(2)
+    expect(api.deleteSession).toHaveBeenNthCalledWith(1, stoppedSession.id)
+    expect(api.deleteSession).toHaveBeenNthCalledWith(2, runningWorktreeSession.id)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.queryByText(stoppedSession.title)).not.toBeInTheDocument()
+    expect(screen.queryByText(runningWorktreeSession.title)).not.toBeInTheDocument()
+    expect(screen.getByText(elsewhere.title)).toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('keeps every session when deleting all is cancelled', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [stoppedSession, runningWorktreeSession] })
+    render(<ProjectSidebar />)
+
+    await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Delete all sessions' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+
+    expect(api.deleteSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByText(stoppedSession.title)).toBeInTheDocument()
+    expect(screen.getByText(runningWorktreeSession.title)).toBeInTheDocument()
+  })
+
   it('translates the project options trigger and menu items when the locale changes', async () => {
     const user = userEvent.setup()
     seedStore({ version: 1, projects: [project1], sessions: [] })
@@ -1266,6 +1321,7 @@ describe('ProjectSidebar', () => {
       '在 VS Code 中打开项目',
       '打开项目文件夹',
       '复制项目目录地址',
+      '删除所有会话',
       '从列表中移除'
     ])
   })

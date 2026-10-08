@@ -139,6 +139,7 @@ export type AppStore = {
   openProjectRepository: (projectId: string) => Promise<void>
   copyProjectPath: (projectId: string) => Promise<void>
   removeProject: (projectId: string) => Promise<void>
+  deleteProjectSessions: (projectId: string) => Promise<void>
 
   openLauncher: () => void
   closeLauncher: () => void
@@ -152,7 +153,7 @@ export type AppStore = {
   renameSession: (sessionId: string, title: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
   reorderSessions: (orderedSessionIds: readonly string[]) => Promise<void>
-  deleteSession: (sessionId: string) => Promise<DeleteSessionResult | undefined>
+  deleteSession: (sessionId: string) => Promise<DeleteSessionResult>
 
   setSearchQuery: (query: string) => void
   dismissNotice: () => void
@@ -616,6 +617,37 @@ export const useAppStore = create<AppStore>()((set, get) => {
     const { enabled, intervalMs } = get().autoShutdown
     if (!enabled) return
     autoShutdownTimer = setInterval(runAutoShutdownCheck, intervalMs)
+  }
+
+  /**
+   * One session's deletion as both Delete and the project menu's "Delete all sessions" see
+   * it: asks the main process, then applies the bookkeeping a completed deletion implies. The
+   * notice slot is left to the caller — a single delete reports its own refusal, a delete-all
+   * sums up at the end. A rejected IPC folds into a `failed` result so callers see one shape.
+   */
+  const requestSessionDeletion = async (sessionId: string): Promise<DeleteSessionResult> => {
+    expectedExits.add(sessionId)
+    let result: DeleteSessionResult
+    try {
+      result = await window.codeflai.deleteSession(sessionId)
+    } catch (error) {
+      result = { status: 'failed', message: errorMessage(error, get().locale) }
+    }
+    // A refused delete (a dirty worktree) or a failed one leaves the session running, so the
+    // exit that eventually arrives is the session's own and must still be announced.
+    if (result.status !== 'deleted') {
+      expectedExits.delete(sessionId)
+      return result
+    }
+
+    forgetAgentActivity(sessionId)
+    set((state) => ({
+      appState: { ...state.appState, sessions: state.appState.sessions.filter((session) => session.id !== sessionId) },
+      unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
+      activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
+    }))
+    // Deleting a session can drop its own unread marker; see the removeProject comment above.
+    return result
   }
 
   return {
@@ -1393,37 +1425,42 @@ export const useAppStore = create<AppStore>()((set, get) => {
     },
 
     deleteSession: async (sessionId) => {
-      try {
-        expectedExits.add(sessionId)
-        const result = await window.codeflai.deleteSession(sessionId)
-        // A refused delete (a dirty worktree) or a failed one leaves the session running, so
-        // the exit that eventually arrives is the session's own and must still be announced.
-        if (result.status !== 'deleted') expectedExits.delete(sessionId)
+      const result = await requestSessionDeletion(sessionId)
+      if (result.status === 'dirty') {
+        set({
+          notice: {
+            message: translate(get().locale, 'notice.dirtyWorktree', { count: result.changedFiles }),
+            tone: 'error'
+          }
+        })
+      } else if (result.status === 'failed') {
+        set({ notice: { message: result.message, tone: 'error' } })
+      }
+      return result
+    },
 
-        if (result.status === 'deleted') {
-          forgetAgentActivity(sessionId)
-          set((state) => ({
-            appState: { ...state.appState, sessions: state.appState.sessions.filter((session) => session.id !== sessionId) },
-            unreadSessionIds: state.unreadSessionIds.filter((id) => id !== sessionId),
-            activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
-          }))
-          // Deleting a session can drop its own unread marker; see the removeProject comment above.
-        } else if (result.status === 'dirty') {
-          set({
-            notice: {
-              message: translate(get().locale, 'notice.dirtyWorktree', { count: result.changedFiles }),
-              tone: 'error'
-            }
-          })
-        } else {
-          set({ notice: { message: result.message, tone: 'error' } })
-        }
-
-        return result
-      } catch (error) {
-        expectedExits.delete(sessionId)
-        set({ notice: { message: errorMessage(error, get().locale), tone: 'error' } })
-        return undefined
+    /**
+     * The project menu's "Delete all sessions". Sequential on purpose: each deletion is its
+     * own main-process lock, worktree check and persisted write, and sidebar order is the
+     * order the rows vanish in. Nothing is said when every session goes — the rows
+     * disappearing is the feedback — and one notice sums up what stayed: an unexpected
+     * failure outranks the expected dirty-worktree refusals the dialog already warned about.
+     */
+    deleteProjectSessions: async (projectId) => {
+      const sessionIds = get().appState.sessions
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.id)
+      let kept = 0
+      let failure: string | null = null
+      for (const sessionId of sessionIds) {
+        const result = await requestSessionDeletion(sessionId)
+        if (result.status === 'dirty') kept += 1
+        else if (result.status === 'failed') failure = result.message
+      }
+      if (failure !== null) {
+        set({ notice: { message: failure, tone: 'error' } })
+      } else if (kept > 0) {
+        set({ notice: { message: translate(get().locale, 'notice.sessionsKeptDirty', { count: kept }), tone: 'error' } })
       }
     },
 

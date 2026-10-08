@@ -35,7 +35,8 @@ function StopGlyph() {
   )
 }
 
-function TrashGlyph() {
+// Also the project menu's "Delete all sessions" mark: the same glyph for the same outcome.
+export function TrashGlyph() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-delete"
       fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

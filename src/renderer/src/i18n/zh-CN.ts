@@ -48,6 +48,9 @@ export const zhCN: Translations = {
   'sidebar.openProjectFolder': '打开项目文件夹',
   'sidebar.copyProjectPath': '复制项目目录地址',
   'sidebar.openRepository': '打开 Git 仓库',
+  'sidebar.deleteAllSessions': '删除所有会话',
+  'sidebar.deleteAllSessionsTitle': '删除所有会话',
+  'sidebar.deleteAllSessionsPrompt': '确定删除“{project}”的全部 {count} 个会话吗？此操作无法撤销。Worktree 中有未提交改动的会话会被保留。',
   'sidebar.removeProject': '从列表中移除',
   'sidebar.removeProjectTitle': '移除项目',
   'sidebar.removeProjectPrompt': '确定将“{project}”从列表中移除吗？不会删除磁盘上的任何内容。',
@@ -168,6 +171,7 @@ export const zhCN: Translations = {
   'notice.preferencesUnavailable': 'Codeflai 未能读取已保存的设置（快捷提示词、主题、语言等）。请完全退出 Codeflai 后重新打开；在此之前所做的更改不会被保存。',
   'notice.projectPathCopied': '已复制项目目录地址：{path}',
   'notice.dirtyWorktree': 'Worktree 中有 {count} 个文件已改动。请先提交或丢弃这些改动，再删除会话。',
+  'notice.sessionsKeptDirty': '已保留 {count} 个会话：其 Worktree 中有未提交的改动。请先提交或丢弃这些改动，再删除会话。',
 
   'notification.agentDone': '{project} · 已完成',
   'notification.sessionExited': '{project} · 会话已退出',

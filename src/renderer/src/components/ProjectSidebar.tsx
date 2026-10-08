@@ -17,7 +17,7 @@ import SessionLauncher from './SessionLauncher'
 import SessionSearch from './SessionSearch'
 import SettingsDialog from './SettingsDialog'
 import SessionFilters, { type SessionStatusFilter } from './SessionFilters'
-import SessionRow from './SessionRow'
+import SessionRow, { TrashGlyph } from './SessionRow'
 import { useDragSort, type DropPlacement } from './use-drag-sort'
 import { ROW_POPOVER_GAP, useScrollportPopoverLayout } from './use-scrollport-popover'
 
@@ -76,6 +76,7 @@ export default function ProjectSidebar() {
   const copyProjectPath = useAppStore((state) => state.copyProjectPath)
   const openProjectRepository = useAppStore((state) => state.openProjectRepository)
   const removeProject = useAppStore((state) => state.removeProject)
+  const deleteProjectSessions = useAppStore((state) => state.deleteProjectSessions)
   const createSession = useAppStore((state) => state.createSession)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const launcherOpen = useAppStore((state) => state.launcherOpen)
@@ -88,6 +89,7 @@ export default function ProjectSidebar() {
   const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
+  const [pendingDeleteAll, setPendingDeleteAll] = useState<ProjectRecord | null>(null)
   const [openOptionsProjectId, setOpenOptionsProjectId] = useState<string | null>(null)
   const [launcherFocusRequest, setLauncherFocusRequest] = useState(0)
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -294,6 +296,33 @@ export default function ProjectSidebar() {
     optionsTriggerRef.current?.focus()
   }
 
+  // "Delete all sessions" has the same shape as removal, except that the project row survives,
+  // so focus has somewhere to return to after a confirm as well as after a cancel. The store
+  // deletes each session through the ordinary single-session path (stop, dirty-worktree check,
+  // record removal), so a worktree with uncommitted changes keeps its session exactly as it
+  // would under a one-by-one delete — the dialog says so up front.
+  const handleRequestDeleteAll = (project: ProjectRecord): void => {
+    closeProjectOptions(true)
+    setPendingDeleteAll(project)
+  }
+
+  const handleConfirmDeleteAll = async (): Promise<void> => {
+    if (!pendingDeleteAll) return
+    const project = pendingDeleteAll
+    setPendingDeleteAll(null)
+    await deleteProjectSessions(project.id)
+    optionsTriggerRef.current?.focus()
+  }
+
+  const handleCancelDeleteAll = (): void => {
+    setPendingDeleteAll(null)
+    optionsTriggerRef.current?.focus()
+  }
+
+  const pendingDeleteAllCount = pendingDeleteAll
+    ? appState.sessions.filter((session) => session.projectId === pendingDeleteAll.id).length
+    : 0
+
   const pendingRemoveSessionCount = pendingRemove
     ? appState.sessions.filter((session) => session.projectId === pendingRemove.id).length
     : 0
@@ -496,6 +525,8 @@ export default function ProjectSidebar() {
           const expanded = isProjectExpanded(project.id)
           const visibleSessions = filteredSessions.filter((session) => session.projectId === project.id)
           const unreadCount = visibleSessions.filter((session) => unreadSessionIds.includes(session.id)).length
+          // Counted over every session, not the filtered view: "Delete all" means all of them.
+          const sessionCount = appState.sessions.filter((session) => session.projectId === project.id).length
 
           return (
             <section key={project.id} className="project-group">
@@ -685,6 +716,23 @@ export default function ProjectSidebar() {
                       type="button"
                       className="project-options-menu-item"
                       role="menuitem"
+                      disabled={sessionCount === 0}
+                      tabIndex={-1}
+                      onPointerDown={(event) => {
+                        if (sessionCount === 0) event.preventDefault()
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleRequestDeleteAll(project)
+                      }}
+                    >
+                      <TrashGlyph />
+                      {t('sidebar.deleteAllSessions')}
+                    </button>
+                    <button
+                      type="button"
+                      className="project-options-menu-item"
+                      role="menuitem"
                       tabIndex={-1}
                       onClick={(event) => {
                         event.stopPropagation()
@@ -795,6 +843,20 @@ export default function ProjectSidebar() {
         destructive
         onConfirm={() => void handleConfirmRemove()}
         onCancel={handleCancelRemove}
+      />
+
+      <ConfirmDialog
+        open={pendingDeleteAll !== null}
+        title={t('sidebar.deleteAllSessionsTitle')}
+        description={
+          pendingDeleteAll
+            ? t('sidebar.deleteAllSessionsPrompt', { project: pendingDeleteAll.name, count: pendingDeleteAllCount })
+            : undefined
+        }
+        confirmLabel={t('common.delete')}
+        destructive
+        onConfirm={() => void handleConfirmDeleteAll()}
+        onCancel={handleCancelDeleteAll}
       />
     </aside>
   )

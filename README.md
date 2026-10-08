@@ -480,6 +480,11 @@ folds the row.
   (self-hosted instances included), or a plain Git mark. Repositories with no remote, or a
   remote that is a local directory, get no entry. Remotes are re-read at every launch, so
   adding one shows up next time you start Codeflai.
+- **Delete all sessions** — deletes every session of the project after a confirmation, running
+  ones included, in the order the sidebar lists them. Each one goes through the same checks as
+  deleting it on its own: a worktree with uncommitted changes is never removed, so that session
+  stays in the list and a notice says how many were kept. The project itself stays. The entry
+  is disabled while the project has no sessions.
 - **Remove from list** — forgets the project after a confirmation. Its running sessions stop
   and all of its session records go with it, but **nothing on disk is touched**: the project
   directory, its worktrees, and their branches stay exactly as they are. Add the folder

@@ -52,6 +52,10 @@ export const en = {
   'sidebar.openProjectFolder': 'Open project folder',
   'sidebar.copyProjectPath': 'Copy project path',
   'sidebar.openRepository': 'Open Git repository',
+  'sidebar.deleteAllSessions': 'Delete all sessions',
+  'sidebar.deleteAllSessionsTitle': 'Delete all sessions',
+  'sidebar.deleteAllSessionsPrompt':
+    'Delete all {count} session(s) of "{project}"? This cannot be undone. Sessions whose worktree has uncommitted changes are kept.',
   'sidebar.removeProject': 'Remove from list',
   'sidebar.removeProjectTitle': 'Remove project',
   'sidebar.removeProjectPrompt': 'Remove "{project}" from the list? Nothing on disk is deleted.',
@@ -173,6 +177,8 @@ export const en = {
   'notice.preferencesUnavailable': 'Codeflai could not load your saved settings (quick prompts, theme, language…). Quit Codeflai completely and start it again; changes made before then will not be kept.',
   'notice.projectPathCopied': 'Project path copied: {path}',
   'notice.dirtyWorktree': 'Worktree has {count} changed files. Commit or discard them before deleting.',
+  'notice.sessionsKeptDirty':
+    '{count} session(s) kept: their worktrees have uncommitted changes. Commit or discard them before deleting.',
 
   'notification.agentDone': '{project} · Done',
   'notification.sessionExited': '{project} · Session exited',

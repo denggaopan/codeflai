@@ -494,14 +494,16 @@ test('keeps the terminal workflow usable at the 900 by 600 minimum window size',
   await expect(visibleBypassWarnings()).toHaveText([BYPASS_WARNING_TEXT])
 
   const optionsMenu = await openProjectOptions()
-  // Six entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
-  // action is offered (with the GitHub mark) between the copy-path action and removal.
+  // Seven entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
+  // action is offered (with the GitHub mark) between the copy-path action and the two
+  // destructive entries at the bottom.
   await expect(optionsMenu.getByRole('menuitem')).toHaveText([
     'New session',
     'Open project in VS Code',
     'Open project folder',
     'Copy project path',
     'Open Git repository',
+    'Delete all sessions',
     'Remove from list'
   ])
   // The built bundle inlines the small SVGs as data URIs, so the mark is identified by its
