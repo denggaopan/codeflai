@@ -25,6 +25,7 @@ import {
   SHUTDOWN_COUNTDOWN_SECONDS,
   countdownTick,
   hasRunningSessions,
+  hasRunningSessionsIn,
   isAutoShutdownAllowedAt,
   isAutoShutdownInterval,
   isAutoShutdownTimeRange,
@@ -33,6 +34,18 @@ import {
   type AutoShutdownTimeRange
 } from '../auto-shutdown'
 import { DEFAULT_ROCKET, parseStoredRocket, type RocketPreference } from '../rocket-chime'
+import {
+  DEFAULT_ISSUE_AUTOMATION,
+  formatIssueAutomationTime,
+  isIssueAutomationAgent,
+  isIssueAutomationInterval,
+  issueAutomationTemplateValues,
+  parseStoredIssueAutomation,
+  pruneIssueAutomationProjects,
+  renderIssueAutomationTemplate,
+  type IssueAutomationAgent,
+  type IssueAutomationPreference
+} from '../../../shared/issue-automation'
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from '../i18n'
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from '../sidebar-width'
 import { DEFAULT_TERMINAL_FONT_SIZE, isTerminalFontSize, parseStoredTerminalFontSize } from '../terminal-font'
@@ -84,6 +97,8 @@ export type AppStore = {
   autoShutdown: AutoShutdownPreference
   /** The rocket easter egg: the whole thing, and the chime that drops one per hour. */
   rocket: RocketPreference
+  /** Automatic issue resolution: the agent, the cadence, the template and which projects are on. */
+  issueAutomation: IssueAutomationPreference
   /** Seconds left on the shutdown countdown, or null when no countdown is running. */
   shutdownCountdown: number | null
   /** Which kinds the New session launcher lists, and which of them offer a worktree entry. */
@@ -118,6 +133,13 @@ export type AppStore = {
   /** Switches the whole easter egg; the hourly chime keeps its own value either way. */
   setRocketEnabled: (enabled: boolean) => void
   setRocketHourlyEnabled: (enabled: boolean) => void
+  setIssueAutomationAgent: (agent: IssueAutomationAgent) => void
+  setIssueAutomationInterval: (intervalMs: number) => void
+  /** null, an empty string, or the locale's own default all mean "follow the default". */
+  setIssueAutomationTemplate: (template: string | null) => void
+  setProjectIssueAutomation: (projectId: string, enabled: boolean) => void
+  /** One round right now, ignoring the timer and the "no running session" rule; switches to the new session. */
+  resolveIssueNow: (projectId: string) => Promise<void>
   /** Stops the countdown and switches auto shutdown off, which is what "Cancel" means here. */
   cancelAutoShutdown: () => void
   /** Skips the rest of the countdown and shuts the machine down now. */
@@ -198,6 +220,7 @@ export const SHOW_QUICK_PROMPTS_STORAGE_KEY = 'codeflai.showQuickPrompts'
 export const AUTO_SHUTDOWN_STORAGE_KEY = 'codeflai.autoShutdown'
 export const NOTIFICATIONS_STORAGE_KEY = 'codeflai.notifications'
 export const ROCKET_STORAGE_KEY = 'codeflai.rocket'
+export const ISSUE_AUTOMATION_STORAGE_KEY = 'codeflai.issueAutomation'
 
 // The theme preference is renderer-owned (localStorage), not part of the main process's
 // persisted AppState: it is pure presentation, and localStorage survives restarts without
@@ -335,6 +358,24 @@ const persistRocket = (preference: RocketPreference): void => {
   }
 }
 
+// Issue automation is renderer-owned (localStorage) like auto shutdown: the store keeps the
+// preference and runs the watcher, and only ordinary session:create calls ever cross IPC.
+const readStoredIssueAutomation = (): IssueAutomationPreference => {
+  try {
+    return parseStoredIssueAutomation(readMigratedStorage(ISSUE_AUTOMATION_STORAGE_KEY))
+  } catch {
+    return { ...DEFAULT_ISSUE_AUTOMATION, projects: [] }
+  }
+}
+
+const persistIssueAutomation = (preference: IssueAutomationPreference): void => {
+  try {
+    window.localStorage.setItem(ISSUE_AUTOMATION_STORAGE_KEY, JSON.stringify(preference))
+  } catch {
+    // localStorage unavailable: the preference just won't survive a restart.
+  }
+}
+
 // The per-kind launcher preferences are renderer-owned (localStorage) for the same reasons as
 // the theme and locale: they configure the launcher menu rather than any persisted session,
 // and the actual worktree decision crosses IPC explicitly with every create request. Stored
@@ -432,6 +473,15 @@ const clearAutoShutdownTimers = (): void => {
   autoShutdownTimer = undefined
   shutdownCountdownTimer = undefined
   shutdownDeadline = undefined
+}
+
+// The issue-automation watcher's timer: one for the whole feature, module-level like the
+// auto-shutdown timer because it is bookkeeping, not renderable state.
+let issueAutomationTimer: ReturnType<typeof setInterval> | undefined
+
+const clearIssueAutomationTimer = (): void => {
+  if (issueAutomationTimer !== undefined) clearInterval(issueAutomationTimer)
+  issueAutomationTimer = undefined
 }
 
 const clearAllIdleTimers = (): void => {
@@ -619,6 +669,74 @@ export const useAppStore = create<AppStore>()((set, get) => {
     autoShutdownTimer = setInterval(runAutoShutdownCheck, intervalMs)
   }
 
+  // Projects whose automatic launch is still in flight: a second tick or a double click on
+  // "Resolve one issue now" must not start two sessions.
+  const launchingProjects = new Set<string>()
+
+  /**
+   * One round for one project: render the template, create a worktree session whose first
+   * prompt is that text. `timer` launches never change the active session (an agent
+   * starting on its own must not pull the user away); `manual` ones switch to it, because
+   * the user just asked to watch. A failed timer launch switches the project off, the way a
+   * failed shutdown switches auto shutdown off — the same error every interval helps nobody.
+   */
+  const launchIssueAutomation = async (projectId: string, trigger: 'timer' | 'manual'): Promise<void> => {
+    if (launchingProjects.has(projectId)) return
+    const { appState, issueAutomation, locale, sessionKindPreferences, capabilities } = get()
+    const project = appState.projects.find((candidate) => candidate.id === projectId)
+    if (!project?.repoRemote) return
+    const kind = issueAutomation.agent
+    if (!sessionKindPreferences[kind].enabled || !capabilities[kind].available) return
+
+    const template = issueAutomation.template ?? translate(locale, 'issueAutomation.defaultTemplate')
+    const initialPrompt = renderIssueAutomationTemplate(template, issueAutomationTemplateValues(project, project.repoRemote, kind))
+    const title = translate(locale, 'issueAutomation.sessionTitle', { time: formatIssueAutomationTime(new Date()) })
+
+    launchingProjects.add(projectId)
+    try {
+      const session = await window.codeflai.createSession(projectId, kind, true, { initialPrompt, title })
+      set((state) => ({
+        appState: upsertSession(state.appState, session),
+        ...(trigger === 'manual' ? { activeProjectId: session.projectId, activeSessionId: session.id } : {})
+      }))
+    } catch (error) {
+      const reason = errorMessage(error, get().locale)
+      if (trigger === 'timer') {
+        get().setProjectIssueAutomation(projectId, false)
+        set({ notice: { message: translate(get().locale, 'notice.issueAutomationSwitchedOff', { project: project.name, reason }), tone: 'error' } })
+      } else {
+        set({ notice: { message: translate(get().locale, 'notice.issueAutomationFailed', { project: project.name, reason }), tone: 'error' } })
+      }
+    } finally {
+      launchingProjects.delete(projectId)
+    }
+  }
+
+  // One tick: every project that is switched on, still exists, and has nothing the sidebar
+  // calls Running gets a round. Walks the snapshot so the order is the sidebar's; before the
+  // snapshot arrives there are no projects and therefore nothing to launch.
+  const runIssueAutomationCheck = (): void => {
+    const { issueAutomation, appState, idleAgentSessionIds } = get()
+    for (const project of appState.projects) {
+      if (!issueAutomation.projects.includes(project.id)) continue
+      if (hasRunningSessionsIn(project.id, appState.sessions, idleAgentSessionIds)) continue
+      void launchIssueAutomation(project.id, 'timer')
+    }
+  }
+
+  /**
+   * (Re)arms the timer from the preference. Called when the first project is switched on,
+   * when the last is switched off, and when the interval changes — never when one project is
+   * toggled while others stay on, so their cadence is unaffected. The first check is always a
+   * full interval away: switching a project on must not mean "start an agent now".
+   */
+  const restartIssueAutomationWatcher = (): void => {
+    clearIssueAutomationTimer()
+    const { projects, intervalMs } = get().issueAutomation
+    if (projects.length === 0) return
+    issueAutomationTimer = setInterval(runIssueAutomationCheck, intervalMs)
+  }
+
   /**
    * One session's deletion as both Delete and the project menu's "Delete all sessions" see
    * it: asks the main process, then applies the bookkeeping a completed deletion implies. The
@@ -669,6 +787,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     windowPinned: false,
     autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
     rocket: { ...DEFAULT_ROCKET },
+    issueAutomation: { ...DEFAULT_ISSUE_AUTOMATION, projects: [] },
     shutdownCountdown: null,
     sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
@@ -813,6 +932,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
       // powering itself off after a restart. The first check is one full interval away.
       restartAutoShutdownWatcher()
 
+      const storedIssueAutomation = readStoredIssueAutomation()
+      set({ issueAutomation: storedIssueAutomation })
+      // Armed from the stored preference; the first check is a full interval away, by which
+      // time the snapshot has long arrived.
+      restartIssueAutomationWatcher()
+
       const storedPinned = readStoredWindowPinned()
       set({ windowPinned: storedPinned })
       // Replayed on every startup (even for the unpinned default) so the window's own
@@ -828,6 +953,14 @@ export const useAppStore = create<AppStore>()((set, get) => {
           const storageCheck = checkStorageMarker(snapshot.state.workspace?.storageMarker, storagePopulated)
           storageMarker = storageCheck.marker
           document.documentElement.dataset.platform = snapshot.platform
+          // A project removed while Codeflai was closed must not stay switched on in the
+          // preference; prune against the snapshot and write back only when something changed.
+          const prunedIssueAutomation = pruneIssueAutomationProjects(get().issueAutomation, appState.projects.map((project) => project.id))
+          if (prunedIssueAutomation !== get().issueAutomation) {
+            set({ issueAutomation: prunedIssueAutomation })
+            persistIssueAutomation(prunedIssueAutomation)
+            if (prunedIssueAutomation.projects.length === 0) restartIssueAutomationWatcher()
+          }
           hydratingWorkspace = true
           set((state) => ({
             platform: snapshot.platform,
@@ -960,6 +1093,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         disposeUpdateProgress()
         clearAllIdleTimers()
         clearAutoShutdownTimers()
+        clearIssueAutomationTimer()
         pendingActivity.clear()
         pendingUnread.clear()
         startupRead.clear()
@@ -973,6 +1107,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     reset: () => {
       clearAllIdleTimers()
       clearAutoShutdownTimers()
+      clearIssueAutomationTimer()
       set({
         platform: 'win32',
         appState: emptyAppState(),
@@ -992,6 +1127,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         windowPinned: false,
         autoShutdown: { ...DEFAULT_AUTO_SHUTDOWN },
         rocket: { ...DEFAULT_ROCKET },
+        issueAutomation: { ...DEFAULT_ISSUE_AUTOMATION, projects: [] },
         shutdownCountdown: null,
         sessionKindPreferences: DEFAULT_SESSION_KIND_PREFERENCES,
         sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
@@ -1158,6 +1294,44 @@ export const useAppStore = create<AppStore>()((set, get) => {
       set({ rocket: next })
       persistRocket(next)
     },
+
+    setIssueAutomationAgent: (agent) => {
+      if (!isIssueAutomationAgent(agent)) return
+      const next = { ...get().issueAutomation, agent }
+      set({ issueAutomation: next })
+      persistIssueAutomation(next)
+    },
+
+    setIssueAutomationInterval: (intervalMs) => {
+      // Same guard as auto shutdown: a value no dropdown offers would make the watcher a busy loop.
+      if (!isIssueAutomationInterval(intervalMs)) return
+      const next = { ...get().issueAutomation, intervalMs }
+      set({ issueAutomation: next })
+      persistIssueAutomation(next)
+      restartIssueAutomationWatcher()
+    },
+
+    setIssueAutomationTemplate: (template) => {
+      const trimmed = template?.trim() ?? ''
+      const isDefault = trimmed === '' || trimmed === translate(get().locale, 'issueAutomation.defaultTemplate').trim()
+      const next = { ...get().issueAutomation, template: isDefault ? null : template }
+      set({ issueAutomation: next })
+      persistIssueAutomation(next)
+    },
+
+    setProjectIssueAutomation: (projectId, enabled) => {
+      const current = get().issueAutomation
+      const projects = enabled
+        ? [...new Set([...current.projects, projectId])]
+        : current.projects.filter((id) => id !== projectId)
+      const next = pruneIssueAutomationProjects({ ...current, projects }, get().appState.projects.map((project) => project.id))
+      set({ issueAutomation: next })
+      persistIssueAutomation(next)
+      // Only the empty/non-empty transitions touch the timer; see restartIssueAutomationWatcher.
+      if ((current.projects.length === 0) !== (next.projects.length === 0)) restartIssueAutomationWatcher()
+    },
+
+    resolveIssueNow: (projectId) => launchIssueAutomation(projectId, 'manual'),
 
     // "Cancel shutdown" is the user saying the machine is in use, so it switches the whole
     // feature off rather than just skipping this round — otherwise the dialog would be back

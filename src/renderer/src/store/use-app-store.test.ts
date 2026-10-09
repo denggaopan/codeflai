@@ -21,10 +21,13 @@ import type { TerminalDataEvent, TerminalReplay } from '../../../shared/pty-prot
 import { AGENT_KINDS, type AgentKind } from '../../../shared/agent-kinds'
 import { DEFAULT_SESSION_KIND_PREFERENCES } from '../../../shared/contracts'
 import { DEFAULT_AUTO_SHUTDOWN_INTERVAL_MS, SHUTDOWN_COUNTDOWN_SECONDS } from '../auto-shutdown'
+import { DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS } from '../../../shared/issue-automation'
+import { en } from '../i18n/en'
 import { STORAGE_MARKER_KEY } from '../storage-marker'
 import {
   AGENT_IDLE_MS,
   AUTO_SHUTDOWN_STORAGE_KEY,
+  ISSUE_AUTOMATION_STORAGE_KEY,
   NOTIFICATIONS_STORAGE_KEY,
   ROCKET_STORAGE_KEY,
   TERMINAL_FONT_SIZE_STORAGE_KEY,
@@ -1911,5 +1914,226 @@ describe('localStorage availability', () => {
     useAppStore.getState().setActiveSession(powershellSession.id)
     expect(api.saveWorkspace.mock.calls.at(-1)?.[0]).not.toHaveProperty('storageMarker')
     expect(useAppStore.getState()).not.toHaveProperty('storageMarker')
+  })
+})
+
+// Issue automation is renderer-owned like auto shutdown: the store keeps the preference and
+// runs the watcher; the only things crossing IPC are ordinary session:create calls.
+describe('useAppStore issue automation', () => {
+  const githubProject: ProjectRecord = {
+    id: 'project-1',
+    name: 'App',
+    path: 'C:\\work\\demo-project',
+    repoRoot: 'C:\\work\\demo-project',
+    repoRemote: { host: 'github', webUrl: 'https://github.com/me/app' },
+    createdAt: '2026-08-20T00:00:00.000Z'
+  }
+  const otherProject: ProjectRecord = { ...githubProject, id: 'project-2', name: 'Other', path: 'C:\\work\\other' }
+
+  const withProjects = (projects: ProjectRecord[], sessions: SessionRecord[] = []): void => {
+    useAppStore.setState({ appState: { version: 1, projects, sessions } })
+  }
+
+  it('starts with nothing switched on and launches nothing on its own', async () => {
+    withProjects([githubProject])
+    expect(useAppStore.getState().issueAutomation).toEqual({ agent: 'claude', intervalMs: DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS, template: null, projects: [] })
+
+    await vi.advanceTimersByTimeAsync(4 * 60 * 60_000)
+
+    expect(api.createSession).not.toHaveBeenCalled()
+  })
+
+  it('waits a full interval, then starts one worktree session with the rendered prompt and a title', async () => {
+    withProjects([githubProject])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    expect(JSON.parse(window.localStorage.getItem(ISSUE_AUTOMATION_STORAGE_KEY)!)).toMatchObject({ projects: ['project-1'] })
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS - 1)
+    expect(api.createSession).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+    const [projectId, kind, worktree, extras] = api.createSession.mock.calls[0] as unknown as [string, string, boolean, { initialPrompt: string; title: string }]
+    expect([projectId, kind, worktree]).toEqual(['project-1', 'claude', true])
+    expect(extras.initialPrompt).toContain('Repository: https://github.com/me/app (host: github)')
+    expect(extras.initialPrompt).toContain('Local checkout: C:\\work\\demo-project')
+    expect(extras.initialPrompt).toContain('/fast-do')
+    expect(extras.initialPrompt).not.toContain('{{')
+    expect(extras.title).toMatch(/^Auto issue \d\d-\d\d \d\d:\d\d$/)
+    // An automatic launch must not pull the user away from what they are looking at.
+    expect(useAppStore.getState().activeSessionId).toBeNull()
+    expect(useAppStore.getState().appState.sessions.map((session) => session.id)).toContain(claudeSession.id)
+  })
+
+  it('skips a project with a running session and launches once its agent is Done', async () => {
+    withProjects([githubProject], [claudeSession])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+    expect(api.createSession).not.toHaveBeenCalled()
+
+    useAppStore.setState({ idleAgentSessionIds: { [claudeSession.id]: true } })
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the Codex prefix and the user template when configured', async () => {
+    withProjects([githubProject])
+    useAppStore.getState().setIssueAutomationAgent('codex')
+    useAppStore.getState().setIssueAutomationTemplate('Fix one issue of {{projectName}} with {{fastDo}} on {{host}}.')
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+
+    expect(api.createSession).toHaveBeenCalledWith('project-1', 'codex', true, expect.objectContaining({ initialPrompt: 'Fix one issue of App with $fast-do on github.' }))
+  })
+
+  it('skips silently when the chosen agent is switched off or unavailable', async () => {
+    withProjects([githubProject])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    useAppStore.getState().setSessionKindPreference('claude', { enabled: false })
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+    expect(api.createSession).not.toHaveBeenCalled()
+    expect(useAppStore.getState().notice).toBeNull()
+    expect(useAppStore.getState().issueAutomation.projects).toEqual(['project-1'])
+
+    useAppStore.getState().setSessionKindPreference('claude', { enabled: true })
+    useAppStore.setState({ capabilities: { ...useAppStore.getState().capabilities, claude: { available: false, detail: 'claude not found' } } })
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+    expect(api.createSession).not.toHaveBeenCalled()
+  })
+
+  it('switches the project off and reports when a timed launch fails', async () => {
+    withProjects([githubProject])
+    api.createSession.mockRejectedValueOnce(new Error('worktree creation failed'))
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+
+    expect(useAppStore.getState().issueAutomation.projects).toEqual([])
+    expect(useAppStore.getState().notice).toEqual({
+      message: 'Could not start an automatic issue session for "App": worktree creation failed. Auto-resolve issues has been switched off for it.',
+      tone: 'error'
+    })
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS)
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolveIssueNow launches at once, makes the session active, and leaves the switch alone on failure', async () => {
+    withProjects([githubProject])
+
+    await useAppStore.getState().resolveIssueNow('project-1')
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().activeSessionId).toBe(claudeSession.id)
+    expect(useAppStore.getState().activeProjectId).toBe('project-1')
+
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    api.createSession.mockRejectedValueOnce(new Error('nope'))
+    await useAppStore.getState().resolveIssueNow('project-1')
+    expect(useAppStore.getState().issueAutomation.projects).toEqual(['project-1'])
+    expect(useAppStore.getState().notice).toEqual({ message: 'Could not start an automatic issue session for "App": nope', tone: 'error' })
+  })
+
+  it("ignores a trigger while the project's launch is in flight", async () => {
+    withProjects([githubProject])
+    let release!: (value: SessionRecord) => void
+    api.createSession.mockImplementationOnce(() => new Promise<SessionRecord>((resolve) => { release = resolve }))
+
+    const first = useAppStore.getState().resolveIssueNow('project-1')
+    await useAppStore.getState().resolveIssueNow('project-1')
+    expect(api.createSession).toHaveBeenCalledTimes(1)
+
+    release(claudeSession)
+    await first
+    await useAppStore.getState().resolveIssueNow('project-1')
+    expect(api.createSession).toHaveBeenCalledTimes(2)
+  })
+
+  it('restarts the cadence for an interval change but not when a second project is toggled', async () => {
+    withProjects([githubProject, otherProject])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    useAppStore.getState().setProjectIssueAutomation('project-2', true)
+
+    await vi.advanceTimersByTimeAsync(20 * 60_000)
+    // Both launch on the first project's clock, 30 minutes after it was switched on.
+    expect(api.createSession.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual(['project-1', 'project-2'])
+    // The fake create answered with a running Claude session for project-1; mark it Done so
+    // project-1 is eligible again on the next tick and the cadence is what this test measures.
+    useAppStore.setState({ idleAgentSessionIds: { [claudeSession.id]: true } })
+
+    useAppStore.getState().setIssueAutomationInterval(60 * 60_000)
+    await vi.advanceTimersByTimeAsync(59 * 60_000)
+    expect(api.createSession).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(api.createSession).toHaveBeenCalledTimes(4)
+  })
+
+  it('stops the timer when the last project is switched off', async () => {
+    withProjects([githubProject])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    useAppStore.getState().setProjectIssueAutomation('project-1', false)
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS * 2)
+
+    expect(api.createSession).not.toHaveBeenCalled()
+    expect(JSON.parse(window.localStorage.getItem(ISSUE_AUTOMATION_STORAGE_KEY)!)).toMatchObject({ projects: [] })
+  })
+
+  it('rejects an interval or agent the dropdowns do not offer', () => {
+    useAppStore.getState().setIssueAutomationInterval(42)
+    useAppStore.getState().setIssueAutomationAgent('gemini' as never)
+    expect(useAppStore.getState().issueAutomation).toMatchObject({ agent: 'claude', intervalMs: DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS })
+  })
+
+  it('treats an empty template, or one identical to the default, as "use the default"', () => {
+    useAppStore.getState().setIssueAutomationTemplate('Custom')
+    expect(useAppStore.getState().issueAutomation.template).toBe('Custom')
+    useAppStore.getState().setIssueAutomationTemplate('   ')
+    expect(useAppStore.getState().issueAutomation.template).toBeNull()
+    useAppStore.getState().setIssueAutomationTemplate(`${en['issueAutomation.defaultTemplate']}\n`)
+    expect(useAppStore.getState().issueAutomation.template).toBeNull()
+    useAppStore.getState().setIssueAutomationTemplate('Custom')
+    useAppStore.getState().setIssueAutomationTemplate(null)
+    expect(useAppStore.getState().issueAutomation.template).toBeNull()
+  })
+
+  it('reads the stored preference on startup and prunes projects the snapshot no longer has', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    window.localStorage.setItem(ISSUE_AUTOMATION_STORAGE_KEY, JSON.stringify({ agent: 'codex', intervalMs: 3_600_000, template: null, projects: ['project-1', 'ghost'] }))
+    api = createFakeApi()
+    api.getSnapshot.mockResolvedValue({ platform: 'win32', state: { version: 1, projects: [githubProject], sessions: [] }, capabilities: defaultCapabilities() })
+    window.codeflai = api
+    dispose = useAppStore.getState().initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(useAppStore.getState().issueAutomation).toEqual({ agent: 'codex', intervalMs: 3_600_000, template: null, projects: ['project-1'] })
+    expect(JSON.parse(window.localStorage.getItem(ISSUE_AUTOMATION_STORAGE_KEY)!)).toMatchObject({ projects: ['project-1'] })
+  })
+
+  it('launches nothing while the snapshot is still empty', async () => {
+    dispose()
+    useAppStore.getState().reset()
+    window.localStorage.setItem(ISSUE_AUTOMATION_STORAGE_KEY, JSON.stringify({ agent: 'claude', intervalMs: 300_000, template: null, projects: ['project-1'] }))
+    api = createFakeApi()
+    api.getSnapshot.mockImplementation(() => new Promise(() => undefined))
+    window.codeflai = api
+    dispose = useAppStore.getState().initialize()
+
+    await vi.advanceTimersByTimeAsync(300_000 * 3)
+
+    expect(api.createSession).not.toHaveBeenCalled()
+  })
+
+  it('stops the watcher when the store is torn down', async () => {
+    withProjects([githubProject])
+    useAppStore.getState().setProjectIssueAutomation('project-1', true)
+    dispose()
+    await vi.advanceTimersByTimeAsync(DEFAULT_ISSUE_AUTOMATION_INTERVAL_MS * 2)
+    expect(api.createSession).not.toHaveBeenCalled()
+    dispose = useAppStore.getState().initialize()
   })
 })
