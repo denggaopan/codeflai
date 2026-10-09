@@ -125,7 +125,13 @@ export const capabilityStateSchema = z.strictObject({
 export const createSessionRequestSchema = z.strictObject({
   projectId: z.string().min(1),
   kind: sessionKindSchema,
-  worktree: z.boolean().default(false)
+  worktree: z.boolean().default(false),
+  // Automatic issue sessions only (shared/issue-automation.ts): the rendered prompt, which
+  // the main process writes to a file for the agent to read on its first turn, and the
+  // title the renderer already translated. Both absent for every session the launcher
+  // creates, so nothing else in the create path changes.
+  initialPrompt: z.string().min(1).max(20_000).optional(),
+  title: z.string().trim().min(1).max(200).optional()
 })
 
 export const sessionIdRequestSchema = z.strictObject({

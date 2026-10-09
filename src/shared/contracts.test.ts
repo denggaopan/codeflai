@@ -24,6 +24,7 @@ import {
 } from './contracts'
 import type { SessionRecord } from './contracts'
 import { IPC } from './ipc'
+import { PTY_PROTOCOL_VERSION, ptyRequestSchema } from './pty-protocol'
 
 describe('shared contracts', () => {
   it('keeps legacy sessions readable, still accepting the retired archive flag and manual-title metadata', () => {
@@ -74,6 +75,17 @@ describe('shared contracts', () => {
     expect(parsed.worktree).toBe(false)
     expect(createSessionRequestSchema.parse({ projectId: 'p1', kind: 'claude', worktree: true }).worktree).toBe(true)
     expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'claude', worktree: 'yes' }).success).toBe(false)
+  })
+
+  it('accepts the automatic-issue fields only within their bounds', () => {
+    const parsed = createSessionRequestSchema.parse({ projectId: 'p1', kind: 'claude', worktree: true, initialPrompt: 'Do it', title: '  Auto issue 10-09 14:30 ' })
+    expect(parsed.initialPrompt).toBe('Do it')
+    expect(parsed.title).toBe('Auto issue 10-09 14:30')
+    expect(createSessionRequestSchema.parse({ projectId: 'p1', kind: 'claude' })).not.toHaveProperty('initialPrompt')
+    expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'claude', initialPrompt: '' }).success).toBe(false)
+    expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'claude', initialPrompt: 'x'.repeat(20_001) }).success).toBe(false)
+    expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'claude', title: '   ' }).success).toBe(false)
+    expect(createSessionRequestSchema.safeParse({ projectId: 'p1', kind: 'claude', title: 't'.repeat(201) }).success).toBe(false)
   })
 
   // The opt-in agents default to off so the launcher does not grow five entries for CLIs the
@@ -379,3 +391,18 @@ const incompleteWorktreeSession: SessionRecord = {
 }
 
 void incompleteWorktreeSession
+
+describe('pty-protocol spawn', () => {
+  const spawn = { type: 'spawn', id: 1, sessionId: 's1', kind: 'claude', launchPath: 'C:\\x', resume: false, cols: 80, rows: 24 }
+
+  it('speaks version 2 so a host without the prompt-file field is retired rather than confused', () => {
+    expect(PTY_PROTOCOL_VERSION).toBe(2)
+  })
+
+  it('carries an optional prompt file path within bounds', () => {
+    expect(ptyRequestSchema.parse({ ...spawn, initialPromptFile: 'C:\\p\\s1.md' })).toMatchObject({ initialPromptFile: 'C:\\p\\s1.md' })
+    expect(ptyRequestSchema.safeParse(spawn).success).toBe(true)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPromptFile: '' }).success).toBe(false)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPromptFile: 'x'.repeat(1025) }).success).toBe(false)
+  })
+})

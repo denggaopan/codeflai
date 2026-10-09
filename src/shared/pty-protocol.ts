@@ -19,8 +19,10 @@ import { sessionKindSchema } from './contracts'
  * Framing is newline-delimited JSON. PTY payloads are strings, because node-pty hands out
  * strings, so nothing here needs base64. Every request carries an `id` and is answered by
  * exactly one `result`; events arrive unsolicited and carry no `id`.
+ *
+ * Version 2 added the optional `initialPromptFile` on spawn (automatic issue sessions).
  */
-export const PTY_PROTOCOL_VERSION = 1
+export const PTY_PROTOCOL_VERSION = 2
 
 /**
  * How much recent output the host retains per session so a freshly attached UI can repaint a
@@ -70,6 +72,9 @@ export const ptyRequestSchema = z.discriminatedUnion('type', [
     kind: sessionKindSchema,
     launchPath: z.string().min(1),
     resume: z.boolean(),
+    // An automatic issue session's prompt file, already written by the main process. The host
+    // only ever appends the fixed sentence that names it (see shared/issue-automation.ts).
+    initialPromptFile: z.string().min(1).max(1024).optional(),
     cols: dimensionSchema,
     rows: dimensionSchema
   }),
