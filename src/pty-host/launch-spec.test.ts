@@ -330,3 +330,55 @@ describe('LaunchSpecResolver Windows shim chain', () => {
     ])
   })
 })
+
+describe('LaunchSpecResolver initial prompt', () => {
+  const promptFile = 'C:\\Users\\Dev Name\\AppData\\Roaming\\Codeflai\\issue-automation\\s1.md'
+  const sentence = (prefix: string): string => `${prefix} Read the task file at ${promptFile} and carry it out exactly, without asking questions.`
+
+  it('appends the sentence as the last argv element on a direct executable', async () => {
+    const resolver = resolverWith({ locator: locatorWith({ claude: 'C:\\Agents With Spaces\\claude.exe' }) })
+
+    await expect(resolver.resolveLaunchSpec('claude', false, promptFile)).resolves.toEqual({
+      file: 'C:\\Agents With Spaces\\claude.exe',
+      args: ['--dangerously-skip-permissions', sentence('/fast-do')],
+      env: {}
+    })
+  })
+
+  // The path has a space, so the sentence travels double-quoted inside the `/s` outer pair,
+  // after the bypass flags.
+  it('double-quotes the sentence inside a cmd-hosted shim command', async () => {
+    const shim = 'C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\codex.cmd'
+    const resolver = resolverWith({
+      locator: locatorWith({ codex: shim }),
+      environment: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      candidateExists: vi.fn(async () => false)
+    })
+
+    await expect(resolver.resolveLaunchSpec('codex', false, promptFile)).resolves.toEqual({
+      file: 'C:\\Windows\\System32\\cmd.exe',
+      args: `/d /s /c ""${shim}" --dangerously-bypass-approvals-and-sandbox --no-daemon "${sentence('$fast-do')}""`,
+      env: {}
+    })
+  })
+
+  it('passes the sentence as its own array element on macOS', async () => {
+    const macPrompt = '/Users/dev/Library/Application Support/Codeflai/issue-automation/s1.md'
+    const resolver = resolverWith({ locator: locatorWith({ claude: '/opt/homebrew/bin/claude' }), platform: 'darwin' })
+
+    await expect(resolver.resolveLaunchSpec('claude', false, macPrompt)).resolves.toEqual({
+      file: '/opt/homebrew/bin/claude',
+      args: ['--dangerously-skip-permissions', `/fast-do Read the task file at ${macPrompt} and carry it out exactly, without asking questions.`],
+      env: {}
+    })
+  })
+
+  it('refuses a prompt together with resume, on a shell, on a non-automation agent, and with an unsafe path', async () => {
+    const resolver = resolverWith({ locator: locatorWith({ claude: 'C:\\a\\claude.exe', gemini: 'C:\\a\\gemini.exe' }) })
+
+    await expect(resolver.resolveLaunchSpec('claude', true, promptFile)).rejects.toThrow('cannot be combined with resume')
+    await expect(resolver.resolveLaunchSpec('powershell', false, promptFile)).rejects.toThrow('powershell cannot run an automatic issue session.')
+    await expect(resolver.resolveLaunchSpec('gemini', false, promptFile)).rejects.toThrow('gemini cannot run an automatic issue session.')
+    await expect(resolver.resolveLaunchSpec('claude', false, 'C:\\odd&path\\s1.md')).rejects.toThrow('cmd.exe would reinterpret')
+  })
+})

@@ -4,6 +4,7 @@ import { win32 as windowsPath } from 'node:path'
 
 import { agentLaunchArgs, agentLaunchEnv } from '../shared/agent-kinds'
 import type { SessionKind } from '../shared/contracts'
+import { isIssueAutomationAgent, issueAutomationPromptArgument } from '../shared/issue-automation'
 import { cliLocator, type CliLocator } from '../main/infrastructure/cli-locator'
 
 /**
@@ -58,7 +59,10 @@ export const hostedShimSpec = (
   environment: NodeJS.ProcessEnv
 ): LaunchSpec => {
   validateShimPath(shim)
-  const command = `""${shim}" ${logicalArgs.join(' ')}"`
+  // Flags never contain spaces; the one argument that can (the initial-prompt sentence) is
+  // wrapped in its own quotes inside the `/s` outer pair. Its characters are restricted at
+  // the source (validatePromptFilePath), so no escaping is needed or attempted.
+  const command = `""${shim}" ${logicalArgs.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}"`
   return {
     file: environment.ComSpec ?? environment.COMSPEC ?? 'cmd.exe',
     args: `/d /s /c ${command}`
@@ -109,7 +113,17 @@ export class LaunchSpecResolver {
     private readonly candidateExists: CandidateExists = defaultCandidateExists
   ) {}
 
-  async resolveLaunchSpec(kind: SessionKind, resume: boolean): Promise<LaunchSpec> {
+  /**
+   * `initialPromptFile` is the automatic-issue prompt the main process already wrote; it adds
+   * one fixed argv sentence naming that file (shared/issue-automation.ts) and nothing else.
+   * Only a fresh Claude/Codex session can take one: a resumed session continues its own
+   * conversation, and a shell has nobody to read the file.
+   */
+  async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPromptFile?: string): Promise<LaunchSpec> {
+    if (initialPromptFile !== undefined) {
+      if (resume) throw new Error('An initial prompt cannot be combined with resume.')
+      if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
+    }
     if (kind === 'shell') {
       if (this.platform !== 'darwin') throw new Error('Shell is not supported on Windows.')
       const executable = await this.locator.resolveShell()
@@ -128,10 +142,14 @@ export class LaunchSpecResolver {
     }
 
     // Every remaining kind is an agent, so the registry decides the executable, the argv and
-    // any bypass that has to travel as environment instead of a flag.
+    // any bypass that has to travel as environment instead of a flag. The prompt sentence is
+    // always last: a positional prompt after every flag is what both CLIs document.
     const resolved = await this.locator.resolveAgent(kind)
     if (!resolved) throw new Error(`${kind} is not available.`)
-    const logicalArgs = agentLaunchArgs(kind, resume, this.platform)
+    const launchArgs = agentLaunchArgs(kind, resume, this.platform)
+    const logicalArgs = initialPromptFile === undefined
+      ? launchArgs
+      : [...launchArgs, issueAutomationPromptArgument(kind, initialPromptFile)]
     const env = agentLaunchEnv(kind)
     const spec = this.platform === 'win32'
       ? await windowsAgentSpec(resolved, logicalArgs, this.environment, this.candidateExists)

@@ -555,3 +555,37 @@ describe.skipIf(process.platform !== 'win32')('TerminalService Windows shim inte
     }
   }, 10_000)
 })
+
+describe('TerminalService initial prompt', () => {
+  const promptFile = 'C:\\Users\\Dev Name\\AppData\\Roaming\\Codeflai\\issue-automation\\s1.md'
+  const sentence = `/fast-do Read the task file at ${promptFile} and carry it out exactly, without asking questions.`
+
+  it('spawns a fresh claude session with the sentence as the last argument', async () => {
+    const factory = new FakePtyFactory(new FakePty())
+    const service = serviceWith(factory, { locator: locatorWith({ claude: 'C:\\Agents With Spaces\\claude.exe' }) })
+
+    await service.start(session('auto-1', 'claude'), { initialPromptFile: promptFile })
+
+    expect(factory.spawn).toHaveBeenCalledWith('C:\\Agents With Spaces\\claude.exe', ['--dangerously-skip-permissions', sentence], expect.any(Object))
+  })
+
+  it('double-quotes the sentence inside a hosted .cmd shim command', async () => {
+    const shim = 'C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\claude.cmd'
+    const comspec = 'C:\\Windows\\System32\\cmd.exe'
+    const factory = new FakePtyFactory(new FakePty())
+    const service = serviceWith(factory, { locator: locatorWith({ claude: shim }), environment: { ComSpec: comspec } })
+
+    await service.start(session('auto-2', 'claude'), { initialPromptFile: promptFile })
+
+    expect(factory.spawn).toHaveBeenCalledWith(comspec, `/d /s /c ""${shim}" --dangerously-skip-permissions "${sentence}""`, expect.any(Object))
+  })
+
+  it('never spawns when the prompt is combined with resume or an unsafe path', async () => {
+    const factory = new FakePtyFactory(new FakePty())
+    const service = serviceWith(factory, { locator: locatorWith({ claude: 'C:\\a\\claude.exe' }) })
+
+    await expect(service.start(session('auto-3', 'claude'), { resume: true, initialPromptFile: promptFile })).rejects.toThrow('cannot be combined with resume')
+    await expect(service.start(session('auto-4', 'claude'), { initialPromptFile: 'C:\\odd|path\\s1.md' })).rejects.toThrow('cmd.exe would reinterpret')
+    expect(factory.spawn).not.toHaveBeenCalled()
+  })
+})

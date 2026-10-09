@@ -6,6 +6,7 @@ import { spawn as spawnPty } from 'node-pty'
 
 import { agentLaunchArgs, agentLaunchEnv } from '../../shared/agent-kinds'
 import type { SessionKind, SessionRecord } from '../../shared/contracts'
+import { isIssueAutomationAgent, issueAutomationPromptArgument } from '../../shared/issue-automation'
 import type { TerminalDataEvent } from '../../shared/pty-protocol'
 import { cliLocator, type CliLocator } from '../infrastructure/cli-locator'
 
@@ -17,6 +18,8 @@ const STOP_TIMEOUT_MS = 2_000
 export type TerminalStartOptions = {
   /** Relaunch an agent CLI so it reattaches its previous conversation instead of starting a new one. */
   resume?: boolean
+  /** An automatic issue session's prompt file; one fixed argv sentence names it. Never with resume. */
+  initialPromptFile?: string
 }
 
 export type TerminalEventMap = {
@@ -89,7 +92,10 @@ const validateShimPath = (candidate: string): void => {
 
 const hostedShimSpec = (shim: string, logicalArgs: readonly string[], environment: NodeJS.ProcessEnv): LaunchSpec => {
   validateShimPath(shim)
-  const command = `""${shim}" ${logicalArgs.join(' ')}"`
+  // Flags never contain spaces; the one argument that can (the initial-prompt sentence) is
+  // wrapped in its own quotes inside the `/s` outer pair. Its characters are restricted at
+  // the source (validatePromptFilePath), so no escaping is needed or attempted.
+  const command = `""${shim}" ${logicalArgs.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}"`
   return {
     file: environment.ComSpec ?? environment.COMSPEC ?? 'cmd.exe',
     args: `/d /s /c ${command}`
@@ -148,7 +154,7 @@ export class TerminalService {
 
     this.starting.add(session.id)
     try {
-      const launch = await this.resolveLaunchSpec(session.kind, options.resume === true)
+      const launch = await this.resolveLaunchSpec(session.kind, options.resume === true, options.initialPromptFile)
       const pty = this.ptyFactory.spawn(launch.file, launch.args, {
         name: 'xterm-256color',
         cols: DEFAULT_COLS,
@@ -231,7 +237,13 @@ export class TerminalService {
     return () => { listeners.delete(listener) }
   }
 
-  private async resolveLaunchSpec(kind: SessionKind, resume: boolean): Promise<LaunchSpec> {
+  // Mirrors src/pty-host/launch-spec.ts, including the initial-prompt rule: only a fresh
+  // Claude/Codex session takes one, and it is always the last argv element.
+  private async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPromptFile?: string): Promise<LaunchSpec> {
+    if (initialPromptFile !== undefined) {
+      if (resume) throw new Error('An initial prompt cannot be combined with resume.')
+      if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
+    }
     if (kind === 'shell') {
       if (this.platform !== 'darwin') throw new Error('Shell is not supported on Windows.')
       const executable = await this.locator.resolveShell()
@@ -253,7 +265,10 @@ export class TerminalService {
     // any bypass that has to travel as environment instead of a flag.
     const resolved = await this.locator.resolveAgent(kind)
     if (!resolved) throw new Error(`${kind} is not available.`)
-    const logicalArgs = agentLaunchArgs(kind, resume, this.platform)
+    const launchArgs = agentLaunchArgs(kind, resume, this.platform)
+    const logicalArgs = initialPromptFile === undefined
+      ? launchArgs
+      : [...launchArgs, issueAutomationPromptArgument(kind, initialPromptFile)]
     const env = agentLaunchEnv(kind)
     const spec = this.platform === 'win32'
       ? await windowsAgentSpec(resolved, logicalArgs, this.environment, this.candidateExists)
