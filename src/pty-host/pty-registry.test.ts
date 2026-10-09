@@ -138,6 +138,14 @@ describe('PtyRegistry spawning', () => {
     expect(registry.replay('s1').data).toBe('')
   })
 
+  it('hands the prompt file to the launch resolver along with the kind and resume intent', async () => {
+    const harness = buildHarness()
+
+    await harness.registry.spawn('s1', 'claude', 'C:\\Projects\\App', false, 80, 24, 'C:\\prompts\\s1.md')
+
+    expect(harness.resolveLaunchSpec).toHaveBeenCalledWith('claude', false, 'C:\\prompts\\s1.md')
+  })
+
   it('spawns with the resolved launch spec, the requested geometry and the merged environment', async () => {
     const harness = buildHarness({
       launch: { file: 'C:\\npm\\comatecli.exe', args: [], env: { ZULU_TERMINAL_RUN_MODE: 'yolo' } },
@@ -146,7 +154,8 @@ describe('PtyRegistry spawning', () => {
 
     await harness.registry.spawn('s1', 'comate', 'C:\\Projects\\App One', true, 96, 28)
 
-    expect(harness.resolveLaunchSpec).toHaveBeenCalledWith('comate', true)
+    // Three arguments always: the prompt file slot is simply empty for an ordinary session.
+    expect(harness.resolveLaunchSpec).toHaveBeenCalledWith('comate', true, undefined)
     expect(harness.factory.spawn).toHaveBeenCalledWith('C:\\npm\\comatecli.exe', [], {
       name: 'xterm-256color',
       cols: 96,

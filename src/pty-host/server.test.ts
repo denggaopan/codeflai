@@ -228,6 +228,18 @@ describe('PtyHostServer requests', () => {
     expect(harness.logs.some((line) => line.includes('Client speaks protocol 99'))).toBe(true)
   })
 
+  it('forwards the spawn prompt file to the registry', async () => {
+    const harness = buildHarness()
+    const socket = await attach(harness)
+
+    await request(socket, {
+      type: 'spawn', id: 1, sessionId: 's1', kind: 'claude', launchPath: 'C:\\Projects',
+      resume: false, cols: 80, rows: 24, initialPromptFile: 'C:\\prompts\\s1.md'
+    })
+
+    expect(harness.registry.spawn).toHaveBeenCalledWith('s1', 'claude', 'C:\\Projects', false, 80, 24, 'C:\\prompts\\s1.md')
+  })
+
   it('forwards spawn, write, resize, kill and replay to the registry', async () => {
     const harness = buildHarness()
     const socket = await attach(harness)
@@ -248,7 +260,7 @@ describe('PtyHostServer requests', () => {
     await request(socket, { type: 'kill', id: 4, sessionId: 's1' })
     await request(socket, { type: 'replay', id: 5, sessionId: 's1' })
 
-    expect(harness.registry.spawn).toHaveBeenCalledWith('s1', 'codex', 'C:\\Projects\\App One', true, 96, 28)
+    expect(harness.registry.spawn).toHaveBeenCalledWith('s1', 'codex', 'C:\\Projects\\App One', true, 96, 28, undefined)
     expect(harness.registry.write).toHaveBeenCalledWith('s1', 'hello\r')
     expect(harness.registry.resize).toHaveBeenCalledWith('s1', 132, 43)
     expect(harness.registry.kill).toHaveBeenCalledWith('s1')

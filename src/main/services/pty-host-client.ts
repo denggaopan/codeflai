@@ -41,6 +41,8 @@ const MAX_DIMENSION = 1000
 export type TerminalStartOptions = {
   /** Relaunch an agent CLI so it reattaches its previous conversation instead of starting a new one. */
   resume?: boolean
+  /** An automatic issue session's prompt file; the host appends the one sentence that names it. */
+  initialPromptFile?: string
 }
 
 export type TerminalEventMap = {
@@ -236,7 +238,10 @@ export class PtyHostClient {
         launchPath: session.launchPath,
         resume: options.resume === true,
         cols: this.cols,
-        rows: this.rows
+        rows: this.rows,
+        // Omitted rather than sent as undefined so a wire log and the exact-shape tests read
+        // the same message for an ordinary session as before.
+        ...(options.initialPromptFile !== undefined ? { initialPromptFile: options.initialPromptFile } : {})
       })
       this.live.add(session.id)
     } finally {

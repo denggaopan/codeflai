@@ -333,7 +333,8 @@ export class PtyHostServer {
           request.launchPath,
           request.resume,
           request.cols,
-          request.rows
+          request.rows,
+          request.initialPromptFile
         )
         return { type: 'ok', id: request.id }
       }

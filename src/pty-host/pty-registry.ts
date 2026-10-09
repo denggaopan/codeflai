@@ -132,7 +132,8 @@ export class PtyRegistry {
     launchPath: string,
     resume: boolean,
     cols: number,
-    rows: number
+    rows: number,
+    initialPromptFile?: string
   ): Promise<void> {
     if (this.entries.has(sessionId) || this.starting.has(sessionId)) {
       throw new Error(`Terminal session is already running or starting: ${sessionId}`)
@@ -141,7 +142,7 @@ export class PtyRegistry {
 
     this.starting.add(sessionId)
     try {
-      const launch = await this.resolver.resolveLaunchSpec(kind, resume)
+      const launch = await this.resolver.resolveLaunchSpec(kind, resume, initialPromptFile)
       const pty = this.ptyFactory.spawn(launch.file, launch.args, {
         name: 'xterm-256color',
         cols,
