@@ -61,6 +61,7 @@ describe('SettingsDialog', () => {
     expect(within(nav).getAllByRole('button').map((item) => item.textContent)).toEqual([
       'General',
       'Session kinds',
+      'Issue automation',
       'Updates',
       'About Codeflai'
     ])
@@ -130,6 +131,44 @@ describe('SettingsDialog', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not change the startup setting: Access denied.')
     expect(toggle).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('offers the issue-automation controls with their defaults', () => {
+    renderDialog()
+
+    const agent = screen.getByRole('combobox', { name: 'Agent' })
+    expect(within(agent).getAllByRole('option').map((option) => option.textContent)).toEqual(['Claude', 'Codex'])
+    expect(agent).toHaveValue('claude')
+    const interval = screen.getByRole('combobox', { name: 'Check every' })
+    expect(within(interval).getAllByRole('option').map((option) => option.textContent)).toEqual(['5m', '10m', '15m', '30m', '1h', '2h', '4h'])
+    expect(interval).toHaveValue(String(30 * 60_000))
+    const template = screen.getByRole('textbox', { name: 'Prompt template' }) as HTMLTextAreaElement
+    expect(template.value).toContain('You are in a Codeflai automatic issue session.')
+    expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled()
+    expect(screen.getByText('Placeholders: {{repoUrl}}, {{host}}, {{projectPath}}, {{projectName}}, {{fastDo}}')).toBeInTheDocument()
+  })
+
+  it('stores the agent, the interval and an edited template, and resets the template', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Agent' }), 'codex')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Check every' }), String(60 * 60_000))
+    const template = screen.getByRole('textbox', { name: 'Prompt template' })
+    await user.clear(template)
+    // user-event doubles only `{` and `[`; a closing brace types as-is.
+    await user.type(template, 'Custom {{{{fastDo}}')
+    await user.tab()
+
+    expect(useAppStore.getState().issueAutomation).toMatchObject({ agent: 'codex', intervalMs: 60 * 60_000, template: 'Custom {{fastDo}}' })
+    const reset = screen.getByRole('button', { name: 'Reset to default' })
+    expect(reset).toBeEnabled()
+
+    await user.click(reset)
+
+    expect(useAppStore.getState().issueAutomation.template).toBeNull()
+    expect((screen.getByRole('textbox', { name: 'Prompt template' }) as HTMLTextAreaElement).value).toContain('You are in a Codeflai automatic issue session.')
+    expect(reset).toBeDisabled()
   })
 
   // Both rocket switches default on: a rocket costs nothing and cannot be found from a

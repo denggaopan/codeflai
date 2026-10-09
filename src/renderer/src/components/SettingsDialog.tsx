@@ -6,7 +6,13 @@ import type { ExternalLinkTarget } from '../../../shared/links'
 import { THEME_PREFERENCES } from '../../../shared/themes'
 import { LOCALES, type TranslationKey, type Translator } from '../i18n'
 import { useTranslation } from '../i18n/use-translation'
-import { sessionKindOptions, type SessionKindOption } from '../session-kind-options'
+import {
+  ISSUE_AUTOMATION_AGENT_KINDS,
+  ISSUE_AUTOMATION_INTERVAL_OPTIONS,
+  formatIssueAutomationInterval,
+  isIssueAutomationAgent
+} from '../../../shared/issue-automation'
+import { sessionKindLabelKey, sessionKindOptions, type SessionKindOption } from '../session-kind-options'
 import { resolveActiveSection, SETTINGS_SECTIONS, type SettingsSectionId } from '../settings-sections'
 import { TERMINAL_FONT_SIZES } from '../terminal-font'
 import { useAppStore } from '../store/use-app-store'
@@ -95,6 +101,10 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const setRocketHourlyEnabled = useAppStore((state) => state.setRocketHourlyEnabled)
   const sessionKindPreferences = useAppStore((state) => state.sessionKindPreferences)
   const setSessionKindPreference = useAppStore((state) => state.setSessionKindPreference)
+  const issueAutomation = useAppStore((state) => state.issueAutomation)
+  const setIssueAutomationAgent = useAppStore((state) => state.setIssueAutomationAgent)
+  const setIssueAutomationInterval = useAppStore((state) => state.setIssueAutomationInterval)
+  const setIssueAutomationTemplate = useAppStore((state) => state.setIssueAutomationTemplate)
   const beginUpdate = useAppStore((state) => state.beginUpdate)
   const startUpdateDownload = useAppStore((state) => state.startUpdateDownload)
 
@@ -105,6 +115,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [autoLaunchError, setAutoLaunchError] = useState<string | null>(null)
   const [updateState, setUpdateState] = useState<UpdateState>({ phase: 'idle' })
   const [moreKindsExpanded, setMoreKindsExpanded] = useState(false)
+  // Bumped on reset so the uncontrolled template textarea remounts with the default text.
+  const [templateEpoch, setTemplateEpoch] = useState(0)
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('general')
 
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -532,6 +544,82 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   )}
                 </>
               )}
+            </section>
+
+            <section className="settings-section" ref={registerSection('issueAutomation')} aria-labelledby="settings-section-issue-automation">
+              <h3 className="settings-section-title" id="settings-section-issue-automation">
+                {t('settings.sectionIssueAutomation')}
+              </h3>
+              <p className="settings-dialog-hint">{t('settings.issueAutomationHint')}</p>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-issue-agent-label">
+                  {t('settings.issueAutomationAgent')}
+                </span>
+                {/* Only the two agents whose CLIs take a positional prompt; enabling one is the
+                    Session kinds section's job, and the project menu says when it is off. */}
+                <select
+                  className="settings-select"
+                  aria-labelledby="settings-issue-agent-label"
+                  value={issueAutomation.agent}
+                  onChange={(event) => {
+                    if (isIssueAutomationAgent(event.target.value)) setIssueAutomationAgent(event.target.value)
+                  }}
+                >
+                  {ISSUE_AUTOMATION_AGENT_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(sessionKindLabelKey(kind))}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="settings-dialog-section">
+                <span className="settings-dialog-label" id="settings-issue-interval-label">
+                  {t('settings.issueAutomationInterval')}
+                </span>
+                <select
+                  className="settings-select"
+                  aria-labelledby="settings-issue-interval-label"
+                  value={String(issueAutomation.intervalMs)}
+                  onChange={(event) => setIssueAutomationInterval(Number(event.target.value))}
+                >
+                  {ISSUE_AUTOMATION_INTERVAL_OPTIONS.map((intervalMs) => (
+                    <option key={intervalMs} value={intervalMs}>
+                      {formatIssueAutomationInterval(intervalMs)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="settings-dialog-section settings-dialog-section-stacked">
+                <label className="settings-dialog-label" htmlFor="settings-issue-template">
+                  {t('settings.issueAutomationTemplate')}
+                </label>
+                {/* Uncontrolled and committed on blur: every keystroke rewriting localStorage
+                    would be waste, and the agent reads the file, not the keystrokes. */}
+                <textarea
+                  key={templateEpoch}
+                  id="settings-issue-template"
+                  className="settings-textarea"
+                  rows={12}
+                  spellCheck={false}
+                  defaultValue={issueAutomation.template ?? t('issueAutomation.defaultTemplate')}
+                  onBlur={(event) => setIssueAutomationTemplate(event.currentTarget.value)}
+                />
+                <p className="settings-dialog-hint">{t('settings.issueAutomationPlaceholders')}</p>
+                <button
+                  type="button"
+                  className="settings-update-button"
+                  disabled={issueAutomation.template === null}
+                  onClick={() => {
+                    setIssueAutomationTemplate(null)
+                    setTemplateEpoch((epoch) => epoch + 1)
+                  }}
+                >
+                  {t('settings.issueAutomationReset')}
+                </button>
+              </div>
             </section>
 
             <section className="settings-section" ref={registerSection('updates')} aria-labelledby="settings-section-updates">

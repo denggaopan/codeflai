@@ -5,13 +5,14 @@ import type { TranslationKey } from './i18n'
  * same list drives the anchor menu on the left, so a section can never exist without a way
  * to jump to it (or a menu entry point at nothing).
  */
-export type SettingsSectionId = 'general' | 'sessionKinds' | 'updates' | 'about'
+export type SettingsSectionId = 'general' | 'sessionKinds' | 'issueAutomation' | 'updates' | 'about'
 
 export type SettingsSection = { id: SettingsSectionId; labelKey: TranslationKey }
 
 export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSection> = [
   { id: 'general', labelKey: 'settings.sectionGeneral' },
   { id: 'sessionKinds', labelKey: 'settings.sessionKinds' },
+  { id: 'issueAutomation', labelKey: 'settings.sectionIssueAutomation' },
   { id: 'updates', labelKey: 'settings.sectionUpdates' },
   { id: 'about', labelKey: 'settings.about' }
 ]

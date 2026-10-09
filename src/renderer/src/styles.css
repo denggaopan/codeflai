@@ -2610,6 +2610,32 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-text);
 }
 
+/* A control too wide to share a row with its label (the issue-automation template). */
+.settings-dialog-section-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.settings-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'SF Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.settings-textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .settings-kind-list {
   list-style: none;
   margin: 8px 0 0;
