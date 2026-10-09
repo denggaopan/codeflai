@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto'
 import type { AppState, DeleteSessionResult, SessionKind, SessionRecord } from '../../shared/contracts'
 import { renameSessionRequestSchema } from '../../shared/contracts'
 import type { ProjectService } from './project-service'
+import { unavailablePromptFileStore, type PromptFileStore } from './prompt-file-store'
 import type { SessionStore } from './session-store'
 import type { SessionLocation, WorktreeService } from './worktree-service'
-import type { TerminalEventMap } from './terminal-service'
+import type { TerminalEventMap, TerminalStartOptions } from './terminal-service'
 import type { TitleService } from './title-service'
 
 export class SessionNotFoundError extends Error {
@@ -65,9 +66,16 @@ const errorMessage = (error: unknown): string => (error instanceof Error ? error
  * Per-creation options. `worktree: false` (the default) launches straight in the project
  * directory without asking WorktreeService for anything, so no branch, directory, or
  * `.git/info/exclude` entry is created for a session that did not ask for one.
+ *
+ * `initialPrompt` and `title` are set only by the renderer's issue-automation watcher: the
+ * prompt is written to a file the agent is told to read on its first turn, and the title is
+ * stored as final because that prompt never passes through the PTY, so the first-input
+ * tracker would never see one to title from.
  */
 export type CreateSessionOptions = {
   worktree?: boolean
+  initialPrompt?: string
+  title?: string
 }
 
 /**
@@ -84,7 +92,7 @@ export type CreateSessionOptions = {
  * that knows whether a host was reached at all.
  */
 export interface SessionTerminal {
-  start(session: SessionRecord, options?: { resume?: boolean }): Promise<void>
+  start(session: SessionRecord, options?: TerminalStartOptions): Promise<void>
   /** Ends one session for good. Used where the user asked for it: stop, delete, remove project. */
   stop(sessionId: string): Promise<void>
   stopAll(): Promise<void>
@@ -129,7 +137,8 @@ export class SessionCoordinator {
     private readonly terminalService: SessionTerminal,
     private readonly titleService: TitleService,
     private readonly clock: () => Date = () => new Date(),
-    private readonly createId: () => string = randomUUID
+    private readonly createId: () => string = randomUUID,
+    private readonly promptFiles: PromptFileStore = unavailablePromptFileStore
   ) {
     this.terminalService.on('exit', this.handleExit)
   }
@@ -153,8 +162,9 @@ export class SessionCoordinator {
         id: this.createId(),
         projectId,
         kind,
-        title: initialTitles[kind],
-        titleState: 'pending',
+        title: options.title ?? initialTitles[kind],
+        titleState: options.title === undefined ? 'pending' : 'complete',
+        ...(options.title === undefined ? {} : { titleManuallySet: true }),
         createdAt: this.clock().toISOString(),
         status: 'creating',
         launchPath: location.launchPath,
@@ -164,8 +174,14 @@ export class SessionCoordinator {
       await this.appendSession(record)
 
       try {
-        await this.terminalService.start(record)
+        if (options.initialPrompt === undefined) {
+          await this.terminalService.start(record)
+        } else {
+          const initialPromptFile = await this.promptFiles.write(record.id, options.initialPrompt)
+          await this.terminalService.start(record, { initialPromptFile })
+        }
       } catch (error) {
+        if (options.initialPrompt !== undefined) await this.promptFiles.remove(record.id)
         await this.removeSession(record.id)
         if (location.mode === 'worktree') {
           await this.worktreeService.rollback(location)
@@ -330,6 +346,7 @@ export class SessionCoordinator {
 
         if (result.status === 'removed' || result.status === 'missing') {
           await this.removeSession(sessionId)
+          await this.promptFiles.remove(sessionId)
           return { status: 'deleted' }
         }
 
@@ -375,6 +392,8 @@ export class SessionCoordinator {
         sessions: state.sessions.filter((session) => session.projectId !== projectId)
       }))
       this.emit(next)
+      // Best effort, after the records are gone: a prompt file nobody can reach is clutter.
+      for (const session of sessions) await this.promptFiles.remove(session.id)
     })
   }
 

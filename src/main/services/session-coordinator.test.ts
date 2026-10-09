@@ -66,7 +66,7 @@ type ExitListener = (payload: TerminalEventMap['exit']) => void
 
 /** Stands in for the in-process TerminalService: owns its PTYs, so it cannot detach. */
 class FakeTerminalService implements SessionTerminal {
-  readonly start = vi.fn(async (_session: SessionRecord, _options?: { resume?: boolean }) => undefined)
+  readonly start = vi.fn(async (_session: SessionRecord, _options?: { resume?: boolean; initialPromptFile?: string }) => undefined)
   readonly stop = vi.fn(async (_sessionId: string) => undefined)
   readonly stopAll = vi.fn(async () => undefined)
   private readonly exitListeners = new Set<ExitListener>()
@@ -99,12 +99,20 @@ const fakeTitleService = () => ({
 
 type FakeTitleService = ReturnType<typeof fakeTitleService>
 
+const fakePromptFiles = () => ({
+  write: vi.fn(async (sessionId: string, _text: string) => `C:\\Profile\\issue-automation\\${sessionId}.md`),
+  remove: vi.fn(async (_sessionId: string): Promise<void> => undefined)
+})
+
+type FakePromptFiles = ReturnType<typeof fakePromptFiles>
+
 type Harness<T extends FakeTerminalService = FakeTerminalService> = {
   store: FakeStore
   projectService: FakeProjectService
   worktreeService: FakeWorktreeService
   terminalService: T
   titleService: FakeTitleService
+  promptFiles: FakePromptFiles
   coordinator: SessionCoordinator
 }
 
@@ -118,6 +126,7 @@ const buildHarness = <T extends FakeTerminalService = FakeTerminalService>(optio
   const worktreeService = fakeWorktreeService()
   const terminalService = options.terminalService ?? (new FakeTerminalService() as T)
   const titleService = fakeTitleService()
+  const promptFiles = fakePromptFiles()
   const coordinator = new SessionCoordinator(
     store as unknown as SessionStore,
     projectService as unknown as ProjectService,
@@ -125,9 +134,10 @@ const buildHarness = <T extends FakeTerminalService = FakeTerminalService>(optio
     terminalService,
     titleService as unknown as TitleService,
     clock,
-    options.createId ?? (() => 'session-1')
+    options.createId ?? (() => 'session-1'),
+    promptFiles
   )
-  return { store, projectService, worktreeService, terminalService, titleService, coordinator }
+  return { store, projectService, worktreeService, terminalService, titleService, promptFiles, coordinator }
 }
 
 const runningSession = (overrides: Partial<SessionRecord> = {}): SessionRecord => ({
@@ -142,6 +152,97 @@ const runningSession = (overrides: Partial<SessionRecord> = {}): SessionRecord =
   status: 'stopped',
   ...overrides
 } as SessionRecord)
+
+describe('SessionCoordinator.create with an initial prompt', () => {
+  it('writes the prompt file, starts the PTY with it, and stores the given title as final', async () => {
+    const { store, terminalService, promptFiles, coordinator } = buildHarness()
+
+    const record = await coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'Pick an issue', title: 'Auto issue 10-09 14:30' })
+
+    expect(promptFiles.write).toHaveBeenCalledWith('session-1', 'Pick an issue')
+    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { initialPromptFile: 'C:\\Profile\\issue-automation\\session-1.md' })
+    expect(record).toMatchObject({ title: 'Auto issue 10-09 14:30', titleState: 'complete', titleManuallySet: true, status: 'running' })
+    // The file is written after the creating record exists and before the PTY starts.
+    expect(store.update.mock.invocationCallOrder[0]).toBeLessThan(promptFiles.write.mock.invocationCallOrder[0]!)
+    expect(promptFiles.write.mock.invocationCallOrder[0]).toBeLessThan(terminalService.start.mock.invocationCallOrder[0]!)
+  })
+
+  it('starts an ordinary session without any options object and leaves its title pending', async () => {
+    const { terminalService, promptFiles, coordinator } = buildHarness()
+
+    const record = await coordinator.create('project-1', 'claude')
+
+    expect(promptFiles.write).not.toHaveBeenCalled()
+    expect(terminalService.start).toHaveBeenCalledTimes(1)
+    expect(terminalService.start.mock.calls[0]).toHaveLength(1)
+    expect(record).toMatchObject({ title: 'New Claude session', titleState: 'pending' })
+    expect(record).not.toHaveProperty('titleManuallySet')
+  })
+
+  it('removes the prompt file, the record and the worktree when the PTY fails to start', async () => {
+    const { store, worktreeService, terminalService, promptFiles, coordinator } = buildHarness()
+    worktreeService.create.mockResolvedValue(worktreeLocation)
+    terminalService.start.mockRejectedValue(new Error('agent CLI not found'))
+
+    await expect(coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'x' })).rejects.toThrow('agent CLI not found')
+
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(worktreeService.rollback).toHaveBeenCalledWith(worktreeLocation)
+  })
+
+  it('removes the record and rolls back when the prompt file itself cannot be written', async () => {
+    const { store, worktreeService, terminalService, promptFiles, coordinator } = buildHarness()
+    worktreeService.create.mockResolvedValue(worktreeLocation)
+    promptFiles.write.mockRejectedValue(new Error('disk full'))
+
+    await expect(coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'x' })).rejects.toThrow('disk full')
+
+    expect(terminalService.start).not.toHaveBeenCalled()
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(worktreeService.rollback).toHaveBeenCalledWith(worktreeLocation)
+  })
+
+  it('keeps a later typed first input from retitling a session created with a title', async () => {
+    const { titleService, coordinator } = buildHarness()
+    titleService.generate.mockResolvedValue('Generated title')
+    await coordinator.create('project-1', 'claude', { initialPrompt: 'x', title: 'Auto issue 10-09 14:30' })
+
+    await coordinator.submitFirstInput('session-1', 'hello')
+
+    expect(titleService.generate).not.toHaveBeenCalled()
+    expect((await coordinator.snapshot()).sessions[0]?.title).toBe('Auto issue 10-09 14:30')
+  })
+})
+
+describe('SessionCoordinator prompt file lifecycle', () => {
+  it('removes the prompt file when the session is deleted', async () => {
+    const { promptFiles, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [runningSession({ status: 'stopped' })] } })
+
+    await expect(coordinator.delete('session-1')).resolves.toEqual({ status: 'deleted' })
+
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+  })
+
+  it('removes every prompt file of a project that is removed from the list', async () => {
+    const { promptFiles, coordinator } = buildHarness({
+      initial: { version: 1, projects: [project], sessions: [runningSession({ id: 'a', status: 'stopped' }), runningSession({ id: 'b', status: 'stopped' })] }
+    })
+
+    await coordinator.removeProject('project-1')
+
+    expect(promptFiles.remove.mock.calls.map(([id]) => id)).toEqual(['a', 'b'])
+  })
+
+  it('never passes a prompt when restoring', async () => {
+    const { terminalService, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [runningSession({ status: 'stopped' })] } })
+
+    await coordinator.restore('session-1')
+
+    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { resume: true })
+  })
+})
 
 describe('SessionCoordinator.create', () => {
   it('creates the worktree location, persists a creating record, starts the PTY, then persists running', async () => {

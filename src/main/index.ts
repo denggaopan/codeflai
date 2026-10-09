@@ -33,7 +33,8 @@ import { PtyHostRuntime } from './services/pty-host-runtime'
 import { SessionCoordinator } from './services/session-coordinator'
 import { attachSessions, type TerminalImplementation } from './services/session-attachment'
 import { SessionStore } from './services/session-store'
-import { TerminalService, type TerminalEventMap } from './services/terminal-service'
+import { DirectoryPromptFileStore } from './services/prompt-file-store'
+import { TerminalService, type TerminalEventMap, type TerminalStartOptions } from './services/terminal-service'
 import {
   createCliTitleAdapter,
   TitleService,
@@ -390,7 +391,7 @@ class DeferredTerminal implements TerminalImplementation {
     }
   }
 
-  async start(session: SessionRecord, options?: { resume?: boolean }): Promise<void> {
+  async start(session: SessionRecord, options?: TerminalStartOptions): Promise<void> {
     return this.require().start(session, options)
   }
 
@@ -567,7 +568,9 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     const terminal = new DeferredTerminal()
-    const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService)
+    // Prompt files for automatic issue sessions live beside state.json, never in a project.
+    const promptFiles = new DirectoryPromptFileStore(join(app.getPath('userData'), 'issue-automation'))
+    const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService, undefined, undefined, promptFiles)
     const sessionsReconciled = attachSessions({
       terminal,
       coordinator,
