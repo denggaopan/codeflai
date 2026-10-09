@@ -39,6 +39,7 @@ CLI credentials.**
 - [Organizing sessions](#organizing-sessions)
 - [Notifications](#notifications)
 - [The project options menu](#the-project-options-menu)
+- [Resolving issues automatically](#resolving-issues-automatically)
 - [Shutting the computer down when nothing is running](#shutting-the-computer-down-when-nothing-is-running)
 - [Keeping the window on top](#keeping-the-window-on-top)
 - [Settings](#settings)
@@ -480,6 +481,13 @@ folds the row.
   (self-hosted instances included), or a plain Git mark. Repositories with no remote, or a
   remote that is a local directory, get no entry. Remotes are re-read at every launch, so
   adding one shows up next time you start Codeflai.
+- **Auto-resolve issues** — a switch, per project: while it is on and the project has no
+  running session, Codeflai starts an agent session that works through one open issue. See
+  [Resolving issues automatically](#resolving-issues-automatically). Disabled for a project
+  with no remote; the row shows a small loop glyph while it is on.
+- **Resolve one issue now** — runs one round immediately, without waiting for the timer and
+  whether or not something else is running, and switches to the new session. Disabled while
+  the chosen agent is switched off in Settings or its CLI is missing.
 - **Delete all sessions** — deletes every session of the project after a confirmation, running
   ones included, in the order the sidebar lists them. Each one goes through the same checks as
   deleting it on its own: a worktree with uncommitted changes is never removed, so that session
@@ -489,6 +497,44 @@ folds the row.
   and all of its session records go with it, but **nothing on disk is touched**: the project
   directory, its worktrees, and their branches stay exactly as they are. Add the folder
   again later and you start with an empty session list.
+
+## Resolving issues automatically
+
+Switch **Auto-resolve issues** on in a project's ⋯ menu. From then on, every time the check
+runs (every 30 minutes by default) and that project has no running session — the same
+meaning of *running* the sidebar uses, so an agent sitting at **Done** does not count —
+Codeflai starts a Claude Code (or Codex) session in a fresh worktree whose first prompt tells
+the agent to:
+
+1. list the open issues with whatever CLI fits the host (`gh` on GitHub, `glab` on GitLab,
+   anything available elsewhere), skipping assigned ones and ones labelled
+   `codeflai:in-progress` or `codeflai:needs-human`, and take the oldest;
+2. label it `codeflai:in-progress` and comment that it has started;
+3. resolve it with your `fast-do` skill — commit, merge, push — **without** packaging or
+   publishing a release;
+4. wait for the test deployment that push triggered (`gh run watch` on GitHub);
+5. close the issue if the deployment succeeded, or leave it open, comment, and relabel it
+   `codeflai:needs-human` if it failed or nothing finished within 30 minutes;
+6. exit.
+
+Codeflai itself never reads an issue or a CI result. It renders the prompt from the template
+in **Settings › Issue automation**, writes it to a file beside its own state, and starts the
+agent with one line naming that file. The template is yours to edit — name the right
+workflow for a repository with several, change the labels, let it publish if you really
+want that — and **Reset to default** brings the built-in one back. Placeholders:
+`{{repoUrl}}`, `{{host}}` (`github`, `gitlab` or `unknown`), `{{projectPath}}`,
+`{{projectName}}`, and `{{fastDo}}` (`/fast-do` or `$fast-do`, by agent).
+
+Rounds are serial per project: the agent stays running while it waits for CI, which keeps
+the project busy until it exits. A project that has no eligible issue still costs one short
+agent start per check, which is why the default interval is half an hour. Switching a
+project off never stops a round already running — stop that session from its row. If a
+launch fails (no worktree, no CLI), the project is switched off and a notice says why, so the
+same error does not come back every interval. Codeflai has to be open for any of this to
+happen: the check runs inside the window.
+
+The session is titled `Auto issue MM-DD HH:mm`; what happened is in its terminal, and the
+usual Done-edge notification tells you when a round ends.
 
 ## Shutting the computer down when nothing is running
 
@@ -590,6 +636,9 @@ The gear at the bottom-left of the sidebar opens Settings.
 - **Session kinds** — two switches per kind: whether it appears in the New session menu at
   all, and whether it also offers a **(new worktree)** entry. See
   [Starting a session](#starting-a-session).
+- **Issue automation** — which agent runs automatic issue sessions, how often projects are
+  checked, and the prompt template. See
+  [Resolving issues automatically](#resolving-issues-automatically).
 - **Show quick prompt bar** — see [Quick prompts](#quick-prompts).
 - **Theme** — a dropdown: **Dark** and **Light** are Codeflai's own two looks, and
   **Visual Studio Dark**, **Abyss**, **Monokai**, **Solarized Dark**, and
@@ -660,7 +709,8 @@ sessions and had no window connected for a minute. On Windows it shows up in Tas
 
 Your projects, your sessions and their titles, quick prompts, and workspace preferences —
 which projects were folded, which session was active, the sidebar width, theme, language,
-session kinds, and the auto-shutdown switch and its frequency. Saved on every change, so an unexpected exit does not lose them.
+session kinds, the auto-shutdown switch and its frequency, and the issue-automation agent,
+interval, template and per-project switches. Saved on every change, so an unexpected exit does not lose them.
 
 **Not stored, ever:** API keys, CLI credentials, or terminal scrollback.
 
