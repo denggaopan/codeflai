@@ -426,6 +426,11 @@ const openProjectOptions = async (
   return screen.getByRole('menu', { name: projectOptionsName(projectName) })
 }
 
+// Menu entries in document order, whichever menuitem role they carry (the auto-resolve switch
+// is a menuitemcheckbox, which neither getAllByRole('menuitem') nor Playwright's equivalent lists).
+const menuEntries = (menu: HTMLElement): string[] =>
+  Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')).map((item) => item.textContent?.trim() ?? '')
+
 const openLauncher = async (
   user: ReturnType<typeof userEvent.setup>,
   projectName = project1.name
@@ -1125,11 +1130,13 @@ describe('ProjectSidebar', () => {
 
     const menu = await openProjectOptions(user)
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+    expect(menuEntries(menu)).toEqual([
       'New session',
       'Open project in VS Code',
       'Open project folder',
       'Copy project path',
+      'Auto-resolve issues',
+      'Resolve one issue now',
       'Delete all sessions',
       'Remove from list'
     ])
@@ -1163,12 +1170,14 @@ describe('ProjectSidebar', () => {
     render(<ProjectSidebar />)
 
     const menu = await openProjectOptions(user)
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+    expect(menuEntries(menu)).toEqual([
       'New session',
       'Open project in VS Code',
       'Open project folder',
       'Copy project path',
       'Open Git repository',
+      'Auto-resolve issues',
+      'Resolve one issue now',
       'Delete all sessions',
       'Remove from list'
     ])
@@ -1316,11 +1325,13 @@ describe('ProjectSidebar', () => {
     await user.click(screen.getByRole('button', { name: menuName }))
 
     const menu = screen.getByRole('menu', { name: menuName })
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+    expect(menuEntries(menu)).toEqual([
       '新建会话',
       '在 VS Code 中打开项目',
       '打开项目文件夹',
       '复制项目目录地址',
+      '自动处理 issue',
+      '立即处理一条 issue',
       '删除所有会话',
       '从列表中移除'
     ])
@@ -2360,5 +2371,69 @@ describe('ProjectSidebar', () => {
 
     await screen.findByText('Worktree has 1 changed files. Commit or discard them before deleting.')
     expect(optionsButton).toHaveFocus()
+  })
+})
+
+describe('issue automation in the project menu', () => {
+  const github: ProjectRecord = { ...project1, repoRemote: { host: 'github', webUrl: 'https://github.com/me/app' } }
+
+  it('switches a project on and off and shows the row glyph while it is on', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [github], sessions: [] })
+    render(<ProjectSidebar />)
+    expect(screen.queryByRole('img', { name: 'Auto-resolve issues is on for this project' })).not.toBeInTheDocument()
+
+    let menu = await openProjectOptions(user)
+    const toggle = within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await user.click(toggle)
+
+    expect(useAppStore.getState().issueAutomation.projects).toEqual([github.id])
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Auto-resolve issues is on for this project' })).toBeInTheDocument()
+
+    menu = await openProjectOptions(user)
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' }))
+    expect(useAppStore.getState().issueAutomation.projects).toEqual([])
+    expect(screen.queryByRole('img', { name: 'Auto-resolve issues is on for this project' })).not.toBeInTheDocument()
+  })
+
+  it('runs one round from the menu', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [github], sessions: [] })
+    api.createSession = vi.fn(async () => runningWorktreeSession)
+    render(<ProjectSidebar />)
+
+    await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Resolve one issue now' }))
+
+    expect(api.createSession).toHaveBeenCalledWith(github.id, 'claude', true, expect.objectContaining({ title: expect.stringMatching(/^Auto issue /) }))
+  })
+
+  it('disables both entries without a remote, and only the manual one when the agent is off', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    let menu = await openProjectOptions(user)
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })).toHaveAttribute('title', 'This project has no Git remote, so there is no issue tracker to read.')
+    expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toBeDisabled()
+    // Clicking the trigger again closes the menu (see "swaps the options glyph").
+    await user.click(screen.getByRole('button', { name: projectOptionsName(project1.name) }))
+
+    seedStore({ version: 1, projects: [github], sessions: [] })
+    useAppStore.getState().setSessionKindPreference('claude', { enabled: false })
+    menu = await openProjectOptions(user)
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })).toBeEnabled()
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Auto-resolve issues' })).toHaveAttribute('title', 'Claude is switched off in Settings › Session kinds.')
+    expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: projectOptionsName(project1.name) }))
+
+    useAppStore.getState().setSessionKindPreference('claude', { enabled: true })
+    seedStore({ version: 1, projects: [github], sessions: [] }, { ...defaultCapabilities(), claude: { available: false, detail: 'claude: not found on PATH' } })
+    menu = await openProjectOptions(user)
+    expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toHaveAttribute('title', 'claude: not found on PATH')
   })
 })

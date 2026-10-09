@@ -494,15 +494,18 @@ test('keeps the terminal workflow usable at the 900 by 600 minimum window size',
   await expect(visibleBypassWarnings()).toHaveText([BYPASS_WARNING_TEXT])
 
   const optionsMenu = await openProjectOptions()
-  // Seven entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
+  // Nine entries: the fixture repository carries a GitHub-shaped `origin`, so the repository
   // action is offered (with the GitHub mark) between the copy-path action and the two
-  // destructive entries at the bottom.
-  await expect(optionsMenu.getByRole('menuitem')).toHaveText([
+  // issue-automation entries, which sit above the two destructive entries at the bottom.
+  // `[role^="menuitem"]` because the auto-resolve switch is a menuitemcheckbox.
+  await expect(optionsMenu.locator('[role^="menuitem"]')).toHaveText([
     'New session',
     'Open project in VS Code',
     'Open project folder',
     'Copy project path',
     'Open Git repository',
+    'Auto-resolve issues',
+    'Resolve one issue now',
     'Delete all sessions',
     'Remove from list'
   ])

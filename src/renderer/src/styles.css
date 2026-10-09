@@ -1249,6 +1249,12 @@ body[data-sidebar-resizing='true'] .app-main {
   opacity: 0.5;
 }
 
+/* The check mark on the Auto-resolve issues entry while it is on. */
+.project-options-menu-check {
+  margin-left: auto;
+  color: var(--color-accent);
+}
+
 .icon {
   display: block;
 }
@@ -1451,6 +1457,19 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-accent);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Shown beside the name while Auto-resolve issues is on for the project. */
+.project-automation-glyph {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+  color: var(--color-accent);
+}
+
+.project-automation-glyph .icon {
+  width: 12px;
+  height: 12px;
 }
 
 /* ==========================================================================

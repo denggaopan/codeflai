@@ -9,6 +9,7 @@ import sessionIconUrl from '../assets/session.svg'
 import vscodeIconUrl from '../assets/vscode.svg'
 import { useTranslation } from '../i18n/use-translation'
 import { repoHostIcon } from '../repo-host-icons'
+import { sessionKindLabelKey } from '../session-kind-options'
 import { isAgentDone, isSessionRestartable } from '../session-status'
 import { useAppStore } from '../store/use-app-store'
 import ConfirmDialog from './ConfirmDialog'
@@ -37,6 +38,32 @@ function CopyPathGlyph() {
         fill="currentColor"
       />
       <path d="M5 7v12a2 2 0 0 0 2 2h9v-2H7V7H5z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function AutoResolveGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-auto-resolve"
+      fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12a8 8 0 0 1 13.6-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.6 5.7L4 16M4 20v-4h4" />
+    </svg>
+  )
+}
+
+function ResolveNowGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-resolve-now">
+      <path d="M8 5v14l11-7z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function CheckGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-check project-options-menu-check"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12l4 4L19 7" />
     </svg>
   )
 }
@@ -82,6 +109,9 @@ export default function ProjectSidebar() {
   const launcherOpen = useAppStore((state) => state.launcherOpen)
   const openLauncher = useAppStore((state) => state.openLauncher)
   const closeLauncher = useAppStore((state) => state.closeLauncher)
+  const issueAutomation = useAppStore((state) => state.issueAutomation)
+  const setProjectIssueAutomation = useAppStore((state) => state.setProjectIssueAutomation)
+  const resolveIssueNow = useAppStore((state) => state.resolveIssueNow)
 
   const [pendingDelete, setPendingDelete] = useState<SessionRecord | null>(null)
   const [pendingStop, setPendingStop] = useState<SessionRecord | null>(null)
@@ -178,7 +208,7 @@ export default function ProjectSidebar() {
     // commits, so the menu is still at its provisional "below" offset. Letting the browser
     // scroll it into view would jump the project list and re-enter updateLayout through the
     // scroll listener; the layout effect keeps the menu inside the scrollport by itself.
-    menu?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true })
+    menu?.querySelector<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')?.focus({ preventScroll: true })
 
     const handlePointerDown = (event: PointerEvent): void => {
       const target = event.target
@@ -387,7 +417,7 @@ export default function ProjectSidebar() {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
 
-    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'))
+    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)'))
     if (menuItems.length === 0) return
 
     const activeIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement)
@@ -527,6 +557,16 @@ export default function ProjectSidebar() {
           const unreadCount = visibleSessions.filter((session) => unreadSessionIds.includes(session.id)).length
           // Counted over every session, not the filtered view: "Delete all" means all of them.
           const sessionCount = appState.sessions.filter((session) => session.projectId === project.id).length
+          const automationOn = issueAutomation.projects.includes(project.id)
+          const automationAgent = issueAutomation.agent
+          // Why the manual entry is disabled, or null when the agent can run. The switch stays
+          // usable either way so a project already on can still be switched off.
+          const agentProblem: string | null = !sessionKindPreferences[automationAgent].enabled
+            ? t('sidebar.autoResolveAgentOff', { kind: t(sessionKindLabelKey(automationAgent)) })
+            : !capabilities[automationAgent].available
+              ? capabilities[automationAgent].detail
+              : null
+          const remoteProblem: string | null = project.repoRemote ? null : t('sidebar.autoResolveNeedsRemote')
 
           return (
             <section key={project.id} className="project-group">
@@ -571,6 +611,11 @@ export default function ProjectSidebar() {
                   <span className="project-name" title={project.name}>
                     {project.name}
                     {unreadCount > 0 && <span className="project-unread-count" aria-label={t('sidebar.unreadCount', { count: unreadCount })} title={t('sidebar.unreadCount', { count: unreadCount })}>{unreadCount}</span>}
+                    {automationOn && (
+                      <span className="project-automation-glyph" role="img" aria-label={t('sidebar.autoResolveOn')} title={t('sidebar.autoResolveOn')}>
+                        <AutoResolveGlyph />
+                      </span>
+                    )}
                   </span>
                   <span className="project-path" title={project.path}>
                     {project.path}
@@ -712,6 +757,46 @@ export default function ProjectSidebar() {
                         {t('sidebar.openRepository')}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="project-options-menu-item"
+                      role="menuitemcheckbox"
+                      aria-checked={automationOn}
+                      disabled={remoteProblem !== null}
+                      title={remoteProblem ?? agentProblem ?? undefined}
+                      tabIndex={-1}
+                      onPointerDown={(event) => {
+                        if (remoteProblem !== null) event.preventDefault()
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeProjectOptions(true)
+                        setProjectIssueAutomation(project.id, !automationOn)
+                      }}
+                    >
+                      <AutoResolveGlyph />
+                      {t('sidebar.autoResolveIssues')}
+                      {automationOn && <CheckGlyph />}
+                    </button>
+                    <button
+                      type="button"
+                      className="project-options-menu-item"
+                      role="menuitem"
+                      disabled={remoteProblem !== null || agentProblem !== null}
+                      title={remoteProblem ?? agentProblem ?? undefined}
+                      tabIndex={-1}
+                      onPointerDown={(event) => {
+                        if (remoteProblem !== null || agentProblem !== null) event.preventDefault()
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeProjectOptions(true)
+                        void resolveIssueNow(project.id)
+                      }}
+                    >
+                      <ResolveNowGlyph />
+                      {t('sidebar.resolveIssueNow')}
+                    </button>
                     <button
                       type="button"
                       className="project-options-menu-item"
