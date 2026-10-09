@@ -72,6 +72,11 @@ export const zhTW: Translations = {
   'sidebar.stopSessionPrompt': '要停止「{title}」嗎？之後可以恢復這個工作階段，並接續同一段對話。',
   'sidebar.unreadOutput': '有未讀輸出',
   'sidebar.unreadCount': '{count} 個工作階段有未讀輸出',
+  'sidebar.autoResolveIssues': '自動處理 issue',
+  'sidebar.autoResolveOn': '這個專案已開啟自動處理 issue',
+  'sidebar.resolveIssueNow': '立即處理一則 issue',
+  'sidebar.autoResolveNeedsRemote': '這個專案沒有 Git 遠端，沒有可讀取的 issue 追蹤器。',
+  'sidebar.autoResolveAgentOff': '{kind} 已在「設定 › 工作階段種類」中關閉。',
   'sidebar.deleteSessionPrompt': '確定要刪除「{title}」嗎？此操作無法復原。',
   'sidebar.resizeHandle': '調整側邊欄寬度',
 
@@ -212,6 +217,25 @@ export const zhTW: Translations = {
   'settings.rocket': '小火箭彩蛋',
   'settings.rocketHourly': '整點丟落小火箭',
   'settings.rocketHourlyHint': '依鐘點數丟落：09:00 丟 9 枚，17:00 丟 5 枚，正午丟 12 枚。',
+  'settings.sectionIssueAutomation': 'Issue 自動處理',
+  'settings.issueAutomationHint':
+    '已開啟自動處理 issue 的專案沒有進行中的工作階段時，Codeflai 會在新的 worktree 裡用下面的提示文字啟動一個 agent 工作階段。請在專案的 ⋯ 功能表中逐一開啟。',
+  'settings.issueAutomationAgent': 'Agent',
+  'settings.issueAutomationInterval': '檢查頻率',
+  'settings.issueAutomationTemplate': '提示文字範本',
+  'settings.issueAutomationPlaceholders': '佔位符：{{repoUrl}}、{{host}}、{{projectPath}}、{{projectName}}、{{fastDo}}',
+  'settings.issueAutomationReset': '還原預設',
+  'notice.issueAutomationFailed': '無法為「{project}」啟動自動 issue 工作階段：{reason}',
+  'notice.issueAutomationSwitchedOff': '無法為「{project}」啟動自動 issue 工作階段：{reason}。已為它關閉自動處理 issue。',
+  'issueAutomation.sessionTitle': '自動 issue {time}',
+  'issueAutomation.defaultTemplate': `你正在 Codeflai 的自動 issue 處理工作階段中。儲存庫：{{repoUrl}}（平台：{{host}}）。本機目錄：{{projectPath}}。全程不要向使用者提問，依序完成下列步驟：
+
+1. 列出 open 狀態的 issue。GitHub 用 gh，GitLab 用 glab，其他平台用可用的 CLI 或 API。略過已被指派的，以及帶有 codeflai:in-progress 或 codeflai:needs-human 標籤的，取剩下當中建立最早的一則。沒有合適的 issue，或者列不出來，就說明原因並結束。
+2. 為這則 issue 加上 codeflai:in-progress 標籤，並留言 Codeflai 已開始處理。
+3. 用 {{fastDo}} 一口氣解決它：提交、合併、推送到預設分支。不要打包，不要發布 release。
+4. 推送之後等待這次推送觸發的 test 部署。GitHub 上用 gh run list --commit <sha> 找到對應的 run，再用 gh run watch <id> --exit-status 等它結束；其他平台用對應的指令。
+5. 部署成功：關閉 issue，留言附上提交連結，並移除 codeflai:in-progress 標籤。部署失敗，或 30 分鐘內沒有結果：不要關閉 issue，留言說明情況，把標籤換成 codeflai:needs-human。
+6. 結束工作階段。`,
   'settings.version': '版本',
   'settings.versionUnknown': '未知',
   'settings.checkForUpdates': '檢查更新',

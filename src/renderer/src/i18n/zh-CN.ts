@@ -67,6 +67,11 @@ export const zhCN: Translations = {
   'sidebar.stopSessionPrompt': '要停止“{title}”吗？之后可以恢复该会话，并继续同一段对话。',
   'sidebar.unreadOutput': '有未读输出',
   'sidebar.unreadCount': '{count} 个会话有未读输出',
+  'sidebar.autoResolveIssues': '自动处理 issue',
+  'sidebar.autoResolveOn': '该项目已开启自动处理 issue',
+  'sidebar.resolveIssueNow': '立即处理一条 issue',
+  'sidebar.autoResolveNeedsRemote': '该项目没有 Git 远程，没有可读取的 issue 跟踪器。',
+  'sidebar.autoResolveAgentOff': '{kind} 已在设置 › 会话类型中关闭。',
   'sidebar.deleteSessionPrompt': '确定删除“{title}”吗？此操作无法撤销。',
   'sidebar.resizeHandle': '调整侧边栏宽度',
 
@@ -207,6 +212,25 @@ export const zhCN: Translations = {
   'settings.rocket': '小火箭彩蛋',
   'settings.rocketHourly': '整点丢落小火箭',
   'settings.rocketHourlyHint': '按钟点数丢落：09:00 丢 9 个，17:00 丢 5 个，正午丢 12 个。',
+  'settings.sectionIssueAutomation': 'Issue 自动处理',
+  'settings.issueAutomationHint':
+    '已开启自动处理 issue 的项目没有运行中的会话时，Codeflai 会在新的 worktree 里用下面的提示词启动一个 agent 会话。请在项目的 ⋯ 菜单里逐个项目开启。',
+  'settings.issueAutomationAgent': 'Agent',
+  'settings.issueAutomationInterval': '检查频率',
+  'settings.issueAutomationTemplate': '提示词模板',
+  'settings.issueAutomationPlaceholders': '占位符：{{repoUrl}}、{{host}}、{{projectPath}}、{{projectName}}、{{fastDo}}',
+  'settings.issueAutomationReset': '恢复默认',
+  'notice.issueAutomationFailed': '无法为“{project}”启动自动 issue 会话：{reason}',
+  'notice.issueAutomationSwitchedOff': '无法为“{project}”启动自动 issue 会话：{reason}。已为它关闭自动处理 issue。',
+  'issueAutomation.sessionTitle': '自动 issue {time}',
+  'issueAutomation.defaultTemplate': `你在 Codeflai 的自动 issue 处理会话里。仓库：{{repoUrl}}（平台：{{host}}）。本地目录：{{projectPath}}。全程不要向用户提问，按顺序完成下面的步骤：
+
+1. 列出 open 状态的 issue。GitHub 用 gh，GitLab 用 glab，其他平台用可用的 CLI 或 API。跳过已被 assign 的，以及带有 codeflai:in-progress 或 codeflai:needs-human 标签的，取剩下里创建最早的一条。没有合适的 issue，或者列不出来，就说明原因并退出。
+2. 给这条 issue 打上 codeflai:in-progress 标签，并评论 Codeflai 已开始处理。
+3. 用 {{fastDo}} 一口气解决它：提交、合并、推送到默认分支。不要打包，不要发布 release。
+4. 推送之后等待这次推送触发的 test 部署。GitHub 上用 gh run list --commit <sha> 找到对应的 run，再用 gh run watch <id> --exit-status 等它结束；其他平台用对应的命令。
+5. 部署成功：关闭 issue，评论里附上提交链接，并移除 codeflai:in-progress 标签。部署失败，或 30 分钟内没有结果：不要关闭 issue，评论说明情况，把标签换成 codeflai:needs-human。
+6. 退出会话。`,
   'settings.version': '版本',
   'settings.versionUnknown': '未知',
   'settings.checkForUpdates': '检查更新',

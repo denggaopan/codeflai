@@ -260,3 +260,14 @@ export const hasRunningSessions = (
       session.status === 'creating' ||
       (session.status === 'running' && !isAgentDone(session, idleAgentSessionIds[session.id] === true))
   )
+
+/**
+ * `hasRunningSessions` restricted to one project, for the issue-automation watcher: it shares
+ * the predicate rather than re-deriving it, so the sidebar, auto shutdown and that watcher can
+ * never disagree about what "running" means.
+ */
+export const hasRunningSessionsIn = (
+  projectId: string,
+  sessions: readonly SessionRecord[],
+  idleAgentSessionIds: Readonly<Record<string, true>> = {}
+): boolean => hasRunningSessions(sessions.filter((session) => session.projectId === projectId), idleAgentSessionIds)

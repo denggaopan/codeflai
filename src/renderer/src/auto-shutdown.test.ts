@@ -12,6 +12,7 @@ import {
   formatAutoShutdownInterval,
   formatTimeOfDay,
   hasRunningSessions,
+  hasRunningSessionsIn,
   isAutoShutdownAllowedAt,
   isAutoShutdownInterval,
   isAutoShutdownTimeRange,
@@ -325,5 +326,25 @@ describe('countdownTick', () => {
   it('starts over when the clock really did jump', () => {
     expect(countdownTick(deadline, deadline + 5 * 60_000 + 1)).toBe('restart')
     expect(countdownTick(deadline, deadline + 8 * 60 * 60 * 1_000)).toBe('restart')
+  })
+})
+
+describe('hasRunningSessionsIn', () => {
+  const session = (id: string, projectId: string, kind: SessionRecord['kind'], status: SessionRecord['status']): SessionRecord => ({
+    id, projectId, kind, status, title: id, titleState: 'complete', createdAt: '2026-10-09T00:00:00.000Z', mode: 'ordinary', launchPath: 'C:\\x'
+  } as SessionRecord)
+
+  it('looks only at the named project and uses the sidebar meaning of running', () => {
+    const sessions = [
+      session('a', 'p1', 'claude', 'running'),
+      session('b', 'p2', 'powershell', 'running')
+    ]
+    expect(hasRunningSessionsIn('p1', sessions, {})).toBe(true)
+    // An agent at Done does not count, exactly as it does not hold off auto shutdown.
+    expect(hasRunningSessionsIn('p1', sessions, { a: true })).toBe(false)
+    // Another project's live shell is irrelevant to p1, but p2 itself is running.
+    expect(hasRunningSessionsIn('p2', sessions, { a: true })).toBe(true)
+    expect(hasRunningSessionsIn('p3', sessions)).toBe(false)
+    expect(hasRunningSessionsIn('p1', [session('c', 'p1', 'claude', 'creating')], { c: true })).toBe(true)
   })
 })
