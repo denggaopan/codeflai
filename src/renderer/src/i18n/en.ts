@@ -225,19 +225,22 @@ export const en = {
   'settings.issueAutomationAgent': 'Agent',
   'settings.issueAutomationInterval': 'Check every',
   'settings.issueAutomationTemplate': 'Prompt template',
-  'settings.issueAutomationPlaceholders': 'Placeholders: {{repoUrl}}, {{host}}, {{projectPath}}, {{projectName}}, {{fastDo}}',
+  'settings.issueAutomationPlaceholders': 'Placeholders: {{repoUrl}}, {{host}}, {{projectPath}}, {{projectName}}, {{fastDo}}, {{resultFile}}',
   'settings.issueAutomationReset': 'Reset to default',
   'notice.issueAutomationFailed': 'Could not start an automatic issue session for "{project}": {reason}',
   'notice.issueAutomationSwitchedOff':
     'Could not start an automatic issue session for "{project}": {reason}. Auto-resolve issues has been switched off for it.',
   // Automatic issue resolution. The template is read by an agent, not a person: it must be
   // sentences the agent can follow, and the two lines about not publishing and the
-  // needs-human label are what keep a failed round from repeating forever.
+  // needs-human label are what keep a failed round from repeating forever. The result file
+  // is how the agent reports back (shared/issue-automation.ts, parseIssueOutcome): Codeflai
+  // deletes the session on {"issue": null} and renames it after the issue it claimed. A
+  // round whose issues could not be listed writes nothing, so the session stays for reading.
   'issueAutomation.sessionTitle': 'Auto issue {time}',
   'issueAutomation.defaultTemplate': `You are in a Codeflai automatic issue session. Repository: {{repoUrl}} (host: {{host}}). Local checkout: {{projectPath}}. Never ask the user anything; work through these steps in order:
 
-1. List the open issues. Use gh on GitHub, glab on GitLab, and whatever CLI or API is available elsewhere. Skip issues that are assigned to someone, or carry the label codeflai:in-progress or codeflai:needs-human. Take the oldest one that remains. If nothing qualifies, or the issues cannot be listed, say why and exit.
-2. Add the label codeflai:in-progress to the issue and comment that Codeflai has started on it.
+1. List the open issues. Use gh on GitHub, glab on GitLab, and whatever CLI or API is available elsewhere. Skip issues that are assigned to someone, or carry the label codeflai:in-progress or codeflai:needs-human. Take the oldest one that remains. If the issues cannot be listed, say why and exit. If none qualifies, write the single line {"issue": null} to the file {{resultFile}}, say so, and exit.
+2. Write {"issue": <number>, "title": "<the issue title condensed to at most 40 characters, in the issue's own language>"} as JSON to the file {{resultFile}}. Then add the label codeflai:in-progress to the issue and comment that Codeflai has started on it.
 3. Resolve the issue with {{fastDo}} in one go: commit, merge, and push to the default branch. Do not package and do not publish a release.
 4. After the push, wait for the test deployment it triggered. On GitHub, find the run for that commit with gh run list --commit <sha> and wait for it with gh run watch <id> --exit-status; use the equivalent elsewhere.
 5. If the deployment succeeded, close the issue with a comment linking the commit and remove the codeflai:in-progress label. If it failed, or nothing has finished after 30 minutes, leave the issue open, comment what happened, and replace the label with codeflai:needs-human.

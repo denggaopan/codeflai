@@ -101,6 +101,8 @@ type FakeTitleService = ReturnType<typeof fakeTitleService>
 
 const fakePromptFiles = () => ({
   write: vi.fn(async (sessionId: string, _text: string) => `C:\\Profile\\issue-automation\\${sessionId}.md`),
+  resultPath: vi.fn((sessionId: string) => `C:\\Profile\\issue-automation\\${sessionId}.result.json`),
+  readResult: vi.fn(async (_sessionId: string): Promise<string | undefined> => undefined),
   remove: vi.fn(async (_sessionId: string): Promise<void> => undefined)
 })
 
@@ -177,6 +179,19 @@ describe('SessionCoordinator.create with an initial prompt', () => {
     expect(terminalService.start.mock.calls[0]).toHaveLength(1)
     expect(record).toMatchObject({ title: 'New Claude session', titleState: 'pending' })
     expect(record).not.toHaveProperty('titleManuallySet')
+    expect(record).not.toHaveProperty('automation')
+  })
+
+  // The renderer cannot know the session id when it renders the template, so the result
+  // file placeholder is the one the main process fills, right before the file is written.
+  it('fills the result file placeholder and marks the record as an automatic issue session', async () => {
+    const { promptFiles, coordinator } = buildHarness()
+
+    const record = await coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'Write {{resultFile}}; keep {{other}}', title: 'Auto issue 10-09 14:30' })
+
+    expect(promptFiles.write).toHaveBeenCalledWith('session-1', 'Write C:\\Profile\\issue-automation\\session-1.result.json; keep {{other}}')
+    expect(record).toMatchObject({ automation: 'issue' })
+    expect(record).not.toHaveProperty('issue')
   })
 
   it('removes the prompt file, the record and the worktree when the PTY fails to start', async () => {
@@ -241,6 +256,120 @@ describe('SessionCoordinator prompt file lifecycle', () => {
     await coordinator.restore('session-1')
 
     expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { resume: true })
+  })
+})
+
+const issueSession = (overrides: Partial<SessionRecord> = {}): SessionRecord =>
+  runningSession({
+    kind: 'claude',
+    title: 'Auto issue 10-09 14:30',
+    titleState: 'complete',
+    titleManuallySet: true,
+    mode: 'worktree',
+    worktreeName: 'w',
+    worktreePath: 'p',
+    branchName: 'w',
+    status: 'running',
+    automation: 'issue',
+    ...overrides
+  })
+
+describe('SessionCoordinator.consumeIssueOutcome', () => {
+  it('reports pending while the agent has not written a result', async () => {
+    const { store, terminalService, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('pending')
+
+    expect(store.update).not.toHaveBeenCalled()
+    expect(terminalService.stop).not.toHaveBeenCalled()
+  })
+
+  it('deletes the session, its worktree and its files when the result says there is no issue', async () => {
+    const { store, terminalService, worktreeService, promptFiles, coordinator } = buildHarness({
+      initial: { version: 1, projects: [project], sessions: [issueSession()] }
+    })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+    const states: AppState[] = []
+    coordinator.onStateChanged((state) => states.push(state))
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('deleted')
+
+    expect(terminalService.stop).toHaveBeenCalledWith('session-1')
+    expect(worktreeService.remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), project)
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(states.at(-1)?.sessions).toHaveLength(0)
+  })
+
+  // The same refusal a manual Delete gets: changes the agent left behind are the user's to judge.
+  it('keeps the session, stopped, when the no-issue worktree is dirty', async () => {
+    const { store, terminalService, worktreeService, promptFiles, coordinator } = buildHarness({
+      initial: { version: 1, projects: [project], sessions: [issueSession()] }
+    })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+    worktreeService.remove.mockResolvedValue({ status: 'dirty', changedFiles: 2 })
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('kept')
+
+    expect(terminalService.stop).toHaveBeenCalledWith('session-1')
+    expect((await store.load()).sessions[0]).toMatchObject({ id: 'session-1', status: 'stopped', automation: 'issue' })
+    expect(promptFiles.remove).not.toHaveBeenCalled()
+  })
+
+  it('renames the session after the issue it claimed and records the issue', async () => {
+    const { store, terminalService, promptFiles, coordinator } = buildHarness({
+      initial: { version: 1, projects: [project], sessions: [issueSession()] }
+    })
+    promptFiles.readResult.mockResolvedValue('{"issue": 42, "title": "Fix login crash"}')
+    const states: AppState[] = []
+    coordinator.onStateChanged((state) => states.push(state))
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('claimed')
+
+    const persisted = (await store.load()).sessions[0]
+    expect(persisted).toMatchObject({
+      title: 'issue#42 Fix login crash',
+      titleState: 'complete',
+      titleManuallySet: true,
+      status: 'running',
+      automation: 'issue',
+      issue: { number: 42, title: 'Fix login crash' }
+    })
+    expect(states.at(-1)?.sessions[0]).toMatchObject({ title: 'issue#42 Fix login crash' })
+    expect(terminalService.stop).not.toHaveBeenCalled()
+  })
+
+  it('reports invalid for a result it cannot read and changes nothing', async () => {
+    const { store, promptFiles, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": "soon"')
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('invalid')
+
+    expect(store.update).not.toHaveBeenCalled()
+  })
+
+  it('reports kept for a session that is not automatic, without reading any file', async () => {
+    const { promptFiles, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [runningSession({ status: 'running' })] } })
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('kept')
+
+    expect(promptFiles.readResult).not.toHaveBeenCalled()
+  })
+
+  it('reports claimed without re-reading once the issue is on record', async () => {
+    const { promptFiles, coordinator } = buildHarness({
+      initial: { version: 1, projects: [project], sessions: [issueSession({ title: 'issue#42 Fix', issue: { number: 42, title: 'Fix' } })] }
+    })
+
+    await expect(coordinator.consumeIssueOutcome('session-1')).resolves.toBe('claimed')
+
+    expect(promptFiles.readResult).not.toHaveBeenCalled()
+  })
+
+  it('reports deleted for a session that no longer exists', async () => {
+    const { coordinator } = buildHarness()
+
+    await expect(coordinator.consumeIssueOutcome('ghost')).resolves.toBe('deleted')
   })
 })
 
@@ -851,6 +980,28 @@ describe('SessionCoordinator.stop and exits', () => {
     expect(persisted.sessions[0]).toMatchObject({ status: 'stopped' })
   })
 
+  // An agent that writes "no issue" and exits in the same breath can beat the poller to it.
+  it('deletes an automatic session whose exit follows a no-issue result instead of marking it stopped', async () => {
+    const { store, promptFiles, terminalService } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+
+    terminalService.emitExit('session-1', 0)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+  })
+
+  it('marks an automatic session stopped on exit, picking up a claimed issue it had not seen yet', async () => {
+    const { store, promptFiles, terminalService } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": 7, "title": "Typo"}')
+
+    terminalService.emitExit('session-1', 0)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect((await store.load()).sessions[0]).toMatchObject({ status: 'stopped', title: 'issue#7 Typo', issue: { number: 7, title: 'Typo' } })
+  })
+
   it('allows restoring a session after a failed stop instead of leaving it a permanent zombie', async () => {
     const session = runningSession({ status: 'running' })
     const { terminalService, coordinator } = buildHarness({
@@ -1043,6 +1194,29 @@ describe('SessionCoordinator.reconcile', () => {
 
     expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { resume: true })
     expect(state.sessions[0]).toMatchObject({ status: 'running' })
+  })
+
+  // The agent may have finished while Codeflai was closed: honour what it wrote before
+  // deciding whether there is anything to resume into.
+  it('deletes a dead automatic session whose result says no issue instead of resuming it', async () => {
+    const { store, terminalService, promptFiles, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+
+    const state = await coordinator.reconcile(new Set())
+
+    expect(terminalService.start).not.toHaveBeenCalled()
+    expect(state.sessions).toHaveLength(0)
+    expect((await store.load()).sessions).toHaveLength(0)
+  })
+
+  it('renames and resumes a dead automatic session that had claimed an issue', async () => {
+    const { terminalService, promptFiles, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": 42, "title": "Fix login crash"}')
+
+    const state = await coordinator.reconcile(new Set())
+
+    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { resume: true })
+    expect(state.sessions[0]).toMatchObject({ status: 'running', title: 'issue#42 Fix login crash', issue: { number: 42, title: 'Fix login crash' } })
   })
 
   it('demotes a creating session the host does not have to stopped instead of resuming it', async () => {

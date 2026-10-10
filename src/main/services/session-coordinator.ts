@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { AppState, DeleteSessionResult, SessionKind, SessionRecord } from '../../shared/contracts'
 import { renameSessionRequestSchema } from '../../shared/contracts'
+import { issueSessionTitle, parseIssueOutcome, renderIssueAutomationTemplate } from '../../shared/issue-automation'
 import type { ProjectService } from './project-service'
 import { unavailablePromptFileStore, type PromptFileStore } from './prompt-file-store'
 import type { SessionStore } from './session-store'
@@ -77,6 +78,14 @@ export type CreateSessionOptions = {
   initialPrompt?: string
   title?: string
 }
+
+/**
+ * What `consumeIssueOutcome()` found. `pending` and `invalid` mean "ask again later" (the
+ * agent has not written the file, or wrote something unreadable — possibly a partial write);
+ * the other three are final: the session was deleted, renamed after its issue, or is not one
+ * to watch any more (not an automatic session, or kept because its worktree is dirty).
+ */
+export type IssueOutcomeResult = 'pending' | 'invalid' | 'deleted' | 'claimed' | 'kept'
 
 /**
  * Everything the coordinator needs from whatever owns the PTYs — and nothing more. Declared
@@ -168,6 +177,7 @@ export class SessionCoordinator {
         createdAt: this.clock().toISOString(),
         status: 'creating',
         launchPath: location.launchPath,
+        ...(options.initialPrompt === undefined ? {} : { automation: 'issue' }),
         ...buildLocationFields(location)
       } as SessionRecord
 
@@ -177,7 +187,10 @@ export class SessionCoordinator {
         if (options.initialPrompt === undefined) {
           await this.terminalService.start(record)
         } else {
-          const initialPromptFile = await this.promptFiles.write(record.id, options.initialPrompt)
+          // The renderer filled the project placeholders; the result file is the one value
+          // only this side knows, because it is named after the session id minted above.
+          const prompt = renderIssueAutomationTemplate(options.initialPrompt, { resultFile: this.promptFiles.resultPath(record.id) })
+          const initialPromptFile = await this.promptFiles.write(record.id, prompt)
           await this.terminalService.start(record, { initialPromptFile })
         }
       } catch (error) {
@@ -332,29 +345,71 @@ export class SessionCoordinator {
   }
 
   async delete(sessionId: string): Promise<DeleteSessionResult> {
-    return this.withLock(`session:${sessionId}`, async () => {
-      try {
-        this.titleService.cancel(sessionId)
-        await this.stopAndPersist(sessionId)
+    return this.withLock(`session:${sessionId}`, () => this.deleteLocked(sessionId))
+  }
 
-        const current = await this.store.load()
-        const session = current.sessions.find((candidate) => candidate.id === sessionId)
-        if (!session) return { status: 'deleted' }
+  private async deleteLocked(sessionId: string): Promise<DeleteSessionResult> {
+    try {
+      this.titleService.cancel(sessionId)
+      await this.stopAndPersist(sessionId)
 
-        const project = await this.projectService.get(session.projectId)
-        const result = await this.worktreeService.remove(session, project)
+      const current = await this.store.load()
+      const session = current.sessions.find((candidate) => candidate.id === sessionId)
+      if (!session) return { status: 'deleted' }
 
-        if (result.status === 'removed' || result.status === 'missing') {
-          await this.removeSession(sessionId)
-          await this.promptFiles.remove(sessionId)
-          return { status: 'deleted' }
-        }
+      const project = await this.projectService.get(session.projectId)
+      const result = await this.worktreeService.remove(session, project)
 
-        return { status: 'dirty', changedFiles: result.changedFiles }
-      } catch (error) {
-        return { status: 'failed', message: errorMessage(error) }
+      if (result.status === 'removed' || result.status === 'missing') {
+        await this.removeSession(sessionId)
+        await this.promptFiles.remove(sessionId)
+        return { status: 'deleted' }
       }
-    })
+
+      return { status: 'dirty', changedFiles: result.changedFiles }
+    } catch (error) {
+      return { status: 'failed', message: errorMessage(error) }
+    }
+  }
+
+  /**
+   * Reads what an automatic issue session's agent wrote to its result file, and acts on it:
+   * "no issue" deletes the session the way the user's Delete would (so a dirty worktree is
+   * kept, stopped), a claimed issue renames the session after it. Called by the result
+   * watcher while the session runs, and once more on exit and at reconcile, because the
+   * agent may write the file and leave in the same breath — or while Codeflai was closed.
+   */
+  async consumeIssueOutcome(sessionId: string): Promise<IssueOutcomeResult> {
+    return this.withLock(`session:${sessionId}`, () => this.consumeIssueOutcomeLocked(sessionId))
+  }
+
+  private async consumeIssueOutcomeLocked(sessionId: string): Promise<IssueOutcomeResult> {
+    const current = await this.store.load()
+    const session = current.sessions.find((candidate) => candidate.id === sessionId)
+    if (!session) return 'deleted'
+    if (session.automation !== 'issue') return 'kept'
+    if (session.issue !== undefined) return 'claimed'
+
+    const text = await this.promptFiles.readResult(sessionId)
+    if (text === undefined) return 'pending'
+    const outcome = parseIssueOutcome(text)
+    if (outcome === undefined) return 'invalid'
+
+    if (outcome.issue === null) {
+      const result = await this.deleteLocked(sessionId)
+      if (result.status === 'deleted') return 'deleted'
+      console.warn(`SessionCoordinator: automatic issue session ${sessionId} found no issue but was kept (${result.status}).`)
+      return 'kept'
+    }
+
+    await this.updateSession(sessionId, (existing) => ({
+      ...existing,
+      title: issueSessionTitle(outcome.issue, outcome.title),
+      titleState: 'complete',
+      titleManuallySet: true,
+      issue: { number: outcome.issue, title: outcome.title }
+    }))
+    return 'claimed'
   }
 
   /**
@@ -465,7 +520,12 @@ export class SessionCoordinator {
       try {
         // The lock is taken here rather than inside restore() so the "is it running" check and
         // the relaunch cannot be interleaved with a UI-driven restore of the same session.
-        await this.withLock(`session:${sessionId}`, () => this.restoreLocked(sessionId, true))
+        await this.withLock(`session:${sessionId}`, async () => {
+          // An automatic session may have answered while nobody was attached; "no issue"
+          // means there is nothing to resume into.
+          if ((await this.consumeIssueOutcomeLocked(sessionId)) === 'deleted') return
+          await this.restoreLocked(sessionId, true)
+        })
       } catch (error) {
         // restoreLocked has already persisted 'error' (or 'missing'); a single unresumable
         // session must not stop the rest of the user's workspace from coming back.
@@ -531,7 +591,13 @@ export class SessionCoordinator {
   }
 
   private readonly handleExit = (payload: TerminalEventMap['exit']): void => {
-    this.persistStopped(payload.sessionId).catch((error: unknown) => {
+    this.withLock(`session:${payload.sessionId}`, async () => {
+      // An automatic session that reported "no issue" is deleted here rather than left
+      // stopped: its agent may well have written the file and exited before the watcher's
+      // next tick. Every other session, automatic or not, is simply marked stopped.
+      if ((await this.consumeIssueOutcomeLocked(payload.sessionId)) === 'deleted') return
+      await this.persistStopped(payload.sessionId)
+    }).catch((error: unknown) => {
       console.error(`SessionCoordinator: failed to persist stopped status after PTY exit for session ${payload.sessionId}.`, error)
     })
   }

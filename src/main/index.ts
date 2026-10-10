@@ -31,6 +31,7 @@ import { PtyHostClient } from './services/pty-host-client'
 import { PtyHostLauncher } from './services/pty-host-launcher'
 import { PtyHostRuntime } from './services/pty-host-runtime'
 import { SessionCoordinator } from './services/session-coordinator'
+import { IssueOutcomeWatcher } from './services/issue-outcome-watcher'
 import { attachSessions, type TerminalImplementation } from './services/session-attachment'
 import { SessionStore } from './services/session-store'
 import { DirectoryPromptFileStore } from './services/prompt-file-store'
@@ -581,6 +582,12 @@ if (!app.requestSingleInstanceLock()) {
       dialog.showErrorBox('Codeflai could not reconnect your terminals', error instanceof Error ? error.message : String(error))
       app.exit(1)
     })
+    // Polls the result files of automatic issue sessions (rename on a claimed issue, delete on
+    // "no issue"). Started after reconciliation so its first snapshot is the reconciled one.
+    const issueOutcomeWatcher = new IssueOutcomeWatcher(coordinator)
+    void sessionsReconciled.then(() => issueOutcomeWatcher.start()).catch((error: unknown) => {
+      console.error('Codeflai: the issue outcome watcher could not start.', error)
+    })
 
     /**
      * Opens the main window and wires everything that belongs to *that window*: the notification
@@ -651,7 +658,10 @@ if (!app.requestSingleInstanceLock()) {
     app.on(
       'before-quit',
       createBeforeQuitHandler({
-        shutdown: () => coordinator.shutdown(),
+        shutdown: () => {
+          issueOutcomeWatcher.dispose()
+          return coordinator.shutdown()
+        },
         quit: () => app.quit(),
         onError: (error) => {
           console.error('Failed to shut down SessionCoordinator cleanly before quit.', error)

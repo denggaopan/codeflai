@@ -1040,9 +1040,17 @@ export const useAppStore = create<AppStore>()((set, get) => {
         }
         noteAgentOutput(event.sessionId, event.data, false, onAgentIdle)
       })
+      // An automatic issue session that exits before reporting an issue is one the main process
+      // is about to delete for finding nothing (shared/issue-automation.ts): a toast pointing at
+      // a row that is gone by the time it is read would be noise on every idle round.
+      const isUnclaimedIssueSession = (sessionId: string): boolean => {
+        const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
+        return session?.automation === 'issue' && session.issue === undefined
+      }
       const disposeExit = window.codeflai.onTerminalExit(({ sessionId }) => {
         recordUnread(sessionId)
-        if (!expectedExits.delete(sessionId)) notifySessionEvent(sessionId, 'exit')
+        const expected = expectedExits.delete(sessionId)
+        if (!expected && !isUnclaimedIssueSession(sessionId)) notifySessionEvent(sessionId, 'exit')
         pendingActivity.delete(sessionId)
         forgetAgentActivity(sessionId)
       })

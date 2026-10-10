@@ -223,15 +223,15 @@ export const zhTW: Translations = {
   'settings.issueAutomationAgent': 'Agent',
   'settings.issueAutomationInterval': '檢查頻率',
   'settings.issueAutomationTemplate': '提示文字範本',
-  'settings.issueAutomationPlaceholders': '佔位符：{{repoUrl}}、{{host}}、{{projectPath}}、{{projectName}}、{{fastDo}}',
+  'settings.issueAutomationPlaceholders': '佔位符：{{repoUrl}}、{{host}}、{{projectPath}}、{{projectName}}、{{fastDo}}、{{resultFile}}',
   'settings.issueAutomationReset': '還原預設',
   'notice.issueAutomationFailed': '無法為「{project}」啟動自動 issue 工作階段：{reason}',
   'notice.issueAutomationSwitchedOff': '無法為「{project}」啟動自動 issue 工作階段：{reason}。已為它關閉自動處理 issue。',
   'issueAutomation.sessionTitle': '自動 issue {time}',
   'issueAutomation.defaultTemplate': `你正在 Codeflai 的自動 issue 處理工作階段中。儲存庫：{{repoUrl}}（平台：{{host}}）。本機目錄：{{projectPath}}。全程不要向使用者提問，依序完成下列步驟：
 
-1. 列出 open 狀態的 issue。GitHub 用 gh，GitLab 用 glab，其他平台用可用的 CLI 或 API。略過已被指派的，以及帶有 codeflai:in-progress 或 codeflai:needs-human 標籤的，取剩下當中建立最早的一則。沒有合適的 issue，或者列不出來，就說明原因並結束。
-2. 為這則 issue 加上 codeflai:in-progress 標籤，並留言 Codeflai 已開始處理。
+1. 列出 open 狀態的 issue。GitHub 用 gh，GitLab 用 glab，其他平台用可用的 CLI 或 API。略過已被指派的，以及帶有 codeflai:in-progress 或 codeflai:needs-human 標籤的，取剩下當中建立最早的一則。列不出來就說明原因並結束。沒有合適的 issue，就把一行 {"issue": null} 寫進檔案 {{resultFile}}，說明一下，然後結束。
+2. 把 {"issue": <編號>, "title": "<把 issue 標題精簡到 40 個字元以內，保持 issue 原本的語言>"} 作為 JSON 寫進檔案 {{resultFile}}。然後為這則 issue 加上 codeflai:in-progress 標籤，並留言 Codeflai 已開始處理。
 3. 用 {{fastDo}} 一口氣解決它：提交、合併、推送到預設分支。不要打包，不要發布 release。
 4. 推送之後等待這次推送觸發的 test 部署。GitHub 上用 gh run list --commit <sha> 找到對應的 run，再用 gh run watch <id> --exit-status 等它結束；其他平台用對應的指令。
 5. 部署成功：關閉 issue，留言附上提交連結，並移除 codeflai:in-progress 標籤。部署失敗，或 30 分鐘內沒有結果：不要關閉 issue，留言說明情況，把標籤換成 codeflai:needs-human。

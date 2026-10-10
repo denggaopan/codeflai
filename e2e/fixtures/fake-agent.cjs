@@ -35,9 +35,31 @@ process.stdout.write('CODEFLAI_E2E_FAKE_AGENT_READY\n')
 
 let buffer = ''
 
+// An automatic issue session's argv ends with the sentence naming its task file; the result
+// file the real agent is told to write (via the template's {{resultFile}}) sits beside it.
+// Deriving it from argv rather than parsing the task file keeps this fixture independent of
+// the template's wording.
+const resultFilePath = () => {
+  for (const argument of argv) {
+    const match = /Read the task file at (.+)\.md and carry it out exactly/.exec(argument)
+    if (match) return `${match[1]}.result.json`
+  }
+  return undefined
+}
+
+const issueOutcomes = {
+  CODEFLAI_TEST_ISSUE_NONE: '{"issue": null}\n',
+  CODEFLAI_TEST_ISSUE_CLAIM: '{"issue": 42, "title": "Fix login crash"}\n'
+}
+
 const handleLine = (line) => {
   if (line.trim() === 'exit') {
     process.exit(0)
+  }
+  const outcome = issueOutcomes[line.trim()]
+  if (outcome) {
+    const path = resultFilePath()
+    if (path) fs.writeFileSync(path, outcome, 'utf8')
   }
   const activityOutput = {
     'CODEFLAI_TEST_CLAUDE_BACKGROUND_START': '\r\n\u273b Waiting for 2 background agents to finish\r\n',

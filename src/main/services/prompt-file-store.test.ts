@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,17 +39,51 @@ describe('DirectoryPromptFileStore', () => {
     await expect(store.remove('session-a')).resolves.toBeUndefined()
   })
 
+  it('names the result file next to the prompt and reads it back once the agent wrote it', async () => {
+    const root = await temporaryDirectory()
+    const store = new DirectoryPromptFileStore(root)
+
+    expect(store.resultPath('session-a')).toBe(join(root, 'session-a.result.json'))
+    expect(await store.readResult('session-a')).toBeUndefined()
+
+    await writeFile(store.resultPath('session-a'), '{"issue": null}\n', 'utf8')
+    expect(await store.readResult('session-a')).toBe('{"issue": null}\n')
+  })
+
+  // Windows PowerShell 5.1's `>` writes UTF-16LE; an agent that reaches for it must still be heard.
+  it('decodes a UTF-16 result file by its byte-order mark', async () => {
+    const root = await temporaryDirectory()
+    const store = new DirectoryPromptFileStore(root)
+
+    await writeFile(store.resultPath('session-a'), Buffer.from('﻿{"issue": 42, "title": "Fix"}', 'utf16le'))
+    expect(await store.readResult('session-a')).toBe('{"issue": 42, "title": "Fix"}')
+  })
+
+  it('removes the result file together with the prompt', async () => {
+    const root = await temporaryDirectory()
+    const store = new DirectoryPromptFileStore(root)
+    await store.write('session-a', 'x')
+    await writeFile(store.resultPath('session-a'), '{"issue": null}', 'utf8')
+
+    await store.remove('session-a')
+    await expect(stat(store.resultPath('session-a'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('refuses a session id that is not a plain identifier', async () => {
     const store = new DirectoryPromptFileStore(await temporaryDirectory())
 
     await expect(store.write('..\\escape', 'x')).rejects.toThrow('Refusing to name a prompt file')
     await expect(store.remove('..\\escape')).resolves.toBeUndefined()
+    expect(() => store.resultPath('..\\escape')).toThrow('Refusing to name a prompt file')
+    await expect(store.readResult('..\\escape')).resolves.toBeUndefined()
   })
 })
 
 describe('unavailablePromptFileStore', () => {
-  it('rejects writes and ignores removals', async () => {
+  it('rejects writes, ignores removals and never has a result', async () => {
     await expect(unavailablePromptFileStore.write('s', 'x')).rejects.toThrow('Prompt files are not configured.')
     await expect(unavailablePromptFileStore.remove('s')).resolves.toBeUndefined()
+    expect(() => unavailablePromptFileStore.resultPath('s')).toThrow('Prompt files are not configured.')
+    await expect(unavailablePromptFileStore.readResult('s')).resolves.toBeUndefined()
   })
 })

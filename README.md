@@ -508,8 +508,10 @@ the agent to:
 
 1. list the open issues with whatever CLI fits the host (`gh` on GitHub, `glab` on GitLab,
    anything available elsewhere), skipping assigned ones and ones labelled
-   `codeflai:in-progress` or `codeflai:needs-human`, and take the oldest;
-2. label it `codeflai:in-progress` and comment that it has started;
+   `codeflai:in-progress` or `codeflai:needs-human`, and take the oldest — or, if none
+   qualifies, report that in the result file (see below) and exit;
+2. report the issue's number and a condensed title in the result file, then label it
+   `codeflai:in-progress` and comment that it has started;
 3. resolve it with your `fast-do` skill — commit, merge, push — **without** packaging or
    publishing a release;
 4. wait for the test deployment that push triggered (`gh run watch` on GitHub);
@@ -523,7 +525,19 @@ agent with one line naming that file. The template is yours to edit — name the
 workflow for a repository with several, change the labels, let it publish if you really
 want that — and **Reset to default** brings the built-in one back. Placeholders:
 `{{repoUrl}}`, `{{host}}` (`github`, `gitlab` or `unknown`), `{{projectPath}}`,
-`{{projectName}}`, and `{{fastDo}}` (`/fast-do` or `$fast-do`, by agent).
+`{{projectName}}`, `{{fastDo}}` (`/fast-do` or `$fast-do`, by agent), and `{{resultFile}}`.
+
+`{{resultFile}}` is the one way the agent talks back. The template tells it to write
+`{"issue": null}` there when no open issue qualifies, and `{"issue": 42, "title": "…"}` —
+the title condensed to a few words — once it has claimed one. Codeflai polls that file
+every few seconds while the session runs: a claimed issue renames the row to
+`issue#42 <condensed title>` on the spot, so you can see what each round is working on
+while it waits for CI; "no issue" deletes the round — its row, its worktree, both files —
+rather than leaving an empty session behind every half hour. A worktree the agent dirtied
+anyway is kept, stopped, the same way a manual Delete would refuse it. A round that could
+not list the issues at all (`gh` not logged in, say) writes nothing and stays, so the reason
+is there to read. If you edit the template, keep the two sentences that name
+`{{resultFile}}`, or neither the rename nor the clean-up can happen.
 
 Rounds are serial per project: the agent stays running while it waits for CI, which keeps
 the project busy until it exits. A project that has no eligible issue still costs one short
@@ -533,8 +547,10 @@ launch fails (no worktree, no CLI), the project is switched off and a notice say
 same error does not come back every interval. Codeflai has to be open for any of this to
 happen: the check runs inside the window.
 
-The session is titled `Auto issue MM-DD HH:mm`; what happened is in its terminal, and the
-usual Done-edge notification tells you when a round ends.
+The session is titled `Auto issue MM-DD HH:mm` until the agent claims an issue, and
+`issue#42 <condensed title>` from then on; what happened is in its terminal, and the usual
+Done-edge notification tells you when a round ends. A round that found nothing to do is
+deleted without a notification.
 
 ## Shutting the computer down when nothing is running
 

@@ -12,6 +12,8 @@ import {
   issueAutomationHostLabel,
   issueAutomationPromptArgument,
   issueAutomationTemplateValues,
+  issueSessionTitle,
+  parseIssueOutcome,
   parseStoredIssueAutomation,
   pruneIssueAutomationProjects,
   renderIssueAutomationTemplate,
@@ -68,6 +70,16 @@ describe('template rendering', () => {
     )
   })
 
+  // The renderer fills the project placeholders before the session exists; the main process
+  // fills `{{resultFile}}` once it has the session id. Each pass leaves the other's alone.
+  it('fills the result file placeholder in a second pass with only that value', () => {
+    const once = renderIssueAutomationTemplate('Use {{fastDo}}; write {{resultFile}}', values)
+    expect(once).toBe('Use /fast-do; write {{resultFile}}')
+    expect(renderIssueAutomationTemplate(once, { resultFile: 'C:\\Profile\\issue-automation\\s1.result.json' })).toBe(
+      'Use /fast-do; write C:\\Profile\\issue-automation\\s1.result.json'
+    )
+  })
+
   // A string replacement would read `$&` and `$1`, and `$fast-do` starts with one.
   it('renders backslashes and dollar signs verbatim', () => {
     const rendered = renderIssueAutomationTemplate('{{projectPath}} {{fastDo}} {{projectName}}', {
@@ -101,6 +113,50 @@ describe('prompt argument', () => {
     expect(() => validatePromptFilePath('C:\\Users\\Dev Name\\AppData\\Roaming\\Codeflai\\issue-automation\\s1.md')).not.toThrow()
     expect(() => validatePromptFilePath('/Users/dev/Library/Application Support/Codeflai/issue-automation/s1.md')).not.toThrow()
     expect(() => validatePromptFilePath('')).toThrow()
+  })
+})
+
+describe('issue outcome file', () => {
+  it('reads "no issue" and "claimed" outcomes', () => {
+    expect(parseIssueOutcome('{"issue": null}')).toEqual({ issue: null })
+    expect(parseIssueOutcome('{"issue": 42, "title": "Fix login crash"}')).toEqual({ issue: 42, title: 'Fix login crash' })
+  })
+
+  // Agents write files with whatever tool they have: a BOM, trailing newline or indentation
+  // must not turn a valid outcome into "no signal".
+  it('tolerates a byte-order mark, surrounding whitespace and padded titles', () => {
+    expect(parseIssueOutcome('﻿  {\n  "issue": 7,\n  "title": "  Typo in README  "\n}\n')).toEqual({ issue: 7, title: 'Typo in README' })
+    expect(parseIssueOutcome('﻿{"issue":null}\r\n')).toEqual({ issue: null })
+  })
+
+  it.each([
+    ['not json', 'not json'],
+    ['an array', '[]'],
+    ['a missing issue key', '{"title": "x"}'],
+    ['a non-integer issue', '{"issue": 4.5, "title": "x"}'],
+    ['a zero issue', '{"issue": 0, "title": "x"}'],
+    ['a claimed issue without a title', '{"issue": 42}'],
+    ['a claimed issue with a blank title', '{"issue": 42, "title": "   "}'],
+    ['a string issue number', '{"issue": "42", "title": "x"}'],
+    ['an empty file', '']
+  ])('rejects %s', (_label, text) => {
+    expect(parseIssueOutcome(text)).toBeUndefined()
+  })
+})
+
+describe('issue session title', () => {
+  it('prefixes the issue number the way the sidebar shows it', () => {
+    expect(issueSessionTitle(42, 'Fix login crash')).toBe('issue#42 Fix login crash')
+  })
+
+  it('collapses line breaks and runs of spaces inside the title', () => {
+    expect(issueSessionTitle(3, 'Crash  on\nstartup\t when   offline')).toBe('issue#3 Crash on startup when offline')
+  })
+
+  it('caps the whole title at 80 characters', () => {
+    const long = issueSessionTitle(12345, 'x'.repeat(200))
+    expect(long).toHaveLength(80)
+    expect(long.startsWith('issue#12345 ')).toBe(true)
   })
 })
 

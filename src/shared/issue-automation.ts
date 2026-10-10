@@ -69,12 +69,45 @@ export const issueAutomationTemplateValues = (
 /**
  * Replaces `{{name}}` placeholders. A function replacer, deliberately: a string replacement
  * would read `$&` and `$1` inside a Windows path or the `$fast-do` prefix. Unknown
- * placeholders are left in place so the agent sees them for what they are.
+ * placeholders are left in place so the agent sees them for what they are — and so the
+ * template can be rendered in two passes: the renderer fills the project values before the
+ * session exists, the main process fills `{{resultFile}}` once it has the session id.
  */
-export const renderIssueAutomationTemplate = (template: string, values: IssueAutomationTemplateValues): string =>
+export const renderIssueAutomationTemplate = (template: string, values: Readonly<Record<string, string>>): string =>
   template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-    Object.prototype.hasOwnProperty.call(values, name) ? values[name as keyof IssueAutomationTemplateValues] : match
+    Object.prototype.hasOwnProperty.call(values, name) ? values[name]! : match
   )
+
+/**
+ * What the agent writes to `{{resultFile}}` once it knows whether there is anything to do:
+ * `{"issue": null}` when no open issue qualifies, `{"issue": 42, "title": "…"}` once one is
+ * claimed, with the title already condensed by the agent. Codeflai deletes the session on the
+ * first and renames it on the second; a file it cannot read is no signal at all.
+ */
+export type IssueOutcome = { issue: null } | { issue: number; title: string }
+
+export const parseIssueOutcome = (text: string): IssueOutcome | undefined => {
+  let parsed: unknown
+  try {
+    // A UTF-8 BOM survives decoding as U+FEFF, and JSON.parse rejects it.
+    parsed = JSON.parse(text.replace(/^﻿/, '').trim())
+  } catch {
+    return undefined
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+  const { issue, title } = parsed as { issue?: unknown; title?: unknown }
+  if (issue === null) return { issue: null }
+  if (typeof issue !== 'number' || !Number.isInteger(issue) || issue <= 0) return undefined
+  if (typeof title !== 'string') return undefined
+  const trimmed = title.trim()
+  return trimmed.length === 0 ? undefined : { issue, title: trimmed }
+}
+
+export const ISSUE_SESSION_TITLE_MAX_LENGTH = 80
+
+/** The sidebar title of a session that claimed an issue: `issue#42 <condensed title>`. */
+export const issueSessionTitle = (issue: number, title: string): string =>
+  `issue#${issue} ${title.replace(/\s+/g, ' ').trim()}`.slice(0, ISSUE_SESSION_TITLE_MAX_LENGTH)
 
 // The same characters launch-spec.ts refuses in a shim path: the prompt file path is pasted
 // into a `cmd.exe /s /c` command line on the npm-shim launch path, and nothing survives cmd's

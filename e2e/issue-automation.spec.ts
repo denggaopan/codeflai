@@ -17,6 +17,10 @@ import { createRepo } from './create-repo'
  * Only the manual entry is exercised: the shortest timer interval is five minutes. The watcher
  * itself is covered with a fake clock in use-app-store.test.ts. On Windows the fake agent is
  * reached through fake-agent.cmd, so this is the real test of the cmd-hosted quoting path.
+ *
+ * The way back is exercised too: typing CODEFLAI_TEST_ISSUE_CLAIM / _NONE makes the fake
+ * agent write the result file the template names, and the main process's poller has to rename
+ * the row after the claimed issue, or delete the row (worktree, prompt and result file with it).
  */
 test('switches a project on, survives a reload, and starts an automatic session with the rendered prompt', async () => {
   test.setTimeout(120_000)
@@ -90,12 +94,24 @@ test('switches a project on, survives a reload, and starts an automatic session 
     const promptFile = sentence('/fast-do').exec(claudeArgv[1])?.[1]
     expect(promptFile).toBeDefined()
     expect(promptFile!.startsWith(join(userDataDir, 'issue-automation'))).toBe(true)
+    const resultFile = promptFile!.replace(/\.md$/, '.result.json')
     const expectedPrompt = renderIssueAutomationTemplate(
-      en['issueAutomation.defaultTemplate'],
-      issueAutomationTemplateValues(project, project.repoRemote!, 'claude')
+      renderIssueAutomationTemplate(en['issueAutomation.defaultTemplate'], issueAutomationTemplateValues(project, project.repoRemote!, 'claude')),
+      { resultFile }
     )
     expect(readFileSync(promptFile!, 'utf8')).toBe(expectedPrompt)
     expect(expectedPrompt).not.toContain('{{')
+    expect(expectedPrompt).toContain(resultFile)
+    expect(existsSync(resultFile)).toBe(false)
+
+    // The agent reports the issue it claimed: the row is renamed after it while it keeps running.
+    await page.locator('.terminal-pane:visible .terminal-instance-host').click()
+    await page.keyboard.type('CODEFLAI_TEST_ISSUE_CLAIM')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => existsSync(resultFile), { timeout: 10_000 }).toBe(true)
+    await expect(row.locator('.session-title')).toHaveText('issue#42 Fix login crash', { timeout: 15_000 })
+    const claimed = await page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.kind === 'claude'))
+    expect(claimed).toMatchObject({ status: 'running', automation: 'issue', issue: { number: 42, title: 'Fix login crash' } })
 
     // Switching the agent in Settings changes the prefix in argv and the file alike.
     await page.getByRole('button', { name: 'Settings' }).click()
@@ -111,6 +127,22 @@ test('switches a project on, survives a reload, and starts an automatic session 
     const codexPromptFile = sentence('$fast-do').exec(codexArgv[2])?.[1]
     expect(codexPromptFile).toBeDefined()
     expect(readFileSync(codexPromptFile!, 'utf8')).toContain('Resolve the issue with $fast-do in one go')
+
+    // This agent finds nothing to do: the row, its worktree and both files disappear on their
+    // own, and the Claude row that claimed an issue is untouched.
+    const codexRow = page.locator('.session-row', { has: page.locator('.session-kind-icon[data-kind="codex"]') })
+    await expect(codexRow).toHaveCount(1)
+    const codexSession = await page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions.find((session) => session.kind === 'codex'))
+    expect(codexSession).toMatchObject({ mode: 'worktree', automation: 'issue' })
+    await page.locator('.terminal-pane:visible .terminal-instance-host').click()
+    await page.keyboard.type('CODEFLAI_TEST_ISSUE_NONE')
+    await page.keyboard.press('Enter')
+    await expect(codexRow).toHaveCount(0, { timeout: 15_000 })
+    await expect(row).toHaveCount(1)
+    await expect(row.locator('.session-title')).toHaveText('issue#42 Fix login crash')
+    await expect.poll(() => existsSync(codexPromptFile!)).toBe(false)
+    expect(existsSync(codexPromptFile!.replace(/\.md$/, '.result.json'))).toBe(false)
+    expect(existsSync((codexSession as { worktreePath: string }).worktreePath)).toBe(false)
 
     expect(errors).toEqual([])
   } finally {

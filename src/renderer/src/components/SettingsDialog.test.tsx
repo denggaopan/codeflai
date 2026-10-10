@@ -145,7 +145,7 @@ describe('SettingsDialog', () => {
     const template = screen.getByRole('textbox', { name: 'Prompt template' }) as HTMLTextAreaElement
     expect(template.value).toContain('You are in a Codeflai automatic issue session.')
     expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled()
-    expect(screen.getByText('Placeholders: {{repoUrl}}, {{host}}, {{projectPath}}, {{projectName}}, {{fastDo}}')).toBeInTheDocument()
+    expect(screen.getByText('Placeholders: {{repoUrl}}, {{host}}, {{projectPath}}, {{projectName}}, {{fastDo}}, {{resultFile}}')).toBeInTheDocument()
   })
 
   it('stores the agent, the interval and an edited template, and resets the template', async () => {

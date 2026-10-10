@@ -58,7 +58,18 @@ const commonSessionRecordShape = {
   createdAt: z.string().datetime(),
   launchPath: z.string().min(1),
   status: runtimeStatusSchema,
-  lastError: z.string().optional()
+  lastError: z.string().optional(),
+  // Automatic issue sessions (shared/issue-automation.ts). `automation` is set at creation
+  // and tells the main process which sessions to poll for a result file; `issue` is written
+  // once the agent reports the issue it claimed, and is what the renamed title was built from.
+  // A session that reported "no issue" is deleted rather than marked, so there is no third state.
+  automation: z.literal('issue').optional(),
+  issue: z
+    .strictObject({
+      number: z.number().int().positive(),
+      title: z.string().min(1).max(200)
+    })
+    .optional()
 }
 
 export const sessionRecordSchema = z.discriminatedUnion('mode', [

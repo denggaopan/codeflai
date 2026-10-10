@@ -1736,6 +1736,26 @@ describe('session notifications', () => {
     expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Session exited')
   })
 
+  // An automatic session that exits before reporting an issue is one the main process is
+  // about to delete for finding nothing; a toast pointing at a vanished row is pure noise.
+  it('stays silent when an automatic issue session exits before claiming an issue', () => {
+    seedProject([{ ...claudeSession, automation: 'issue' }, powershellSession])
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  it('notifies when an automatic issue session that claimed an issue exits', () => {
+    seedProject([{ ...claudeSession, title: 'issue#42 Fix login', automation: 'issue', issue: { number: 42, title: 'Fix login' } }, powershellSession])
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalExit({ sessionId: claudeSession.id, exitCode: 0 })
+
+    expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'issue#42 Fix login', 'Project · Session exited')
+  })
+
   it('does not notify for an exit the user asked for', async () => {
     seedProject()
     vi.mocked(document.hasFocus).mockReturnValue(false)
@@ -1958,7 +1978,10 @@ describe('useAppStore issue automation', () => {
     expect(extras.initialPrompt).toContain('Repository: https://github.com/me/app (host: github)')
     expect(extras.initialPrompt).toContain('Local checkout: C:\\work\\demo-project')
     expect(extras.initialPrompt).toContain('/fast-do')
-    expect(extras.initialPrompt).not.toContain('{{')
+    // The result file is named after a session id that does not exist yet: that one
+    // placeholder travels to the main process, every other one is filled here.
+    expect(extras.initialPrompt).toContain('{{resultFile}}')
+    expect(extras.initialPrompt.replaceAll('{{resultFile}}', '')).not.toContain('{{')
     expect(extras.title).toMatch(/^Auto issue \d\d-\d\d \d\d:\d\d$/)
     // An automatic launch must not pull the user away from what they are looking at.
     expect(useAppStore.getState().activeSessionId).toBeNull()
