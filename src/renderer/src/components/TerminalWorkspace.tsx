@@ -21,6 +21,7 @@ import { alignBlockGlyphGrid } from '../terminal/block-glyph-alignment'
 import { FirstInputTracker } from '../terminal/first-input-tracker'
 import { insertQuickPrompt } from '../terminal/insert-quick-prompt'
 import { resolveTerminalKey } from '../terminal/terminal-key-bindings'
+import { TerminalWheelTranslator } from '../terminal/terminal-wheel'
 import QuickPrompts from './QuickPrompts'
 
 // The WebGL renderer paints the screen into a canvas, so xterm keeps no DOM text for a test
@@ -257,6 +258,22 @@ export default function TerminalWorkspace() {
         event.preventDefault()
         forwardInput(resolved.data)
       }
+      return false
+    })
+
+    // Runs before xterm's wheel handling. Only Comate-style TUIs in the alternate buffer are
+    // rewritten (see terminal-wheel.ts); everything else resolves to 'xterm' and is untouched.
+    const wheel = new TerminalWheelTranslator()
+    terminal.attachCustomWheelEventHandler((event) => {
+      const screen = terminal.element?.querySelector<HTMLElement>('.xterm-screen')
+      const resolved = wheel.translate(kind, event, {
+        bufferType: terminal.buffer.active.type,
+        mouseTrackingMode: terminal.modes.mouseTrackingMode,
+        cellHeight: screen && terminal.rows > 0 ? screen.clientHeight / terminal.rows : 0
+      })
+      if (resolved.action === 'xterm') return true
+      event.preventDefault()
+      if (resolved.action === 'send') forwardInput(resolved.data)
       return false
     })
 

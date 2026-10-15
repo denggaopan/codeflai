@@ -44,6 +44,15 @@ export type AgentLaunchSpec = {
    * precede the bypass argv. Codex is the only CLI shaped this way.
    */
   resumeSubcommand?: readonly string[]
+  /**
+   * The TUI parses SGR mouse-wheel reports (`ESC [ < 64 ; x ; y M`) from its input whether or
+   * not the terminal confirmed mouse tracking, so the renderer may translate wheel events into
+   * them. Needed because Windows ConPTY swallows the DECSET 1000/1006 a TUI writes to turn
+   * mouse reporting on: xterm never learns the app wants the wheel and, in the alternate
+   * buffer, sends arrow keys instead. Only set this for a CLI verified to parse the reports —
+   * any other app would receive them as literal text typed into its prompt.
+   */
+  sgrWheelInput?: boolean
 }
 
 /**
@@ -95,7 +104,11 @@ export const AGENT_LAUNCH: Readonly<Record<AgentKind, AgentLaunchSpec>> = {
     // Not implemented by comatecli 1.0.8: its argv parser knows only -h/-l/-m/-t/-v, and a
     // bare `comatecli --resume` opens a fresh TUI instead of failing. Carried anyway so the
     // flag starts working the moment the CLI grows it, at no cost until then.
-    resumeArgs: ['--resume']
+    resumeArgs: ['--resume'],
+    // Verified with comatecli 2.0.0 through a real ConPTY: it asks for mouse reporting (unless
+    // ZULU_TUI_MOUSE=0), ConPTY drops the request, yet written SGR wheel reports still arrive
+    // and each scrolls its transcript three lines — its parser runs on every input chunk.
+    sgrWheelInput: true
   },
   qwen: {
     command: 'qwen',

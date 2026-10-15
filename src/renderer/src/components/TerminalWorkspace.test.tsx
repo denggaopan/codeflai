@@ -23,6 +23,7 @@ import type { TerminalReplay } from '../../../shared/pty-protocol'
 import { BYPASS_WARNING_TEXT } from '../session-status'
 import { useAppStore } from '../store/use-app-store'
 import { AGENT_NEWLINE_SEQUENCE } from '../terminal/terminal-key-bindings'
+import { SGR_WHEEL_DOWN, SGR_WHEEL_UP } from '../terminal/terminal-wheel'
 import TerminalWorkspace from './TerminalWorkspace'
 
 // TerminalWorkspace embeds real @xterm/xterm and @xterm/addon-fit instances, which rely on
@@ -41,6 +42,7 @@ const { FakeTerminal, FakeFitAddon, FakeWebglAddon, FakeResizeObserver } = vi.ho
     private screen: HTMLElement | undefined
     private canvas: HTMLCanvasElement | undefined
     open = vi.fn((element: HTMLElement) => {
+      this.element = element
       this.screen = document.createElement('div')
       this.screen.className = 'xterm-screen'
       element.append(this.screen)
@@ -48,7 +50,10 @@ const { FakeTerminal, FakeFitAddon, FakeWebglAddon, FakeResizeObserver } = vi.ho
     write = vi.fn()
     dispose = vi.fn()
     focus = vi.fn()
-    modes = { bracketedPasteMode: true }
+    rows = 24
+    modes = { bracketedPasteMode: true, mouseTrackingMode: 'none' }
+    buffer = { active: { type: 'normal' as 'normal' | 'alternate' } }
+    element: HTMLElement | undefined
     paste = vi.fn((data: string) => {
       const text = data.replace(/\r\n|\n/g, '\r')
       this.emitData(this.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text)
@@ -83,6 +88,10 @@ const { FakeTerminal, FakeFitAddon, FakeWebglAddon, FakeResizeObserver } = vi.ho
     keyEventHandler: ((event: KeyboardEvent) => boolean) | undefined
     attachCustomKeyEventHandler = vi.fn((handler: (event: KeyboardEvent) => boolean) => {
       this.keyEventHandler = handler
+    })
+    wheelEventHandler: ((event: WheelEvent) => boolean) | undefined
+    attachCustomWheelEventHandler = vi.fn((handler: (event: WheelEvent) => boolean) => {
+      this.wheelEventHandler = handler
     })
 
     private dataListeners: Array<(data: string) => void> = []
@@ -738,6 +747,49 @@ describe('TerminalWorkspace', () => {
     const handler = FakeTerminal.instances[0].keyEventHandler!
     expect(handler(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, cancelable: true }))).toBe(true)
     expect(handler(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, cancelable: true }))).toBe(true)
+    expect(api.writeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('turns the wheel into SGR wheel reports for Comate in the alternate buffer, and leaves it to xterm otherwise', async () => {
+    const comateSession: SessionRecord = { ...runningClaudeSession, id: 'session-comate', kind: 'comate' }
+    seedStore(comateSession)
+    useAppStore.setState({ activeSessionId: comateSession.id })
+    render(<TerminalWorkspace />)
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
+
+    const terminal = FakeTerminal.instances[0]
+    const handler = terminal.wheelEventHandler!
+    const notch = (deltaY: number): WheelEvent => new WheelEvent('wheel', { deltaY, deltaMode: WheelEvent.DOM_DELTA_LINE, cancelable: true })
+
+    // Normal buffer: xterm's own scrollback handles the wheel.
+    expect(handler(notch(-3))).toBe(true)
+
+    terminal.buffer.active.type = 'alternate'
+    const up = notch(-3)
+    expect(handler(up)).toBe(false)
+    expect(up.defaultPrevented).toBe(true)
+    expect(handler(notch(3))).toBe(false)
+    expect(api.writeTerminal.mock.calls).toEqual([
+      [comateSession.id, SGR_WHEEL_UP],
+      [comateSession.id, SGR_WHEEL_DOWN]
+    ])
+    expect(api.submitFirstInput).not.toHaveBeenCalled()
+
+    // Mouse tracking reached xterm (macOS): it reports the wheel itself.
+    terminal.modes.mouseTrackingMode = 'vt200'
+    expect(handler(notch(-3))).toBe(true)
+    expect(api.writeTerminal).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the wheel to xterm in a Claude session even in the alternate buffer', async () => {
+    seedStore(runningClaudeSession)
+    useAppStore.setState({ activeSessionId: runningClaudeSession.id })
+    render(<TerminalWorkspace />)
+    await waitFor(() => expect(FakeTerminal.instances).toHaveLength(1))
+
+    const terminal = FakeTerminal.instances[0]
+    terminal.buffer.active.type = 'alternate'
+    expect(terminal.wheelEventHandler!(new WheelEvent('wheel', { deltaY: -3, deltaMode: WheelEvent.DOM_DELTA_LINE }))).toBe(true)
     expect(api.writeTerminal).not.toHaveBeenCalled()
   })
 
