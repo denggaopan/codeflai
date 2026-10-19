@@ -330,12 +330,12 @@ Two CLIs deviate, both in the safe direction:
 - **Comate** has no bypass flag at all — its TUI resets its run mode on every launch, so the
   request has to travel as an environment variable. It is set only for that one session,
   never for Codeflai's own process.
-- **Qwen Code** documents `--approval-mode=yolo`, but not every build implements it: 0.22.3
-  ignores it silently and takes its approval mode from `~/.qwen/settings.json` or Shift+Tab
-  in its TUI instead. Codeflai keeps sending the flag (it costs nothing and starts working
-  the moment the CLI supports it) and never writes your settings file — so on such a build
-  the badge warns about a bypass the CLI has not actually applied. An over-warning, never
-  the reverse.
+- **Qwen Code** honours `--approval-mode=yolo` in current builds (verified against 0.23.0).
+  Older builds ignored it silently, and a current build still falls back to its normal
+  approval prompts in a folder it does not trust — but only if you turned its folder-trust
+  feature on (`security.folderTrust.enabled`, off by default). Codeflai never writes your
+  settings file, so in those cases the badge warns about a bypass the CLI has not actually
+  applied. An over-warning, never the reverse.
 
 The background process Codeflai uses to [name a session](#session-titles) never gets either
 bypass, does not share the session's terminal, and runs in a neutral directory rather than

@@ -50,7 +50,7 @@ macOS 打包的几条约束（细节见 README「Packaging › macOS」）：ele
 - Comate 的 `resumeArgs: ['--resume']` 在 comatecli 1.0.8 里**尚未实现**（argv 解析器只认 `-h/-l/-m/-t/-v`，多余参数静默忽略、不报错），是为后续版本预留的，代价为零。
 - `sessionKindSchema` 里的两半（shell 与 agent）是**手写枚举**而非从本表派生，让 contracts.ts 保持是读线格式的唯一入口；两者一致由 `agent-kinds.test.ts` 断言。
 - gemini / copilot / comate / qwen 的旗标是在本机实机验证过的（`--help` 或已安装产物的 argv 解析器），cursor 本机没装、只有厂商文档依据；某个 CLI 起不来就改这张表对应的一行。
-- qwen 的 `--approval-mode=yolo` 是**文档有、实现未必有**：0.22.3 的 argv 解析器根本没有 approval 旗标，会静默忽略（实测 exit 0、CLI 照常启动），该版本只能靠 `~/.qwen/settings.json` 或 TUI 里 Shift+Tab 切换——Codeflai 不去写用户的 settings 文件。保留旗标的代价是零，而徽章在这种版本上是**多警告**而非少警告，方向是安全的。
+- qwen 的 `--approval-mode=yolo` **当前版本已实现**（2026-10-19 读本机安装产物核实：`--version` 报 0.23.0，但安装目录的 package.json 写的是 0.22.3，两者对不上，原因没查；之前记录的「0.22.3 没有这个旗标」至少对这份产物已不成立）。解析优先级是 `--approval-mode` > `--yolo` > settings > 默认 `auto`，非法值直接抛错。剩下两种徽章会**多警告**的情况，方向都是安全的：① 更旧的版本静默忽略这个旗标；② 用户自己开了 `security.folderTrust.enabled`（默认关）且当前目录不受信任时，它把模式降为 `default`，只往 stderr 打一行提示。Codeflai 不去写用户的 settings 文件。
 
 ### 主进程服务（src/main/services/）
 

@@ -194,7 +194,7 @@ Gemini、GitHub Copilot、Cursor、Comate 和 Qwen Code 收在设置的 **More a
 有两个 CLI 情况特殊，但都偏向安全一侧：
 
 - **Comate** 根本没有绕过参数——它的 TUI 每次启动都会重置运行模式，所以这个请求只能通过环境变量传。该变量只对这一个会话生效，不会设置到 Codeflai 自身进程上。
-- **Qwen Code** 文档里写了 `--approval-mode=yolo`，但并非每个版本都实现了它：0.22.3 会静默忽略该参数，实际审批模式取自 `~/.qwen/settings.json` 或它 TUI 里的 Shift+Tab。Codeflai 仍然坚持传这个参数（代价为零，CLI 一旦支持就立即生效），并且绝不去写你的设置文件——所以在这类版本上，徽章警告的是一个 CLI 实际并未启用的绕过。这是**多警告**，不会是少警告。
+- **Qwen Code** 当前版本已实现 `--approval-mode=yolo`（按 0.23.0 核实）。较旧的版本会静默忽略它；当前版本在它不信任的目录里也会退回正常的审批提示，但前提是你自己开启了它的目录信任功能（`security.folderTrust.enabled`，默认关闭）。Codeflai 绝不去写你的设置文件，所以在这些情况下，徽章警告的是一个 CLI 实际并未启用的绕过。这是**多警告**，不会是少警告。
 
 Codeflai 用来[给会话取标题](#会话标题)的后台进程不带任何绕过参数，不共享会话的终端，运行在一个中立目录里，而不是你的项目或 worktree。
 

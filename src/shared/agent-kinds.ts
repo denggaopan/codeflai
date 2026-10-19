@@ -112,14 +112,13 @@ export const AGENT_LAUNCH: Readonly<Record<AgentKind, AgentLaunchSpec>> = {
   },
   qwen: {
     command: 'qwen',
-    // Documented by Qwen Code, but NOT implemented by every build: 0.22.3's argv parser knows
-    // no approval flag at all and ignores this one without erroring (verified: exit 0, the CLI
-    // still starts). There is nothing better to send — that build takes its approval mode from
-    // ~/.qwen/settings.json or interactively, and Codeflai has no business writing a user's
-    // settings file. Keeping the flag means it starts working the moment the CLI supports it,
-    // and until then the bypass badge over-warns rather than under-warns.
+    // Implemented by the installed build (`--version` 0.23.0): `--approval-mode` wins over
+    // `--yolo` and settings, and an unknown value throws. Older builds ignored it silently, and
+    // even this one downgrades to "default" in a folder its opt-in folder trust (off unless
+    // `security.folderTrust.enabled`) has not trusted — both leave the badge over-warning,
+    // never under-warning. Codeflai never writes the user's settings file to force it.
     bypassArgs: ['--approval-mode=yolo'],
-    // Real in 0.22.3: "Resume the most recent session for the current project". Its `--resume`
+    // Real in 0.22.3 and 0.23.0: "Resume the most recent session for the current project". Its `--resume`
     // wants a session id (or opens a picker), which is not what click-to-restore means.
     resumeArgs: ['--continue']
   }
