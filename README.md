@@ -488,6 +488,12 @@ folds the row.
 - **Resolve one issue now** — runs one round immediately, without waiting for the timer and
   whether or not something else is running, and switches to the new session. Disabled while
   the chosen agent is switched off in Settings or its CLI is missing.
+- **Issue history** — lists the project's automatic rounds, newest first: when each started,
+  which agent ran it, and what came of it — the issue it claimed, "no issue, session deleted",
+  "kept because its worktree has changes", a failed start with its reason, or a round that
+  ended without reporting. A round whose session was deleted stays in the list, so this is
+  where an unattended night of empty rounds becomes visible. The last 50 rounds per project are
+  kept, in `issue-automation/history.json` under Codeflai's user-data folder. Always available.
 - **Delete all sessions** — deletes every session of the project after a confirmation, running
   ones included, in the order the sidebar lists them. Each one goes through the same checks as
   deleting it on its own: a worktree with uncommitted changes is never removed, so that session

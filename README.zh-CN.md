@@ -257,6 +257,7 @@ Windows 上刻意没有新建会话快捷键：**Ctrl+T** 在 Codeflai 承载的
 - **Open Git repository（打开 Git 仓库）** —— 当项目位于一个远程地址可访问网页的 Git 仓库里时出现。Codeflai 读取 `origin`（没有 `origin` 时读第一个远程），把 `git@github.com:owner/repo.git` 这类 ssh/scp 形式转成 https 页面，并在默认浏览器中打开。图标随主机变化：GitHub 图标、GitLab 图标（含自托管实例），或普通 Git 图标。没有远程地址、或远程地址是本地目录的仓库不会出现这一项。远程地址在每次启动时重新读取，所以新加的远程会在下次启动 Codeflai 时出现。
 - **Auto-resolve issues（自动处理 issue）** —— 项目级开关：开着且该项目没有运行中的会话时，Codeflai 会自动起一个 agent 会话去处理一条 open issue。见[自动处理 issue](#自动处理-issue)。没有远程的项目这一项禁用；开着时项目行名字旁有一个小循环图标。
 - **Resolve one issue now（立即处理一条 issue）** —— 立刻跑一轮，不等定时器、也不管有没有别的会话在跑，并切换到新会话。所选 agent 在设置里被关掉或 CLI 缺失时禁用。
+- **Issue history（Issue 处理记录）** —— 按时间倒序列出这个项目自动处理的每一轮：何时开始、用的哪个 agent、结果如何——认领了哪条 issue、「没有可处理的 issue，会话已删除」、「worktree 有改动，会话已保留」、启动失败及原因，或者「已结束，未回报结果」。会话被删掉的那一轮仍留在列表里，所以无人值守时空转了多少轮，在这里看得到。每个项目保留最近 50 轮，存在 Codeflai 用户数据目录下的 `issue-automation/history.json`。这一项始终可用。
 - **Remove from list（从列表移除）** —— 二次确认后忘掉这个项目。它正在运行的会话会停止，全部会话记录一并移除，但**磁盘上什么都不动**：项目目录、它的 worktree 以及那些分支原样保留。以后重新添加这个目录时，会话列表是空的。
 
 ## 自动处理 issue
