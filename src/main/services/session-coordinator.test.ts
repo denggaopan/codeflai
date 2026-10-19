@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AppState, ProjectRecord, SessionRecord } from '../../shared/contracts'
+import type { AppState, IssueRun, ProjectRecord, SessionRecord } from '../../shared/contracts'
+import type { IssueRunSettlement, IssueRunStart } from './issue-run-history'
 import type { ProjectService } from './project-service'
 import type { SessionStore } from './session-store'
 import type { RemoveWorktreeResult, SessionLocation, WorktreeService } from './worktree-service'
@@ -108,6 +109,14 @@ const fakePromptFiles = () => ({
 
 type FakePromptFiles = ReturnType<typeof fakePromptFiles>
 
+const fakeIssueRuns = () => ({
+  list: vi.fn(async (_projectId: string): Promise<IssueRun[]> => []),
+  started: vi.fn(async (_run: IssueRunStart): Promise<void> => undefined),
+  settle: vi.fn(async (_sessionId: string, _settlement: IssueRunSettlement): Promise<void> => undefined)
+})
+
+type FakeIssueRuns = ReturnType<typeof fakeIssueRuns>
+
 type Harness<T extends FakeTerminalService = FakeTerminalService> = {
   store: FakeStore
   projectService: FakeProjectService
@@ -115,6 +124,7 @@ type Harness<T extends FakeTerminalService = FakeTerminalService> = {
   terminalService: T
   titleService: FakeTitleService
   promptFiles: FakePromptFiles
+  issueRuns: FakeIssueRuns
   coordinator: SessionCoordinator
 }
 
@@ -129,6 +139,7 @@ const buildHarness = <T extends FakeTerminalService = FakeTerminalService>(optio
   const terminalService = options.terminalService ?? (new FakeTerminalService() as T)
   const titleService = fakeTitleService()
   const promptFiles = fakePromptFiles()
+  const issueRuns = fakeIssueRuns()
   const coordinator = new SessionCoordinator(
     store as unknown as SessionStore,
     projectService as unknown as ProjectService,
@@ -137,9 +148,10 @@ const buildHarness = <T extends FakeTerminalService = FakeTerminalService>(optio
     titleService as unknown as TitleService,
     clock,
     options.createId ?? (() => 'session-1'),
-    promptFiles
+    promptFiles,
+    issueRuns
   )
-  return { store, projectService, worktreeService, terminalService, titleService, promptFiles, coordinator }
+  return { store, projectService, worktreeService, terminalService, titleService, promptFiles, issueRuns, coordinator }
 }
 
 const runningSession = (overrides: Partial<SessionRecord> = {}): SessionRecord => ({
@@ -1416,5 +1428,86 @@ describe('SessionCoordinator.removeProject', () => {
       errorSpy.mockRestore()
     }
     await expect(store.load()).resolves.toEqual({ ...emptyState(), recentProjects: [project] })
+  })
+})
+
+describe('SessionCoordinator issue run history', () => {
+  it('notes a round as started once its creating record exists', async () => {
+    const { store, issueRuns, coordinator } = buildHarness()
+
+    await coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'x', title: 'Auto issue' })
+
+    expect(issueRuns.started).toHaveBeenCalledWith({ sessionId: 'session-1', projectId: 'project-1', agent: 'claude', startedAt: '2026-08-27T00:00:00.000Z' })
+    expect(store.update.mock.invocationCallOrder[0]).toBeLessThan(issueRuns.started.mock.invocationCallOrder[0]!)
+    expect(issueRuns.settle).not.toHaveBeenCalled()
+  })
+
+  it('notes nothing for a session the launcher created', async () => {
+    const { issueRuns, coordinator } = buildHarness()
+
+    await coordinator.create('project-1', 'claude')
+
+    expect(issueRuns.started).not.toHaveBeenCalled()
+  })
+
+  // The session record is removed on a failed start, so the history is the only trace left.
+  it('settles a round that never started as failed, with the reason', async () => {
+    const { terminalService, issueRuns, coordinator } = buildHarness()
+    terminalService.start.mockRejectedValue(new Error('agent CLI not found'))
+
+    await expect(coordinator.create('project-1', 'claude', { initialPrompt: 'x' })).rejects.toThrow('agent CLI not found')
+
+    expect(issueRuns.settle).toHaveBeenCalledWith('session-1', { outcome: 'failed', finishedAt: '2026-08-27T00:00:00.000Z', error: 'agent CLI not found' })
+  })
+
+  it('settles a claimed round with its issue', async () => {
+    const { promptFiles, issueRuns, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": 42, "title": "Fix login crash"}')
+
+    await coordinator.consumeIssueOutcome('session-1')
+
+    expect(issueRuns.settle).toHaveBeenCalledWith('session-1', {
+      outcome: 'claimed',
+      finishedAt: '2026-08-27T00:00:00.000Z',
+      issue: { number: 42, title: 'Fix login crash' }
+    })
+  })
+
+  it('settles a no-issue round as none once its session is deleted', async () => {
+    const { promptFiles, issueRuns, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+
+    await coordinator.consumeIssueOutcome('session-1')
+
+    expect(issueRuns.settle).toHaveBeenCalledWith('session-1', { outcome: 'none', finishedAt: '2026-08-27T00:00:00.000Z' })
+  })
+
+  it('settles a no-issue round as kept when the dirty worktree keeps its session', async () => {
+    const { worktreeService, promptFiles, issueRuns, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+    promptFiles.readResult.mockResolvedValue('{"issue": null}')
+    worktreeService.remove.mockResolvedValue({ status: 'dirty', changedFiles: 1 })
+
+    await coordinator.consumeIssueOutcome('session-1')
+
+    expect(issueRuns.settle).toHaveBeenCalledWith('session-1', { outcome: 'kept', finishedAt: '2026-08-27T00:00:00.000Z' })
+  })
+
+  it('settles nothing while the result is pending or unreadable', async () => {
+    const { promptFiles, issueRuns, coordinator } = buildHarness({ initial: { version: 1, projects: [project], sessions: [issueSession()] } })
+
+    await coordinator.consumeIssueOutcome('session-1')
+    promptFiles.readResult.mockResolvedValue('{"issue": "soon"')
+    await coordinator.consumeIssueOutcome('session-1')
+
+    expect(issueRuns.settle).not.toHaveBeenCalled()
+  })
+
+  it('answers the history for a project from the injected log', async () => {
+    const { issueRuns, coordinator } = buildHarness()
+    const run: IssueRun = { sessionId: 's', projectId: 'project-1', agent: 'codex', startedAt: '2026-08-27T00:00:00.000Z', outcome: 'running' }
+    issueRuns.list.mockResolvedValue([run])
+
+    await expect(coordinator.issueRunsFor('project-1')).resolves.toEqual([run])
+    expect(issueRuns.list).toHaveBeenCalledWith('project-1')
   })
 })

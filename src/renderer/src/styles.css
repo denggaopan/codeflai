@@ -2182,6 +2182,55 @@ body[data-sidebar-resizing='true'] .app-main {
   color: var(--color-on-destructive);
 }
 
+/* Issue history: the confirm dialog's frame, wider, with a list that scrolls inside it so a
+   project with fifty rounds never pushes the Close button off the window. */
+.issue-runs-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.issue-runs-list {
+  max-height: min(420px, calc(100vh - 180px));
+  margin: 0 0 16px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.issue-runs-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.issue-runs-item:last-child {
+  border-bottom: none;
+}
+
+.issue-runs-meta {
+  display: flex;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.issue-runs-outcome {
+  color: var(--color-text);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.issue-runs-item[data-outcome='failed'] .issue-runs-outcome {
+  color: var(--color-state-destructive);
+}
+
+.issue-runs-item[data-outcome='none'] .issue-runs-outcome,
+.issue-runs-item[data-outcome='kept'] .issue-runs-outcome {
+  color: var(--color-text-muted);
+}
+
 /* ==========================================================================
    Settings dialog
    ========================================================================== */

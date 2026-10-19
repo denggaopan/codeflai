@@ -144,6 +144,19 @@ test('switches a project on, survives a reload, and starts an automatic session 
     expect(existsSync(codexPromptFile!.replace(/\.md$/, '.result.json'))).toBe(false)
     expect(existsSync((codexSession as { worktreePath: string }).worktreePath)).toBe(false)
 
+    // The project menu's history outlives the deleted round: newest first, one line per round.
+    menu = await openMenu()
+    await menu.getByRole('menuitem', { name: 'Issue history' }).click()
+    const history = page.getByRole('dialog', { name: `Issue history · ${project.name}` })
+    await expect(history.locator('.issue-runs-outcome')).toHaveText([
+      'No issue to work on — session deleted',
+      'issue#42 Fix login crash'
+    ])
+    await expect(history.locator('.issue-runs-meta')).toHaveText([/Codex$/, /Claude$/])
+    expect(existsSync(join(userDataDir, 'issue-automation', 'history.json'))).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(history).toHaveCount(0)
+
     expect(errors).toEqual([])
   } finally {
     // Removing the project ends every PTY so the resident host can exit within the E2E idle

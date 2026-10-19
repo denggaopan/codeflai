@@ -32,6 +32,7 @@ import { PtyHostLauncher } from './services/pty-host-launcher'
 import { PtyHostRuntime } from './services/pty-host-runtime'
 import { SessionCoordinator } from './services/session-coordinator'
 import { IssueOutcomeWatcher } from './services/issue-outcome-watcher'
+import { FileIssueRunHistory } from './services/issue-run-history'
 import { attachSessions, type TerminalImplementation } from './services/session-attachment'
 import { SessionStore } from './services/session-store'
 import { DirectoryPromptFileStore } from './services/prompt-file-store'
@@ -571,7 +572,9 @@ if (!app.requestSingleInstanceLock()) {
     const terminal = new DeferredTerminal()
     // Prompt files for automatic issue sessions live beside state.json, never in a project.
     const promptFiles = new DirectoryPromptFileStore(join(app.getPath('userData'), 'issue-automation'))
-    const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService, undefined, undefined, promptFiles)
+    // Its own file rather than a field of state.json, so it survives the sessions it describes.
+    const issueRuns = new FileIssueRunHistory(join(app.getPath('userData'), 'issue-automation', 'history.json'))
+    const coordinator = new SessionCoordinator(store, projectService, worktreeService, terminal, titleService, undefined, undefined, promptFiles, issueRuns)
     const sessionsReconciled = attachSessions({
       terminal,
       coordinator,

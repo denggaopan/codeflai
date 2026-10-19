@@ -14,6 +14,7 @@ import { isAgentDone, isSessionRestartable } from '../session-status'
 import { useAppStore } from '../store/use-app-store'
 import ConfirmDialog from './ConfirmDialog'
 import AddProjectDialog from './AddProjectDialog'
+import IssueRunsDialog from './IssueRunsDialog'
 import SessionLauncher from './SessionLauncher'
 import SessionSearch from './SessionSearch'
 import SettingsDialog from './SettingsDialog'
@@ -47,6 +48,16 @@ function AutoResolveGlyph() {
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-auto-resolve"
       fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 12a8 8 0 0 1 13.6-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.6 5.7L4 16M4 20v-4h4" />
+    </svg>
+  )
+}
+
+function HistoryGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" className="icon icon-issue-history"
+      fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4l3 2" />
     </svg>
   )
 }
@@ -120,6 +131,7 @@ export default function ProjectSidebar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<ProjectRecord | null>(null)
   const [pendingDeleteAll, setPendingDeleteAll] = useState<ProjectRecord | null>(null)
+  const [issueHistoryProject, setIssueHistoryProject] = useState<ProjectRecord | null>(null)
   const [openOptionsProjectId, setOpenOptionsProjectId] = useState<string | null>(null)
   const [launcherFocusRequest, setLauncherFocusRequest] = useState(0)
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -797,6 +809,23 @@ export default function ProjectSidebar() {
                       <ResolveNowGlyph />
                       {t('sidebar.resolveIssueNow')}
                     </button>
+                    {/* Always enabled: the history is worth reading even after the project lost
+                        its remote or its agent was switched off, which is when it explains most. */}
+                    <button
+                      type="button"
+                      className="project-options-menu-item"
+                      role="menuitem"
+                      aria-haspopup="dialog"
+                      tabIndex={-1}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeProjectOptions(true)
+                        setIssueHistoryProject(project)
+                      }}
+                    >
+                      <HistoryGlyph />
+                      {t('sidebar.issueHistory')}
+                    </button>
                     <button
                       type="button"
                       className="project-options-menu-item"
@@ -943,6 +972,8 @@ export default function ProjectSidebar() {
         onConfirm={() => void handleConfirmDeleteAll()}
         onCancel={handleCancelDeleteAll}
       />
+
+      <IssueRunsDialog project={issueHistoryProject} onClose={() => setIssueHistoryProject(null)} />
     </aside>
   )
 }

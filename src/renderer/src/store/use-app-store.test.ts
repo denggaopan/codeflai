@@ -91,6 +91,7 @@ const createFakeApi = () => {
     openProjectRepository: vi.fn(async (): Promise<void> => undefined),
     copyProjectPath: vi.fn(async (): Promise<string> => 'E:\projects\app'),
     removeProject: vi.fn(async (): Promise<void> => undefined),
+    getIssueRuns: vi.fn(async () => []),
     createSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     restoreSession: vi.fn(async (): Promise<SessionRecord> => claudeSession),
     renameSession: vi.fn(async (_id: string, title: string): Promise<SessionRecord> => ({ ...claudeSession, title })),

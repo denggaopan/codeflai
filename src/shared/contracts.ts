@@ -110,6 +110,34 @@ export const appStateSchema = z.strictObject({
   workspace: workspaceStateSchema.optional().catch(undefined)
 })
 
+// One automatic issue round, as the project menu's history lists it. Kept outside AppState
+// (main/services/issue-run-history.ts owns its own file): appStateSchema is a strictObject, so
+// a new top-level key would make every older build fail to read state.json after a downgrade
+// and drop the user's sessions into the recovery path — and this record must outlive the
+// session it describes, which a "no issue" round deletes.
+//   running  started; no result yet (or the session ended without ever writing one)
+//   claimed  the agent reported the issue it took on
+//   none     the agent found nothing to do and the session was deleted
+//   kept     nothing to do, but the session stayed because its worktree is dirty
+//   failed   the session never started
+export const issueRunOutcomeSchema = z.enum(['running', 'claimed', 'none', 'kept', 'failed'])
+
+export const issueRunSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  projectId: z.string().min(1),
+  agent: sessionKindSchema,
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime().optional(),
+  outcome: issueRunOutcomeSchema,
+  issue: z
+    .strictObject({
+      number: z.number().int().positive(),
+      title: z.string().min(1).max(200)
+    })
+    .optional(),
+  error: z.string().max(500).optional()
+})
+
 export const toolAvailabilitySchema = z.strictObject({
   available: z.boolean(),
   detail: z.string()
@@ -314,6 +342,8 @@ export type SessionKind = z.infer<typeof sessionKindSchema>
 export type CapabilityState = z.infer<typeof capabilityStateSchema>
 export type ThemePreference = z.infer<typeof themePreferenceSchema>
 export type ToolAvailability = z.infer<typeof toolAvailabilitySchema>
+export type IssueRun = z.infer<typeof issueRunSchema>
+export type IssueRunOutcome = z.infer<typeof issueRunOutcomeSchema>
 export type SessionKindPreference = z.infer<typeof sessionKindPreferenceSchema>
 export type SessionKindPreferences = z.infer<typeof sessionKindPreferencesSchema>
 

@@ -8,6 +8,7 @@ import type {
   AppState,
   CloneProgress,
   DeleteSessionResult,
+  IssueRun,
   ProjectRecord,
   SessionRecord,
   ShutdownResult,
@@ -94,6 +95,7 @@ class FakeCoordinator {
   readonly reorder = vi.fn(async (): Promise<SessionRecord[]> => [])
   readonly delete = vi.fn()
   readonly removeProject = vi.fn(async () => undefined)
+  readonly issueRunsFor = vi.fn(async (_projectId: string): Promise<IssueRun[]> => [])
   readonly submitFirstInput = vi.fn()
   private readonly stateListeners = new Set<(state: AppState) => void>()
 
@@ -601,6 +603,31 @@ describe('registerIpc: project:remove', () => {
     await expect(ipcMain.invoke(IPC.projectRemove, {})).rejects.toBeInstanceOf(z.ZodError)
     await expect(ipcMain.invoke(IPC.projectRemove, { projectId: '' })).rejects.toBeInstanceOf(z.ZodError)
     expect(coordinator.removeProject).not.toHaveBeenCalled()
+  })
+})
+
+describe('registerIpc: project:issue-runs', () => {
+  it('answers with the history the coordinator keeps for the named project', async () => {
+    const { ipcMain, coordinator } = buildHarness()
+    const run: IssueRun = {
+      sessionId: 'session-1',
+      projectId: 'project-1',
+      agent: 'claude',
+      startedAt: '2026-10-19T08:00:00.000Z',
+      outcome: 'running'
+    }
+    coordinator.issueRunsFor.mockResolvedValue([run])
+
+    await expect(ipcMain.invoke(IPC.projectIssueRuns, { projectId: 'project-1' })).resolves.toEqual([run])
+
+    expect(coordinator.issueRunsFor).toHaveBeenCalledWith('project-1')
+  })
+
+  it('rejects an invalid request before touching the coordinator', async () => {
+    const { ipcMain, coordinator } = buildHarness()
+
+    await expect(ipcMain.invoke(IPC.projectIssueRuns, {})).rejects.toBeInstanceOf(z.ZodError)
+    expect(coordinator.issueRunsFor).not.toHaveBeenCalled()
   })
 })
 

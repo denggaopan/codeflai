@@ -11,6 +11,7 @@ import type {
   CapabilityState,
   CloneProgress,
   DeleteSessionResult,
+  IssueRun,
   ProjectRecord,
   SessionRecord,
   ShutdownResult,
@@ -53,6 +54,7 @@ const createFakeApi = (): FakeApi => ({
   openProjectRepository: vi.fn(async (_projectId: string): Promise<void> => undefined),
   copyProjectPath: vi.fn(async (_projectId: string): Promise<string> => 'E:\projects\app'),
   removeProject: vi.fn(async (_projectId: string): Promise<void> => undefined),
+  getIssueRuns: vi.fn(async (_projectId: string): Promise<IssueRun[]> => []),
   createSession: vi.fn(async () => {
     throw new Error('createSession not stubbed for this test')
   }),
@@ -1137,6 +1139,7 @@ describe('ProjectSidebar', () => {
       'Copy project path',
       'Auto-resolve issues',
       'Resolve one issue now',
+      'Issue history',
       'Delete all sessions',
       'Remove from list'
     ])
@@ -1178,6 +1181,7 @@ describe('ProjectSidebar', () => {
       'Open Git repository',
       'Auto-resolve issues',
       'Resolve one issue now',
+      'Issue history',
       'Delete all sessions',
       'Remove from list'
     ])
@@ -1332,6 +1336,7 @@ describe('ProjectSidebar', () => {
       '复制项目目录地址',
       '自动处理 issue',
       '立即处理一条 issue',
+      'Issue 处理记录',
       '删除所有会话',
       '从列表中移除'
     ])
@@ -1691,15 +1696,18 @@ describe('ProjectSidebar', () => {
     const newSession = within(menu).getByRole('menuitem', { name: 'New session' })
     const folder = within(menu).getByRole('menuitem', { name: 'Open project folder' })
     const copyPath = within(menu).getByRole('menuitem', { name: 'Copy project path' })
+    const history = within(menu).getByRole('menuitem', { name: 'Issue history' })
     const remove = within(menu).getByRole('menuitem', { name: 'Remove from list' })
     expect(newSession).toHaveFocus()
 
-    // The disabled VS Code entry is skipped; the enabled ring is
-    // New session → folder → copy path → remove.
+    // The disabled VS Code, issue-automation and delete-all entries are skipped; the enabled
+    // ring is New session → folder → copy path → issue history → remove.
     await user.keyboard('{ArrowDown}')
     expect(folder).toHaveFocus()
     await user.keyboard('{ArrowDown}')
     expect(copyPath).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(history).toHaveFocus()
     await user.keyboard('{ArrowDown}')
     expect(remove).toHaveFocus()
     await user.keyboard('{ArrowDown}')
@@ -2435,5 +2443,74 @@ describe('issue automation in the project menu', () => {
     menu = await openProjectOptions(user)
     expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toBeDisabled()
     expect(within(menu).getByRole('menuitem', { name: 'Resolve one issue now' })).toHaveAttribute('title', 'claude: not found on PATH')
+  })
+})
+
+describe('ProjectSidebar issue history', () => {
+  const run = (overrides: Partial<IssueRun>): IssueRun => ({
+    sessionId: 'gone',
+    projectId: project1.id,
+    agent: 'claude',
+    startedAt: '2026-10-19T08:00:00.000Z',
+    outcome: 'running',
+    ...overrides
+  })
+
+  it('opens from the project menu and lists what became of each round', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [runningWorktreeSession] })
+    api.getIssueRuns = vi.fn(async () => [
+      run({ sessionId: runningWorktreeSession.id }),
+      run({ sessionId: 'claimed', outcome: 'claimed', issue: { number: 42, title: 'Fix login crash' } }),
+      run({ sessionId: 'none', outcome: 'none', agent: 'codex' }),
+      run({ sessionId: 'kept', outcome: 'kept' }),
+      run({ sessionId: 'failed', outcome: 'failed', error: 'claude: not found on PATH' }),
+      run({ sessionId: 'gone' })
+    ])
+    render(<ProjectSidebar />)
+
+    await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Issue history' }))
+
+    const dialog = await screen.findByRole('dialog', { name: `Issue history · ${project1.name}` })
+    expect(api.getIssueRuns).toHaveBeenCalledWith(project1.id)
+    const items = await within(dialog).findAllByRole('listitem')
+    expect(items.map((item) => item.querySelector('.issue-runs-outcome')?.textContent)).toEqual([
+      'Running',
+      'issue#42 Fix login crash',
+      'No issue to work on — session deleted',
+      'No issue — session kept because its worktree has changes',
+      'Failed to start: claude: not found on PATH',
+      // Still marked running, but its session is gone: it ended without ever reporting.
+      'Ended without reporting a result'
+    ])
+    expect(within(items[2]!).getByText('Codex')).toBeInTheDocument()
+  })
+
+  it('is offered even without a remote, says so when there is nothing yet, and closes on Escape', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    render(<ProjectSidebar />)
+
+    const item = within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Issue history' })
+    expect(item).toBeEnabled()
+    await user.click(item)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('No automatic issue rounds yet.')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('reports a history it could not read', async () => {
+    const user = userEvent.setup()
+    seedStore({ version: 1, projects: [project1], sessions: [] })
+    api.getIssueRuns = vi.fn(async () => {
+      throw new Error('disk unplugged')
+    })
+    render(<ProjectSidebar />)
+
+    await user.click(within(await openProjectOptions(user)).getByRole('menuitem', { name: 'Issue history' }))
+
+    expect(await within(await screen.findByRole('dialog')).findByRole('alert')).toHaveTextContent('Could not read the history: disk unplugged')
   })
 })

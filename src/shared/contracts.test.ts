@@ -328,6 +328,7 @@ describe('shared contracts', () => {
       projectCopyPath: 'project:copy-path',
       projectRemove: 'project:remove',
       projectReorder: 'project:reorder',
+      projectIssueRuns: 'project:issue-runs',
       sessionCreate: 'session:create',
       sessionRestore: 'session:restore',
       sessionRename: 'session:rename',

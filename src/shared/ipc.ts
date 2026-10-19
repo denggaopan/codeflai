@@ -14,6 +14,7 @@ export const IPC = {
   projectOpenRepository: 'project:open-repository',
   projectCopyPath: 'project:copy-path',
   projectRemove: 'project:remove',
+  projectIssueRuns: 'project:issue-runs',
   sessionCreate: 'session:create',
   sessionRestore: 'session:restore',
   sessionRename: 'session:rename',

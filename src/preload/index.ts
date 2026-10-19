@@ -7,6 +7,7 @@ import type {
   CloneProgress,
   CloneProjectRequest,
   DeleteSessionResult,
+  IssueRun,
   ProjectRecord,
   SessionKind,
   SessionRecord,
@@ -42,6 +43,8 @@ export type CodeflaiApi = {
   copyProjectPath(projectId: string): Promise<string>
   // Forgets the project and its session records; nothing on disk is touched.
   removeProject(projectId: string): Promise<void>
+  // The project's automatic issue rounds, newest first.
+  getIssueRuns(projectId: string): Promise<IssueRun[]>
   // `extras`: the issue-automation watcher's rendered prompt and translated title; absent for
   // every session the launcher creates.
   createSession(projectId: string, kind: SessionKind, worktree: boolean, extras?: { initialPrompt?: string; title?: string }): Promise<SessionRecord>
@@ -102,6 +105,7 @@ const api: CodeflaiApi = {
   openProjectRepository: (projectId) => ipcRenderer.invoke(IPC.projectOpenRepository, { projectId }),
   copyProjectPath: (projectId) => ipcRenderer.invoke(IPC.projectCopyPath, { projectId }),
   removeProject: (projectId) => ipcRenderer.invoke(IPC.projectRemove, { projectId }),
+  getIssueRuns: (projectId) => ipcRenderer.invoke(IPC.projectIssueRuns, { projectId }),
   createSession: (projectId, kind, worktree, extras) => ipcRenderer.invoke(IPC.sessionCreate, { projectId, kind, worktree, ...(extras ?? {}) }),
   restoreSession: (sessionId) => ipcRenderer.invoke(IPC.sessionRestore, { sessionId }),
   renameSession: (sessionId, title) => ipcRenderer.invoke(IPC.sessionRename, { sessionId, title }),

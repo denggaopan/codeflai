@@ -4,6 +4,7 @@ import type {
   AppInfo,
   AppSnapshot,
   DeleteSessionResult,
+  IssueRun,
   ProjectRecord,
   SessionRecord,
   ShutdownResult,
@@ -220,6 +221,14 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
       async (_event, payload): Promise<void> => {
         const { projectId } = projectIdRequestSchema.parse(payload)
         await coordinator.removeProject(projectId)
+      }
+    ],
+
+    [
+      IPC.projectIssueRuns,
+      async (_event, payload): Promise<IssueRun[]> => {
+        const { projectId } = projectIdRequestSchema.parse(payload)
+        return coordinator.issueRunsFor(projectId)
       }
     ],
 

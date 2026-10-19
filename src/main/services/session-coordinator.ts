@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
-import type { AppState, DeleteSessionResult, SessionKind, SessionRecord } from '../../shared/contracts'
+import type { AppState, DeleteSessionResult, IssueRun, SessionKind, SessionRecord } from '../../shared/contracts'
 import { renameSessionRequestSchema } from '../../shared/contracts'
 import { issueSessionTitle, parseIssueOutcome, renderIssueAutomationTemplate } from '../../shared/issue-automation'
+import { noIssueRunHistory, type IssueRunHistory } from './issue-run-history'
 import type { ProjectService } from './project-service'
 import { unavailablePromptFileStore, type PromptFileStore } from './prompt-file-store'
 import type { SessionStore } from './session-store'
@@ -147,7 +148,8 @@ export class SessionCoordinator {
     private readonly titleService: TitleService,
     private readonly clock: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
-    private readonly promptFiles: PromptFileStore = unavailablePromptFileStore
+    private readonly promptFiles: PromptFileStore = unavailablePromptFileStore,
+    private readonly issueRuns: IssueRunHistory = noIssueRunHistory
   ) {
     this.terminalService.on('exit', this.handleExit)
   }
@@ -182,6 +184,9 @@ export class SessionCoordinator {
       } as SessionRecord
 
       await this.appendSession(record)
+      if (options.initialPrompt !== undefined) {
+        await this.issueRuns.started({ sessionId: record.id, projectId, agent: kind, startedAt: record.createdAt })
+      }
 
       try {
         if (options.initialPrompt === undefined) {
@@ -194,7 +199,10 @@ export class SessionCoordinator {
           await this.terminalService.start(record, { initialPromptFile })
         }
       } catch (error) {
-        if (options.initialPrompt !== undefined) await this.promptFiles.remove(record.id)
+        if (options.initialPrompt !== undefined) {
+          await this.promptFiles.remove(record.id)
+          await this.issueRuns.settle(record.id, { outcome: 'failed', finishedAt: this.clock().toISOString(), error: errorMessage(error) })
+        }
         await this.removeSession(record.id)
         if (location.mode === 'worktree') {
           await this.worktreeService.rollback(location)
@@ -379,6 +387,11 @@ export class SessionCoordinator {
    * watcher while the session runs, and once more on exit and at reconcile, because the
    * agent may write the file and leave in the same breath — or while Codeflai was closed.
    */
+  /** The project's automatic issue rounds, newest first, for the project menu's history. */
+  async issueRunsFor(projectId: string): Promise<IssueRun[]> {
+    return this.issueRuns.list(projectId)
+  }
+
   async consumeIssueOutcome(sessionId: string): Promise<IssueOutcomeResult> {
     return this.withLock(`session:${sessionId}`, () => this.consumeIssueOutcomeLocked(sessionId))
   }
@@ -397,6 +410,7 @@ export class SessionCoordinator {
 
     if (outcome.issue === null) {
       const result = await this.deleteLocked(sessionId)
+      await this.issueRuns.settle(sessionId, { outcome: result.status === 'deleted' ? 'none' : 'kept', finishedAt: this.clock().toISOString() })
       if (result.status === 'deleted') return 'deleted'
       console.warn(`SessionCoordinator: automatic issue session ${sessionId} found no issue but was kept (${result.status}).`)
       return 'kept'
@@ -409,6 +423,11 @@ export class SessionCoordinator {
       titleManuallySet: true,
       issue: { number: outcome.issue, title: outcome.title }
     }))
+    await this.issueRuns.settle(sessionId, {
+      outcome: 'claimed',
+      finishedAt: this.clock().toISOString(),
+      issue: { number: outcome.issue, title: outcome.title }
+    })
     return 'claimed'
   }
 
