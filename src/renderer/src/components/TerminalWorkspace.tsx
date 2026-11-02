@@ -239,6 +239,7 @@ export default function TerminalWorkspace() {
     const forwardInput = (data: string): void => {
       const result = tracker.push(data)
       window.codeflai.writeTerminal(sessionId, result.passthrough)
+      useAppStore.getState().noteTerminalInput(sessionId, result.passthrough)
       if (result.submitted !== undefined) {
         window.codeflai.submitFirstInput(sessionId, result.submitted).catch(() => undefined)
       }

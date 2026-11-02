@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 import { AGENT_KINDS, isAgentKind, type AgentKind } from '../../../shared/agent-kinds'
 import { AgentActivityTracker } from '../../../shared/agent-activity'
+import { AgentWakeTracker, classifyTerminalInput } from './agent-wake'
 import type { TerminalDataEvent } from '../../../shared/pty-protocol'
 import type {
   AppState,
@@ -114,6 +115,8 @@ export type AppStore = {
 
   initialize: () => () => void
   reset: () => void
+  /** Every byte the user sends to a PTY: a submitted line is what wakes a Done agent session. */
+  noteTerminalInput: (sessionId: string, data: string) => void
 
   checkForUpdatesInBackground: () => Promise<void>
   beginUpdate: (version: string, downloadable: boolean) => void
@@ -448,6 +451,7 @@ export const AGENT_IDLE_MS = 3_000
 // the store's idleAgentSessionIds, not renderable state themselves.
 const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const agentActivities = new Map<string, AgentActivityTracker>()
+const agentWake = new AgentWakeTracker()
 let activityEpoch = 0
 
 const clearIdleTimer = (sessionId: string): void => {
@@ -488,6 +492,7 @@ const clearAllIdleTimers = (): void => {
   for (const timer of idleTimers.values()) clearTimeout(timer)
   idleTimers.clear()
   agentActivities.clear()
+  agentWake.clear()
   activityEpoch += 1
 }
 
@@ -552,12 +557,39 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
   const forgetAgentActivity = (sessionId: string): void => {
     agentActivities.delete(sessionId)
+    agentWake.forget(sessionId)
     unmarkIdle(sessionId)
   }
 
-  // Any PTY output from an agent session restarts its quiet window; the session is marked
-  // idle (Done) only when that window elapses with no further output. Shells and unknown
-  // session ids (data can arrive before the snapshot loads) are ignored entirely.
+  // The live Done-edge handler, installed by initialize(). A submitted line arms the quiet
+  // window from outside the data stream, so it needs the same handler the data path is given.
+  let liveIdleHandler: ((sessionId: string) => void) | undefined
+
+  const runningAgent = (sessionId: string): SessionRecord | undefined => {
+    const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
+    return session && session.status === 'running' && isAgentKind(session.kind) ? session : undefined
+  }
+
+  const armIdleTimer = (sessionId: string, activity: AgentActivityTracker | undefined, replay: boolean,
+    onIdle?: (sessionId: string) => void): void => {
+    idleTimers.set(
+      sessionId,
+      setTimeout(() => {
+        idleTimers.delete(sessionId)
+        if (agentActivities.get(sessionId) !== activity || activity?.running === true || !runningAgent(sessionId)) return
+        agentWake.resetStreak(sessionId)
+        set((state) => ({ idleAgentSessionIds: { ...state.idleAgentSessionIds, [sessionId]: true } }))
+        if (!replay) onIdle?.(sessionId)
+      }, AGENT_IDLE_MS)
+    )
+  }
+
+  // While a session is not Done, any PTY output restarts its quiet window; it is marked idle
+  // (Done) only when that window elapses with no further output. Leaving Done is deliberately
+  // harder (agent-wake.ts): an idle TUI repaints on focus changes and echoes typing, and one
+  // such burst must not flip the dot back to Running — nor, three seconds later, raise the
+  // unread marker and the notification all over again. Shells and unknown session ids (data
+  // can arrive before the snapshot loads) are ignored entirely.
   //
   // `onIdle` is how unread activity is raised: the Done edge — not the arrival of bytes — is
   // what the user actually wants to be told about, since agent TUIs repaint spinners and
@@ -569,8 +601,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
     replay = false,
     onIdle?: (sessionId: string) => void
   ): void => {
-    const session = get().appState.sessions.find((candidate) => candidate.id === sessionId)
-    if (!session || session.status !== 'running' || !isAgentKind(session.kind)) return
+    const session = runningAgent(sessionId)
+    if (!session) return
 
     let activity = agentActivities.get(sessionId)
     if (!activity) {
@@ -579,18 +611,30 @@ export const useAppStore = create<AppStore>()((set, get) => {
     }
     if (replay) activity.writeReplay(data)
     else activity.write(data)
+    if (get().idleAgentSessionIds[sessionId] === true && activity.running !== true &&
+      !agentWake.wakes(sessionId, data, Date.now())) return
+    agentWake.resetStreak(sessionId)
     unmarkIdle(sessionId)
     if (activity.running === true) return
-    idleTimers.set(
-      sessionId,
-      setTimeout(() => {
-        idleTimers.delete(sessionId)
-        if (agentActivities.get(sessionId) !== activity || activity.running === true ||
-          !get().appState.sessions.some((candidate) => candidate.id === sessionId && candidate.status === 'running')) return
-        set((state) => ({ idleAgentSessionIds: { ...state.idleAgentSessionIds, [sessionId]: true } }))
-        if (!replay) onIdle?.(sessionId)
-      }, AGENT_IDLE_MS)
-    )
+    armIdleTimer(sessionId, activity, replay, onIdle)
+  }
+
+  const noteTerminalInput = (sessionId: string, data: string): void => {
+    if (!runningAgent(sessionId)) return
+    const kind = classifyTerminalInput(data)
+    if (kind === 'control') return
+    if (kind === 'typing') {
+      agentWake.noteTyping(sessionId, Date.now())
+      return
+    }
+    // A submitted line starts a turn. Only a Done session needs waking: one that is still
+    // counted as running is already inside its quiet window, which its output keeps renewing.
+    if (get().idleAgentSessionIds[sessionId] !== true) return
+    agentWake.resetStreak(sessionId)
+    unmarkIdle(sessionId)
+    const activity = agentActivities.get(sessionId)
+    if (activity?.running === true) return
+    armIdleTimer(sessionId, activity, false, liveIdleHandler)
   }
 
   /**
@@ -856,6 +900,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         recordUnread(sessionId)
         notifySessionEvent(sessionId, 'idle')
       }
+      liveIdleHandler = onAgentIdle
       const hydrateActivity = (sessionId: string): void => {
         const pending = pendingActivity.get(sessionId) ?? []
         pendingActivity.set(sessionId, pending)
@@ -1093,6 +1138,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
       return () => {
         disposed = true
+        liveIdleHandler = undefined
         disposeWorkspace()
         disposeState()
         disposeData()
@@ -1111,6 +1157,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
         set({ idleAgentSessionIds: {} })
       }
     },
+
+    noteTerminalInput,
 
     reset: () => {
       clearAllIdleTimers()

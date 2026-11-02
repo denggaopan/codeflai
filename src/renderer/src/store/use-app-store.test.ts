@@ -952,16 +952,82 @@ describe('useAppStore agent idle tracking', () => {
     expect(idleIds()).toEqual({ [claudeSession.id]: true })
   })
 
-  it('clears the Done mark the moment new output arrives, then re-marks after quiet', async () => {
+  const settleDone = async (): Promise<void> => {
     api.emitTerminalData({ sessionId: claudeSession.id, data: 'first' })
     await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  }
 
-    api.emitTerminalData({ sessionId: claudeSession.id, data: 'more output' })
+  // An idle TUI is not silent: focus reports, prompt repaints and title updates all write a
+  // short burst. One burst must not flip Done back to Running for three seconds.
+  it('stays Done through a short repaint burst', async () => {
+    await settleDone()
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b[?25l\u001b[2;1H> \u001b[?25h' })
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]0;✳ Claude Code\u0007' })
+    await vi.advanceTimersByTimeAsync(200)
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'redrawn prompt' })
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('never counts control-only output toward leaving Done', async () => {
+    await settleDone()
+    for (let i = 0; i < 10; i += 1) {
+      api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b[?25l\u001b[?25h' })
+      await vi.advanceTimersByTimeAsync(300)
+    }
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('leaves Done once visible output keeps arriving, as a spinner does', async () => {
+    await settleDone()
+    for (let i = 0; i < 20; i += 1) {
+      api.emitTerminalData({ sessionId: claudeSession.id, data: `✳ Thinking… (${i})` })
+      await vi.advanceTimersByTimeAsync(100)
+    }
     expect(idleIds()).toEqual({})
-
     await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
     expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('leaves Done at once when the CLI reports work in progress', async () => {
+    await settleDone()
+    api.emitTerminalData({ sessionId: claudeSession.id, data: '\u001b]9;4;3;\u0007' })
+    expect(idleIds()).toEqual({})
+  })
+
+  it('leaves Done when the user submits a line, and returns after the quiet window', async () => {
+    await settleDone()
+    useAppStore.getState().noteTerminalInput(claudeSession.id, 'fix it\r')
+    expect(idleIds()).toEqual({})
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('does not treat a newline inside a paste, Shift+Enter or a focus report as a submit', async () => {
+    await settleDone()
+    useAppStore.getState().noteTerminalInput(claudeSession.id, '\u001b[200~one\rtwo\u001b[201~')
+    useAppStore.getState().noteTerminalInput(claudeSession.id, '\u001b\r')
+    useAppStore.getState().noteTerminalInput(claudeSession.id, '\u001b[I')
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('stays Done while the prompt echoes what the user is typing', async () => {
+    await settleDone()
+    for (const character of 'a long line typed at the prompt') {
+      useAppStore.getState().noteTerminalInput(claudeSession.id, character)
+      await vi.advanceTimersByTimeAsync(50)
+      api.emitTerminalData({ sessionId: claudeSession.id, data: `> ${character}` })
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(idleIds()).toEqual({ [claudeSession.id]: true })
+  })
+
+  it('ignores input for shell sessions', async () => {
+    useAppStore.getState().noteTerminalInput(powershellSession.id, 'dir\r')
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    expect(idleIds()).toEqual({})
   })
 
   it('never tracks shell sessions', async () => {
@@ -1662,6 +1728,20 @@ describe('session notifications', () => {
     await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
 
     expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Done')
+  })
+
+  it('notifies once per finished turn, not again for repaints of the idle prompt', async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'working…' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+    for (let i = 0; i < 5; i += 1) {
+      api.emitTerminalData({ sessionId: claudeSession.id, data: 'redrawn prompt' })
+      await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+    }
+
+    expect(api.notifySessionIdle).toHaveBeenCalledTimes(1)
   })
 
   it('stays silent at the Done edge while the window is attended', async () => {
