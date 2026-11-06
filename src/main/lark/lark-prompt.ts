@@ -3,10 +3,17 @@ export type LarkQuote = { senderName: string; text: string; imagePaths: string[]
 const FENCE_END = 'REFERENCE>>>'
 export const LARK_CHANGE_LIST_LIMIT = 20
 const TITLE_LIMIT = 40
+// Built from the code point so the source stays pure ASCII (U+200B).
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b)
+// CR, LF, U+2028, U+2029 - also built from code points to keep the source ASCII.
+const LINE_BREAKS = new RegExp(
+  '[' + [0x0d, 0x0a, 0x2028, 0x2029].map((c) => String.fromCharCode(c)).join('') + ']+',
+  'g'
+)
 
 // Every value written inside the fence goes through this so quoted content can never close it early.
 function defence(value: string): string {
-  return value.split(FENCE_END).join('REFERENCE>>​>')
+  return value.split(FENCE_END).join('REFERENCE>>' + ZERO_WIDTH_SPACE + '>')
 }
 
 export function buildLarkTaskPrompt(input: {
@@ -26,7 +33,7 @@ export function buildLarkTaskPrompt(input: {
   }
   if (input.quote) {
     const text = defence(input.quote.text)
-    const sender = defence(input.quote.senderName.replace(/[\r\n]+/g, ' '))
+    const sender = defence(input.quote.senderName.replace(LINE_BREAKS, ' '))
     const fenced = ['<<<REFERENCE', `发送者：${sender}`, text]
     if (input.quote.imagePaths.length > 0) {
       fenced.push('图片：', ...input.quote.imagePaths.map((p) => `- ${defence(p)}`))
