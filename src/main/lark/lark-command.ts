@@ -95,7 +95,35 @@ function containsToken(text: string, token: string): boolean {
 }
 
 // Same alphabet as initialPromptSchema in shared/pty-protocol.ts.
-const SKILL_PATTERN = /(?:^|\s)[/$]([A-Za-z0-9:_-]{1,64})(?=\s|$)/
+const SKILL_TOKEN = /^[/$]([A-Za-z0-9:_-]{1,64})$/
+
+/**
+ * Claude Code's own slash commands. Hoisted into argv they would act on the CLI itself (log out,
+ * wipe the conversation, change the model) instead of running a skill, so they stay in the prompt.
+ */
+export const CLAUDE_BUILTIN_DENYLIST: readonly string[] = [
+  'login',
+  'logout',
+  'exit',
+  'quit',
+  'clear',
+  'compact',
+  'resume',
+  'config',
+  'permissions',
+  'model',
+  'upgrade',
+  'doctor',
+  'init'
+]
+
+// Only a token that opens the instruction is a skill: one in mid-sentence ("看 /settings 页面")
+// is usually a path or a word the sender is talking about, not a command.
+function leadingSkill(stripped: string): string | undefined {
+  const name = SKILL_TOKEN.exec(stripped.split(' ')[0] ?? '')?.[1]
+  if (name === undefined || CLAUDE_BUILTIN_DENYLIST.includes(name.toLowerCase())) return undefined
+  return name
+}
 
 export function parseLarkCommand(text: string, projects: readonly LarkProjectRef[]): LarkCommand {
   const stripped = normalizeText(text)
@@ -119,7 +147,7 @@ export function parseLarkCommand(text: string, projects: readonly LarkProjectRef
   if (matched.size > 1) return { type: 'error', reason: 'ambiguousProject' }
   const project = [...matched.values()][0]!
 
-  const skill = SKILL_PATTERN.exec(stripped)?.[1]
+  const skill = leadingSkill(stripped)
   return {
     type: 'run',
     agent,

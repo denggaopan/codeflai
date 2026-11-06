@@ -95,18 +95,39 @@ describe('parseLarkCommand', () => {
     expect(parseLarkCommand('   ', projects)).toEqual({ type: 'error', reason: 'empty' })
   })
 
-  it('hoists the first skill token', () => {
-    expect(parseLarkCommand('用 /fast-do 在 codeflai 修', projects)).toMatchObject({
-      skill: 'fast-do'
+  it('hoists a skill token that opens the instruction', () => {
+    expect(parseLarkCommand('/fast-do 修复 codeflai 的登录 bug', projects)).toMatchObject({
+      skill: 'fast-do',
+      instruction: '/fast-do 修复 codeflai 的登录 bug'
     })
-    expect(parseLarkCommand('用 $fast-do 在 codeflai 修', projects)).toMatchObject({
+    expect(parseLarkCommand('$fast-do 用 codex 在 codeflai 修', projects)).toMatchObject({
       skill: 'fast-do'
     })
   })
 
+  it('hoists a leading skill token after the mention placeholder is stripped', () => {
+    expect(parseLarkCommand('@_user_1 /fast-do 在 codeflai 修', projects)).toMatchObject({ skill: 'fast-do' })
+  })
+
+  it('does not hoist a skill token in mid-sentence', () => {
+    expect(parseLarkCommand('用 /fast-do 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('在 codeflai 打开 /settings 页面看看', projects)).not.toHaveProperty('skill')
+  })
+
+  it("does not hoist one of Claude Code's own commands, in any case", () => {
+    expect(parseLarkCommand('/logout 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('/Clear codeflai', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('$model codeflai', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('/logout 在 codeflai 修', projects)).toMatchObject({
+      type: 'run',
+      instruction: '/logout 在 codeflai 修'
+    })
+  })
+
   it('ignores an invalid skill token and path fragments', () => {
-    expect(parseLarkCommand('用 /a&b 在 codeflai 修', projects)).not.toHaveProperty('skill')
-    expect(parseLarkCommand('看 src/main 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('/a&b 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('src/main 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('/fast-do修复 codeflai', projects)).not.toHaveProperty('skill')
   })
 
   it('parses bind', () => {

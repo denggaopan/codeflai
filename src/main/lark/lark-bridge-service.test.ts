@@ -483,8 +483,14 @@ describe('LarkBridgeService', () => {
 
   it('hoists the skill into taskPrompt.skill', async () => {
     await makeOwner()
-    await deliver(message({ content: text('Alpha /fast-do fix the bug') }))
+    await deliver(message({ content: text('/fast-do Alpha fix the bug') }))
     expect(sessions.created[0]?.options.taskPrompt?.skill).toBe('fast-do')
+  })
+
+  it('leaves a mid-sentence skill token in the prompt', async () => {
+    await makeOwner()
+    await deliver(message({ content: text('Alpha /fast-do fix the bug') }))
+    expect(sessions.created[0]?.options.taskPrompt).not.toHaveProperty('skill')
   })
 
   it('replies startFailed when create throws and removes the attachment directory', async () => {
