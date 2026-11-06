@@ -1,5 +1,6 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { LarkDomain } from '../../shared/contracts'
+import { LarkBotIdentity } from './lark-bot-identity'
 
 export const LARK_BOT_INFO_TIMEOUT_MS = 10_000
 
@@ -135,11 +136,9 @@ function safeErrorMessage(error: unknown, secret: string): string {
 export class SdkLarkClient implements LarkClient {
   private api?: Lark.Client
   private ws?: Lark.WSClient
-  private botOpenId?: string
+  private identity?: LarkBotIdentity
   // Bumped on every connect/disconnect so callbacks from a closed client are ignored.
   private generation = 0
-  // Bumped per connected attempt and when reconnecting, so a late bot-info answer cannot report a dead link as connected.
-  private connectAttempt = 0
 
   connect(
     credentials: { domain: LarkDomain; appId: string; appSecret: string },
@@ -159,37 +158,34 @@ export class SdkLarkClient implements LarkClient {
     }
     const api = new Lark.Client(base)
     this.api = api
-    this.botOpenId = undefined
 
-    // `connected` is reported only after the bot id lookup settles, so the catch-up that runs on
-    // it can already tell which listed messages mention the bot.
-    const reportConnected = (): void => {
-      const attempt = ++this.connectAttempt
-      const lookup = api
-        .request({ method: 'GET', url: '/open-apis/bot/v3/info' })
-        .then((info: { bot?: { open_id?: string } }) => info?.bot?.open_id)
-      void awaitBotId(lookup).then((botOpenId) => {
-        // A newer reconnect attempt (or a drop) supersedes this one.
-        if (!current() || attempt !== this.connectAttempt) return
-        if (botOpenId) this.botOpenId = botOpenId
-        onState('connected')
-      })
-    }
+    // `connected` is reported only once the bot id is known (see LarkBotIdentity), so the
+    // catch-up that runs on it can already tell which listed messages mention the bot.
+    const identity = new LarkBotIdentity({
+      fetchBotId: () =>
+        awaitBotId(
+          api
+            .request({ method: 'GET', url: '/open-apis/bot/v3/info' })
+            .then((info: { bot?: { open_id?: string } }) => info?.bot?.open_id)
+        ),
+      onState: (state, error) => {
+        if (current()) onState(state, error)
+      }
+    })
+    this.identity = identity
 
     onState('connecting')
     const ws = new Lark.WSClient({
       ...base,
       onReady: () => {
-        if (!current()) return
-        reportConnected()
+        if (current()) identity.linkUp()
       },
       onReconnected: () => {
-        if (!current()) return
-        reportConnected()
+        if (current()) identity.linkUp()
       },
       onReconnecting: () => {
         if (!current()) return
-        this.connectAttempt += 1
+        identity.linkDown()
         onState('connecting')
       },
       onError: (error: Error) => {
@@ -202,8 +198,11 @@ export class SdkLarkClient implements LarkClient {
         eventDispatcher: new Lark.EventDispatcher({}).register({
           'im.message.receive_v1': (data: LarkReceiveEvent) => {
             if (!current()) return
-            // Return at once: the 3-second ack window must never depend on the consumer.
-            onMessage(toIncomingMessage(data, this.botOpenId))
+            // Return at once: the 3-second ack window must never depend on the consumer, nor on
+            // the bot id lookup an unknown id triggers.
+            identity.receive((botOpenId) => {
+              if (current()) onMessage(toIncomingMessage(data, botOpenId))
+            })
           }
         })
       })
@@ -217,7 +216,7 @@ export class SdkLarkClient implements LarkClient {
     const ws = this.ws
     this.ws = undefined
     this.api = undefined
-    this.botOpenId = undefined
+    this.identity = undefined
     try {
       ws?.close({ force: true })
     } catch {
@@ -244,7 +243,7 @@ export class SdkLarkClient implements LarkClient {
 
   async listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]> {
     const api = this.requireApi()
-    const botOpenId = this.botOpenId
+    const botOpenId = this.identity?.id
     if (botOpenId === undefined) throw new Error('The bot id is not known yet.')
     const found: LarkIncomingMessage[] = []
     let pageToken: string | undefined
