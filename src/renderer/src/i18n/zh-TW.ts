@@ -245,6 +245,7 @@ export const zhTW: Translations = {
   'settings.larkDomainLark': 'Lark',
   'settings.larkAppId': 'App ID',
   'settings.larkAppSecret': 'App Secret',
+  'settings.larkAppIdInvalid': 'App ID 的格式是 cli_ 加上 16 個英文字母或數字（請從應用程式的「憑證與基礎資訊」頁面複製）。',
   'settings.larkSecretSetPlaceholder': '已設定，留空則維持不變',
   'settings.larkSave': '儲存飛書設定',
   'settings.larkConnection': '連線狀態：{state}',

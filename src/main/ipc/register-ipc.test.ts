@@ -241,7 +241,7 @@ class FakeLark {
 }
 
 const larkStatus: LarkStatus = {
-  enabled: true, domain: 'feishu', appId: 'cli_x', secretSet: true, connection: 'connected', members: []
+  enabled: true, domain: 'feishu', appId: 'cli_a8af37daa578d029', secretSet: true, connection: 'connected', members: []
 }
 
 const emptyState = (): AppState => ({ version: 1, projects: [], sessions: [] })
@@ -1062,9 +1062,16 @@ describe('registerIpc: lark', () => {
     expect(lark.calls).toEqual([])
   })
 
+  it('lark:save-config rejects a malformed App ID before touching the bridge', async () => {
+    const { ipcMain, lark } = buildHarness()
+
+    await expect(ipcMain.invoke(IPC.larkSaveConfig, { enabled: true, domain: 'feishu', appId: 'cli_x' })).rejects.toThrow()
+    expect(lark.calls).toEqual([])
+  })
+
   it('lark:save-config saves, reconnects, and answers with the fresh status', async () => {
     const { ipcMain, lark } = buildHarness()
-    const request = { enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 's' }
+    const request = { enabled: true, domain: 'feishu', appId: 'cli_a8af37daa578d029', appSecret: 's' }
 
     await expect(ipcMain.invoke(IPC.larkSaveConfig, request)).resolves.toEqual(larkStatus)
 

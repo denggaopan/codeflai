@@ -83,7 +83,7 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
     const dialog = page.getByRole('dialog', { name: 'Settings' })
     await dialog.getByRole('button', { name: 'Lark', exact: true }).click()
     await dialog.getByRole('switch', { name: 'Enable Lark bot' }).click()
-    await dialog.getByLabel('App ID').fill('cli_e2e')
+    await dialog.getByLabel('App ID').fill('cli_e2e0000000000000')
     await dialog.getByLabel('App Secret').fill('e2e-secret')
     await dialog.getByRole('button', { name: 'Save Lark settings' }).click()
     await expect(dialog.getByLabel('App Secret')).toHaveValue('')

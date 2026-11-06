@@ -484,7 +484,7 @@ describe('SettingsDialog', () => {
       api.larkStatus.mockResolvedValue({
         ...larkOff,
         enabled: true,
-        appId: 'cli_x',
+        appId: 'cli_a8af37daa578d029',
         secretSet: true,
         connection: 'connected',
         pairing: { code: '123456', role: 'owner', expiresAt: new Date(Date.now() + 9 * 60_000).toISOString() }
@@ -515,7 +515,7 @@ describe('SettingsDialog', () => {
 
     it('never renders the stored secret', async () => {
       const api = createFakeApi()
-      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_x', secretSet: true, connection: 'connected' })
+      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_a8af37daa578d029', secretSet: true, connection: 'connected' })
       renderDialog(api)
 
       const input = (await screen.findByLabelText('App Secret')) as HTMLInputElement
@@ -527,17 +527,36 @@ describe('SettingsDialog', () => {
     it('saves the secret only when one was typed', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
-      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_x', secretSet: true })
+      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_a8af37daa578d029', secretSet: true })
       renderDialog(api)
-      await screen.findByDisplayValue('cli_x')
+      await screen.findByDisplayValue('cli_a8af37daa578d029')
 
       await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
-      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_x' })
+      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_a8af37daa578d029' })
 
       await user.type(screen.getByLabelText('App Secret'), 's3cret')
       await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
-      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 's3cret' })
+      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_a8af37daa578d029', appSecret: 's3cret' })
       expect((screen.getByLabelText('App Secret') as HTMLInputElement).value).toBe('')
+    })
+
+    it('refuses to save a malformed App ID and says what one looks like', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      renderDialog(api)
+      const input = await screen.findByLabelText('App ID')
+
+      await user.type(input, 'cli_x')
+      await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
+      expect(api.larkSaveConfig).not.toHaveBeenCalled()
+      expect(screen.getByRole('alert')).toHaveTextContent(/cli_ followed by 16 letters or digits/)
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+
+      await user.clear(input)
+      await user.type(input, 'cli_a8af37daa578d029')
+      await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
+      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: false, domain: 'feishu', appId: 'cli_a8af37daa578d029' })
+      expect(input).not.toHaveAttribute('aria-invalid')
     })
 
     it('offers Bind me without an owner and Add teammate only with one', async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import type { LarkDomain, LarkStatus } from '../../../shared/contracts'
+import { isLarkAppId, type LarkDomain, type LarkStatus } from '../../../shared/contracts'
 import { useTranslation } from '../i18n/use-translation'
 import { useAppStore } from '../store/use-app-store'
 
@@ -39,6 +39,8 @@ export default function LarkSettings() {
   const [saving, setSaving] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
+  // Shown only after a save was attempted, so the field does not turn red while being typed.
+  const [appIdRejected, setAppIdRejected] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -76,9 +78,17 @@ export default function LarkSettings() {
   }
 
   const save = async (): Promise<void> => {
+    const trimmed = appId.trim()
+    // The main process enforces the same rule; checking here gives a readable message instead
+    // of a schema error.
+    if (trimmed !== '' && !isLarkAppId(trimmed)) {
+      setAppIdRejected(true)
+      return
+    }
+    setAppIdRejected(false)
     setSaving(true)
     try {
-      adopt(await window.codeflai.larkSaveConfig({ enabled, domain, appId: appId.trim(), ...(secret === '' ? {} : { appSecret: secret }) }))
+      adopt(await window.codeflai.larkSaveConfig({ enabled, domain, appId: trimmed, ...(secret === '' ? {} : { appSecret: secret }) }))
       setSecret('')
     } catch (error) {
       report(error)
@@ -163,9 +173,16 @@ export default function LarkSettings() {
           spellCheck={false}
           autoComplete="off"
           value={appId}
+          aria-invalid={appIdRejected || undefined}
+          aria-describedby={appIdRejected ? 'settings-lark-app-id-error' : undefined}
           onChange={(event) => setAppId(event.target.value)}
         />
       </div>
+      {appIdRejected && (
+        <p id="settings-lark-app-id-error" className="settings-dialog-hint settings-lark-error" role="alert">
+          {t('settings.larkAppIdInvalid')}
+        </p>
+      )}
 
       <div className="settings-dialog-section">
         <label className="settings-dialog-label" htmlFor="settings-lark-app-secret">

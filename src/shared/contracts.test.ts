@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   appStateSchema,
+  larkSaveConfigRequestSchema,
   capabilityStateSchema,
   createSessionRequestSchema,
   firstInputRequestSchema,
@@ -398,6 +399,23 @@ const incompleteWorktreeSession: SessionRecord = {
 }
 
 void incompleteWorktreeSession
+
+describe('larkSaveConfigRequestSchema', () => {
+  const request = (appId: string) => ({ enabled: true, domain: 'feishu', appId })
+
+  it('accepts an App ID in the format the open platform issues, and an empty one', () => {
+    expect(larkSaveConfigRequestSchema.parse(request('cli_a8af37daa578d029')).appId).toBe('cli_a8af37daa578d029')
+    expect(larkSaveConfigRequestSchema.parse(request('  cli_a8af37daa578d029 ')).appId).toBe('cli_a8af37daa578d029')
+    expect(larkSaveConfigRequestSchema.parse(request('')).appId).toBe('')
+  })
+
+  it.each(['cli_x', 'cli_a8af37daa578d02', 'cli_a8af37daa578d0299', 'xli_a8af37daa578d029', 'cli_a8af37daa578d02-'])(
+    'rejects the App ID %j',
+    (appId) => {
+      expect(larkSaveConfigRequestSchema.safeParse(request(appId)).success).toBe(false)
+    }
+  )
+})
 
 describe('pty-protocol spawn', () => {
   const spawn = { type: 'spawn', id: 1, sessionId: 's1', kind: 'claude', launchPath: 'C:\\x', resume: false, cols: 80, rows: 24 }

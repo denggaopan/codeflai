@@ -3145,6 +3145,14 @@ body[data-sidebar-resizing='true'] .app-main {
   border-radius: 8px;
 }
 
+.settings-input[aria-invalid='true'] {
+  border-color: var(--color-state-destructive);
+}
+
+.settings-lark-error {
+  color: var(--color-state-destructive);
+}
+
 .settings-lark-code {
   font-size: 1.4rem;
   letter-spacing: 0.2em;

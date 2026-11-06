@@ -240,6 +240,7 @@ export const zhCN: Translations = {
   'settings.larkDomainLark': 'Lark',
   'settings.larkAppId': 'App ID',
   'settings.larkAppSecret': 'App Secret',
+  'settings.larkAppIdInvalid': 'App ID 的格式是 cli_ 加 16 位字母或数字（请从应用的「凭证与基础信息」页复制）。',
   'settings.larkSecretSetPlaceholder': '已设置，留空则保持不变',
   'settings.larkSave': '保存飞书设置',
   'settings.larkConnection': '连接状态：{state}',

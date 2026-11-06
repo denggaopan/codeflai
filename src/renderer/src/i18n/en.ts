@@ -247,6 +247,7 @@ export const en = {
   'settings.larkDomainLark': 'Lark',
   'settings.larkAppId': 'App ID',
   'settings.larkAppSecret': 'App Secret',
+  'settings.larkAppIdInvalid': 'An App ID looks like cli_ followed by 16 letters or digits (copy it from the Credentials page of the app).',
   'settings.larkSecretSetPlaceholder': 'Set — leave empty to keep',
   'settings.larkSave': 'Save Lark settings',
   'settings.larkConnection': 'Connection: {state}',

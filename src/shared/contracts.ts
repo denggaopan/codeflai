@@ -427,10 +427,22 @@ export const larkStatusSchema = z.strictObject({
     .strictObject({ code: z.string(), role: z.enum(['owner', 'member']), expiresAt: z.string().datetime() })
     .optional()
 })
+/**
+ * A Lark App ID as the open platform issues it (`cli_` plus 16 letters or digits). The SDK
+ * silently refuses to start with anything else, which would leave Settings on "connecting".
+ */
+export const LARK_APP_ID_PATTERN = /^cli_[0-9a-zA-Z]{16}$/
+export const isLarkAppId = (value: string): boolean => LARK_APP_ID_PATTERN.test(value)
+
 export const larkSaveConfigRequestSchema = z.strictObject({
   enabled: z.boolean(),
   domain: larkDomainSchema,
-  appId: z.string().trim().max(128),
+  // Empty is allowed: it is how the App ID is cleared.
+  appId: z
+    .string()
+    .trim()
+    .max(128)
+    .refine((value) => value === '' || isLarkAppId(value), { message: 'The App ID must look like cli_ followed by 16 letters or digits.' }),
   appSecret: z.string().min(1).max(256).optional()
 })
 export const larkPairingRequestSchema = z.strictObject({ role: z.enum(['owner', 'member']) })
