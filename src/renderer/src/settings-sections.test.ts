@@ -6,6 +6,7 @@ const offsets: ReadonlyArray<SectionOffset> = [
   { id: 'general', top: 0 },
   { id: 'sessionKinds', top: 200 },
   { id: 'issueAutomation', top: 600 },
+  { id: 'lark', top: 800 },
   { id: 'updates', top: 900 },
   { id: 'about', top: 1040 }
 ]
@@ -14,7 +15,7 @@ const viewport = (scrollTop: number, clientHeight = 400, scrollHeight = 1600) =>
 
 describe('SETTINGS_SECTIONS', () => {
   it('lists every section exactly once, in the order they are stacked', () => {
-    expect(SETTINGS_SECTIONS.map((section) => section.id)).toEqual(['general', 'sessionKinds', 'issueAutomation', 'updates', 'about'])
+    expect(SETTINGS_SECTIONS.map((section) => section.id)).toEqual(['general', 'sessionKinds', 'issueAutomation', 'lark', 'updates', 'about'])
   })
 })
 

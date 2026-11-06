@@ -16,6 +16,7 @@ import { sessionKindLabelKey, sessionKindOptions, type SessionKindOption } from 
 import { resolveActiveSection, SETTINGS_SECTIONS, type SettingsSectionId } from '../settings-sections'
 import { TERMINAL_FONT_SIZES } from '../terminal-font'
 import { useAppStore } from '../store/use-app-store'
+import LarkSettings from './LarkSettings'
 
 type SettingsDialogProps = {
   open: boolean
@@ -620,6 +621,13 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {t('settings.issueAutomationReset')}
                 </button>
               </div>
+            </section>
+
+            <section className="settings-section" ref={registerSection('lark')} aria-labelledby="settings-section-lark">
+              <h3 className="settings-section-title" id="settings-section-lark">
+                {t('settings.sectionLark')}
+              </h3>
+              <LarkSettings />
             </section>
 
             <section className="settings-section" ref={registerSection('updates')} aria-labelledby="settings-section-updates">

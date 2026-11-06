@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ShutdownResult, UpdateCheckResult, UpdateDownloadResult } from '../../../shared/contracts'
+import type { LarkStatus, ShutdownResult, UpdateCheckResult, UpdateDownloadResult } from '../../../shared/contracts'
 import type { ExternalLinkTarget } from '../../../shared/links'
 import { defaultSessionKindPreferences } from '../session-kind-options'
 import { useAppStore } from '../store/use-app-store'
@@ -14,6 +14,8 @@ const links = {
   changelog: 'https://example.test/changelog',
   download: 'https://example.test/download'
 } as const
+
+const larkOff: LarkStatus = { enabled: false, domain: 'feishu', appId: '', secretSet: false, connection: 'off', members: [] }
 
 // Only the handful of bridge methods this dialog touches are stubbed; the cast keeps the
 // fake narrow without widening every vi.fn() to a plain function type (which would cost the
@@ -26,7 +28,12 @@ const createFakeApi = () => ({
   checkForUpdates: vi.fn(async (): Promise<UpdateCheckResult> => ({ status: 'none', currentVersion: '9.9.9' })),
   openExternalLink: vi.fn(async (_target: ExternalLinkTarget): Promise<void> => undefined),
   downloadUpdate: vi.fn(async (): Promise<UpdateDownloadResult> => ({ status: 'ready', version: '10.0.0', fileName: 'Setup.exe' })),
-  setTheme: vi.fn(async () => undefined)
+  setTheme: vi.fn(async () => undefined),
+  larkStatus: vi.fn(async (): Promise<LarkStatus> => larkOff),
+  larkSaveConfig: vi.fn(async (_request: unknown): Promise<void> => undefined),
+  larkStartPairing: vi.fn(async (_role: 'owner' | 'member'): Promise<void> => undefined),
+  larkRemoveMember: vi.fn(async (_openId: string): Promise<void> => undefined),
+  onLarkStatusChanged: vi.fn((_listener: (status: LarkStatus) => void) => () => undefined)
 })
 
 type FakeApi = ReturnType<typeof createFakeApi>
@@ -62,6 +69,7 @@ describe('SettingsDialog', () => {
       'General',
       'Session kinds',
       'Issue automation',
+      'Lark',
       'Updates',
       'About Codeflai'
     ])
@@ -468,5 +476,93 @@ describe('SettingsDialog', () => {
     await user.click(screen.getByRole('button', { name: /Downloads/ }))
 
     expect(api.openExternalLink.mock.calls.map(([target]) => target)).toEqual(['repository', 'changelog', 'download'])
+  })
+
+  describe('Lark section', () => {
+    it('shows the pairing code and the exact message to send', async () => {
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({
+        ...larkOff,
+        enabled: true,
+        appId: 'cli_x',
+        secretSet: true,
+        connection: 'connected',
+        pairing: { code: '123456', role: 'owner', expiresAt: new Date(Date.now() + 9 * 60_000).toISOString() }
+      })
+      renderDialog(api)
+
+      expect(await screen.findByText('123456')).toBeInTheDocument()
+      expect(screen.getByText('@Codeflai 绑定 123456')).toBeInTheDocument()
+      expect(screen.getByText(/Expires in 0?[89]:\d\d/)).toBeInTheDocument()
+    })
+
+    it('never renders the stored secret', async () => {
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_x', secretSet: true, connection: 'connected' })
+      renderDialog(api)
+
+      const input = (await screen.findByLabelText('App Secret')) as HTMLInputElement
+      await waitFor(() => expect(input.placeholder).toMatch(/Set/))
+      expect(input.type).toBe('password')
+      expect(input.value).toBe('')
+    })
+
+    it('saves the secret only when one was typed', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({ ...larkOff, enabled: true, appId: 'cli_x', secretSet: true })
+      renderDialog(api)
+      await screen.findByDisplayValue('cli_x')
+
+      await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
+      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_x' })
+
+      await user.type(screen.getByLabelText('App Secret'), 's3cret')
+      await user.click(screen.getByRole('button', { name: 'Save Lark settings' }))
+      expect(api.larkSaveConfig).toHaveBeenLastCalledWith({ enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 's3cret' })
+      expect((screen.getByLabelText('App Secret') as HTMLInputElement).value).toBe('')
+    })
+
+    it('offers Bind me without an owner and Add teammate only with one', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      renderDialog(api)
+
+      await user.click(await screen.findByRole('button', { name: 'Bind me' }))
+      expect(api.larkStartPairing).toHaveBeenCalledWith('owner')
+      expect(screen.queryByRole('button', { name: 'Add teammate' })).not.toBeInTheDocument()
+    })
+
+    it('lists the owner with Re-bind only and members with Remove', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({
+        ...larkOff,
+        members: [
+          { openId: 'ou_o', name: 'Olive', role: 'owner', addedAt: '2026-11-01T00:00:00.000Z' },
+          { openId: 'ou_m', name: 'Mo', role: 'member', addedAt: '2026-11-02T00:00:00.000Z' }
+        ]
+      })
+      renderDialog(api)
+
+      expect(await screen.findByText('Olive')).toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: /^Remove/ })).toHaveLength(1)
+      await user.click(screen.getByRole('button', { name: 'Re-bind' }))
+      expect(api.larkStartPairing).toHaveBeenCalledWith('owner')
+      await user.click(screen.getByRole('button', { name: 'Add teammate' }))
+      expect(api.larkStartPairing).toHaveBeenCalledWith('member')
+      await user.click(screen.getByRole('button', { name: 'Remove Mo' }))
+      expect(api.larkRemoveMember).toHaveBeenCalledWith('ou_m')
+    })
+
+    it('shows a pairing failure as a notice', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      api.larkStartPairing.mockRejectedValue(new Error('Save the App ID first'))
+      renderDialog(api)
+
+      await user.click(await screen.findByRole('button', { name: 'Bind me' }))
+      await waitFor(() => expect(useAppStore.getState().notice?.message).toBe('Save the App ID first'))
+    })
   })
 })
