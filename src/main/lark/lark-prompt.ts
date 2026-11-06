@@ -1,8 +1,13 @@
 export type LarkQuote = { senderName: string; text: string; imagePaths: string[] }
 
 const FENCE_END = 'REFERENCE>>>'
-const CHANGE_LIST_LIMIT = 20
+export const LARK_CHANGE_LIST_LIMIT = 20
 const TITLE_LIMIT = 40
+
+// Every value written inside the fence goes through this so quoted content can never close it early.
+function defence(value: string): string {
+  return value.split(FENCE_END).join('REFERENCE>>​>')
+}
 
 export function buildLarkTaskPrompt(input: {
   requesterName: string
@@ -20,10 +25,11 @@ export function buildLarkTaskPrompt(input: {
     sections.push(['## 发起人附带的图片', ...input.imagePaths.map((p) => `- ${p}`)].join('\n'))
   }
   if (input.quote) {
-    const text = input.quote.text.split(FENCE_END).join('REFERENCE>>​>')
-    const fenced = ['<<<REFERENCE', `发送者：${input.quote.senderName}`, text]
+    const text = defence(input.quote.text)
+    const sender = defence(input.quote.senderName.replace(/[\r\n]+/g, ' '))
+    const fenced = ['<<<REFERENCE', `发送者：${sender}`, text]
     if (input.quote.imagePaths.length > 0) {
-      fenced.push('图片：', ...input.quote.imagePaths.map((p) => `- ${p}`))
+      fenced.push('图片：', ...input.quote.imagePaths.map((p) => `- ${defence(p)}`))
     }
     fenced.push(FENCE_END)
     sections.push(
@@ -39,8 +45,8 @@ export type ChangedFile = { status: string; path: string }
 
 export function formatChangeList(files: readonly ChangedFile[]): string {
   if (files.length === 0) return ''
-  const lines = files.slice(0, CHANGE_LIST_LIMIT).map((f) => `${f.status} ${f.path}`)
-  if (files.length > CHANGE_LIST_LIMIT) lines.push(`…等 ${files.length - CHANGE_LIST_LIMIT} 个`)
+  const lines = files.slice(0, LARK_CHANGE_LIST_LIMIT).map((f) => `${f.status} ${f.path}`)
+  if (files.length > LARK_CHANGE_LIST_LIMIT) lines.push(`…等 ${files.length - LARK_CHANGE_LIST_LIMIT} 个`)
   return lines.join('\n')
 }
 
