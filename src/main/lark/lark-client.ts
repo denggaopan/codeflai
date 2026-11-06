@@ -1,6 +1,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { LarkDomain } from '../../shared/contracts'
 import { LarkBotIdentity } from './lark-bot-identity'
+import { LARK_HTTP_TIMEOUT_MS, LARK_IMAGE_MAX_BYTES, withRequestTimeout, writeCapped } from './lark-http'
 
 export const LARK_BOT_INFO_TIMEOUT_MS = 10_000
 
@@ -154,7 +155,10 @@ export class SdkLarkClient implements LarkClient {
       appSecret: credentials.appSecret,
       domain,
       loggerLevel: Lark.LoggerLevel.warn,
-      logger: quietLogger
+      logger: quietLogger,
+      // The SDK uses this same instance as its own default; its response interceptor unwraps
+      // axios responses, which is why it satisfies HttpInstance at runtime but not in the types.
+      httpInstance: withRequestTimeout(Lark.defaultHttpInstance as unknown as Lark.HttpInstance, LARK_HTTP_TIMEOUT_MS)
     }
     const api = new Lark.Client(base)
     this.api = api
@@ -275,7 +279,7 @@ export class SdkLarkClient implements LarkClient {
       path: { message_id: messageId, file_key: imageKey },
       params: { type: 'image' }
     })
-    await response.writeFile(targetPath)
+    await writeCapped(response.getReadableStream(), targetPath, LARK_IMAGE_MAX_BYTES, response.headers?.['content-length'])
   }
 
   async userName(openId: string): Promise<string | undefined> {
