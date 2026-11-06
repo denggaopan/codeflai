@@ -47,6 +47,8 @@ class FakeLarkClient implements LarkClient {
   failDownloads = new Set<string>()
   userNameCalls: string[] = []
   failReply = false
+  history = new Map<string, LarkIncomingMessage[]>()
+  listed: Array<{ chatId: string; sinceMs: number; untilMs: number }> = []
 
   connect(
     _credentials: unknown,
@@ -72,6 +74,10 @@ class FakeLarkClient implements LarkClient {
   async userName(openId: string): Promise<string | undefined> {
     this.userNameCalls.push(openId)
     return this.names.get(openId)
+  }
+  async listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]> {
+    this.listed.push({ chatId, sinceMs, untilMs })
+    return this.history.get(chatId) ?? []
   }
   async reply(messageId: string, text: string): Promise<void> {
     if (this.failReply) throw new Error('reply failed')
@@ -636,6 +642,118 @@ describe('LarkBridgeService', () => {
     await deliver(message({ content: text(`绑定 ${code}`), createTimeMs: now.getTime() - 6 * 60_000 }))
     expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.stale])
     expect(await store.owner()).toBeUndefined()
+  })
+
+  it('a redelivered offline message is answered stale', async () => {
+    await makeOwner()
+    await deliver(message({ createTimeMs: now.getTime() - 316_000 }))
+    expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.stale])
+    expect(sessions.created).toEqual([])
+  })
+
+  describe('offline catch-up', () => {
+    const connectAndCatchUp = async (): Promise<void> => {
+      client.onState?.('connected')
+      await bridge.whenIdle()
+    }
+    const missed = (overrides: Partial<LarkIncomingMessage> = {}): LarkIncomingMessage =>
+      message({ createTimeMs: now.getTime() - 120_000, ...overrides })
+
+    beforeEach(async () => {
+      await makeOwner()
+      await makeMember()
+      await store.addKnownChat('oc_chat')
+      await store.setLastOnlineAt(new Date(now.getTime() - 600_000))
+    })
+
+    it('answers missed member messages stale and executes none', async () => {
+      const fromMember = missed({ senderOpenId: MEMBER })
+      const fromOwner = missed()
+      client.history.set('oc_chat', [
+        fromMember,
+        fromOwner,
+        missed({ senderOpenId: 'ou_stranger' }),
+        missed({ senderType: 'app' }),
+        missed({ mentionsBot: false })
+      ])
+      await connectAndCatchUp()
+      expect(client.replies).toEqual([
+        { messageId: fromMember.messageId, text: LARK_REPLY.stale },
+        { messageId: fromOwner.messageId, text: LARK_REPLY.stale }
+      ])
+      expect(sessions.created).toEqual([])
+    })
+
+    it('skips messages already processed', async () => {
+      const seen = missed()
+      await store.markProcessed(seen.messageId)
+      client.history.set('oc_chat', [seen])
+      await connectAndCatchUp()
+      expect(client.replies).toEqual([])
+    })
+
+    it('does not answer a message twice when it is later redelivered', async () => {
+      const again = missed()
+      client.history.set('oc_chat', [again])
+      await connectAndCatchUp()
+      await deliver(again)
+      expect(client.replies).toHaveLength(1)
+    })
+
+    it('looks back from the last online time, but at most 24 hours', async () => {
+      await connectAndCatchUp()
+      expect(client.listed).toEqual([
+        { chatId: 'oc_chat', sinceMs: now.getTime() - 600_000, untilMs: now.getTime() }
+      ])
+      await store.setLastOnlineAt(new Date(now.getTime() - 3 * 86_400_000))
+      client.listed = []
+      await connectAndCatchUp()
+      expect(client.listed).toEqual([
+        { chatId: 'oc_chat', sinceMs: now.getTime() - 86_400_000, untilMs: now.getTime() }
+      ])
+    })
+
+    it('does nothing on the very first connection', async () => {
+      const fresh = await mkdtemp(join(tmpdir(), 'codeflai-lark-bridge-fresh-'))
+      const freshStore = new LarkStore(fresh, new FakeCipher(), () => now)
+      await freshStore.saveConfig({ enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 'secret' })
+      await freshStore.addKnownChat('oc_chat')
+      const other = new FakeLarkClient()
+      const second = new LarkBridgeService({
+        store: freshStore,
+        client: other,
+        sessions,
+        runner,
+        agentAvailable: async () => true,
+        clock: () => now
+      })
+      await second.start()
+      other.onState?.('connected')
+      await second.whenIdle()
+      expect(other.listed).toEqual([])
+      expect(await freshStore.lastOnlineAt()).toEqual(now)
+      second.dispose()
+      await rm(fresh, { recursive: true, force: true })
+    })
+
+    it('survives a failing history request and still stamps the online time', async () => {
+      client.listMessages = async () => {
+        throw new Error('no permission')
+      }
+      await connectAndCatchUp()
+      expect(client.replies).toEqual([])
+      expect(await store.lastOnlineAt()).toEqual(now)
+    })
+
+    it('records the chats of live messages and stamps the time on a clean disconnect', async () => {
+      await deliver(message({ chatId: 'oc_other', createTimeMs: now.getTime() }))
+      expect(await store.knownChats()).toEqual(['oc_chat', 'oc_other'])
+      now = new Date(now.getTime() + 5_000)
+      await connectAndCatchUp()
+      now = new Date(now.getTime() + 5_000)
+      await bridge.applyConfig()
+      expect(await store.lastOnlineAt()).toEqual(now)
+    })
   })
 
   describe('reports', () => {

@@ -21,6 +21,7 @@ const writeFileAtomic = createRequire(import.meta.url)('write-file-atomic') as W
 
 export const LARK_PAIRING_TTL_MS = 10 * 60_000
 export const LARK_PROCESSED_LIMIT = 500
+export const LARK_KNOWN_CHATS_LIMIT = 50
 /** Wrong guesses a pending pairing code survives; the fifth clears it. */
 export const LARK_PAIRING_MAX_FAILURES = 5
 
@@ -58,7 +59,9 @@ const configSchema = z.object({
   appId: z.string(),
   secret: z.string().optional(),
   members: z.array(larkMemberSchema),
-  pairing: pairingSchema.optional()
+  pairing: pairingSchema.optional(),
+  lastOnlineAt: z.string().datetime().optional(),
+  knownChats: z.array(z.string()).optional()
 })
 type LarkConfig = z.infer<typeof configSchema>
 
@@ -214,6 +217,27 @@ export class LarkStore {
       await this.writeJson(path, { version: 1, ids: [...ids, messageId].slice(-LARK_PROCESSED_LIMIT) })
     })
     return fresh
+  }
+
+  async lastOnlineAt(): Promise<Date | undefined> {
+    const stored = (await this.settledConfig()).lastOnlineAt
+    return stored === undefined ? undefined : new Date(stored)
+  }
+
+  setLastOnlineAt(date: Date): Promise<void> {
+    return this.mutateConfig((config) => ({ ...config, lastOnlineAt: date.toISOString() }))
+  }
+
+  async knownChats(): Promise<string[]> {
+    return (await this.settledConfig()).knownChats ?? []
+  }
+
+  /** Remembers a chat that has produced a processed message, most recent last, bounded. */
+  addKnownChat(chatId: string): Promise<void> {
+    return this.mutateConfig((config) => ({
+      ...config,
+      knownChats: [...(config.knownChats ?? []).filter((id) => id !== chatId), chatId].slice(-LARK_KNOWN_CHATS_LIMIT)
+    }))
   }
 
   linkSession(link: LarkSessionLink): Promise<void> {

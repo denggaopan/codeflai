@@ -65,6 +65,21 @@ export class FileLarkClient implements LarkClient {
     }
   }
 
+  async listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]> {
+    const text = await readFile(join(this.directory, 'inbox.jsonl'), 'utf8').catch(() => '')
+    const found: LarkIncomingMessage[] = []
+    for (const line of text.split('\n')) {
+      if (line.trim() === '') continue
+      try {
+        const message = JSON.parse(line) as LarkIncomingMessage
+        if (message.chatId === chatId && message.createTimeMs >= sinceMs && message.createTimeMs <= untilMs) found.push(message)
+      } catch {
+        // A malformed line is a test bug; skip it.
+      }
+    }
+    return found
+  }
+
   async downloadImage(_messageId: string, _imageKey: string, targetPath: string): Promise<void> {
     await copyFile(this.imageFixturePath, targetPath)
   }

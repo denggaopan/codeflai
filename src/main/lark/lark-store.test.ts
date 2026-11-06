@@ -302,4 +302,23 @@ describe('LarkStore', () => {
   it.each(['', '..', '../evil', 'a/b', 'a\\b', 'om 1', 'om.1'])('rejects unsafe message id %j', (id) => {
     expect(() => build().attachmentDirectory(id)).toThrow()
   })
+
+  it('persists the last online time and survives a save of the settings', async () => {
+    const store = build()
+    expect(await store.lastOnlineAt()).toBeUndefined()
+    await store.setLastOnlineAt(new Date('2026-11-06T09:00:00.000Z'))
+    await store.saveConfig({ enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 's' })
+    expect(await build().lastOnlineAt()).toEqual(new Date('2026-11-06T09:00:00.000Z'))
+  })
+
+  it('keeps the 50 most recent chats, most recent last, without duplicates', async () => {
+    const store = build()
+    for (let index = 0; index < 55; index += 1) await store.addKnownChat(`oc_${index}`)
+    await store.addKnownChat('oc_10')
+    const chats = await build().knownChats()
+    expect(chats).toHaveLength(50)
+    expect(chats[0]).toBe('oc_5')
+    expect(chats.at(-1)).toBe('oc_10')
+    expect(chats.filter((chat) => chat === 'oc_10')).toHaveLength(1)
+  })
 })

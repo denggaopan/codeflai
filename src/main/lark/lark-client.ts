@@ -25,6 +25,8 @@ export interface LarkClient {
   ): void
   disconnect(): void
   getMessage(messageId: string): Promise<LarkFetchedMessage | undefined>
+  /** Messages of one chat created in `[sinceMs, untilMs]`, oldest first. Rejects when the API call fails. */
+  listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]>
   downloadImage(messageId: string, imageKey: string, targetPath: string): Promise<void>
   userName(openId: string): Promise<string | undefined>
   reply(messageId: string, text: string): Promise<void>
@@ -57,6 +59,38 @@ export function toIncomingMessage(event: LarkReceiveEvent, botOpenId: string | u
     createTimeMs: Number(message.create_time),
     senderType: sender?.sender_type ?? '',
     ...(sender?.sender_id?.open_id ? { senderOpenId: sender.sender_id.open_id } : {}),
+    mentionsBot
+  }
+}
+
+// Minimal view of an item from the IM "list messages" API, as observed against the real service.
+export type LarkListedItem = {
+  message_id?: string
+  chat_id?: string
+  parent_id?: string
+  msg_type?: string
+  create_time?: string
+  body?: { content?: string }
+  sender?: { id?: string; id_type?: string; sender_type?: string }
+  mentions?: Array<{ id?: string; id_type?: string }>
+}
+
+/** Undefined for an item without the fields every message must have. */
+export function toListedMessage(item: LarkListedItem, botOpenId: string | undefined): LarkIncomingMessage | undefined {
+  if (!item.message_id || !item.chat_id || !item.msg_type || item.body?.content === undefined) return undefined
+  const mentionsBot =
+    botOpenId !== undefined &&
+    (item.mentions ?? []).some((mention) => mention.id === botOpenId && (mention.id_type === undefined || mention.id_type === 'open_id'))
+  const senderOpenId = item.sender?.id_type === 'open_id' && item.sender.id ? item.sender.id : undefined
+  return {
+    messageId: item.message_id,
+    chatId: item.chat_id,
+    ...(item.parent_id ? { parentId: item.parent_id } : {}),
+    messageType: item.msg_type,
+    content: item.body.content,
+    createTimeMs: Number(item.create_time),
+    senderType: item.sender?.sender_type ?? '',
+    ...(senderOpenId === undefined ? {} : { senderOpenId }),
     mentionsBot
   }
 }
@@ -110,13 +144,18 @@ export class SdkLarkClient implements LarkClient {
     this.api = api
     this.botOpenId = undefined
 
-    const fetchBotId = (): void => {
+    // `connected` is reported only after the bot id lookup settles, so the catch-up that runs on
+    // it can already tell which listed messages mention the bot.
+    const reportConnected = (): void => {
       void api
         .request({ method: 'GET', url: '/open-apis/bot/v3/info' })
         .then((info: { bot?: { open_id?: string } }) => {
           if (current() && info?.bot?.open_id) this.botOpenId = info.bot.open_id
         })
         .catch(() => undefined)
+        .then(() => {
+          if (current()) onState('connected')
+        })
     }
 
     onState('connecting')
@@ -124,13 +163,11 @@ export class SdkLarkClient implements LarkClient {
       ...base,
       onReady: () => {
         if (!current()) return
-        fetchBotId()
-        onState('connected')
+        reportConnected()
       },
       onReconnected: () => {
         if (!current()) return
-        fetchBotId()
-        onState('connected')
+        reportConnected()
       },
       onReconnecting: () => {
         if (current()) onState('connecting')
@@ -183,6 +220,34 @@ export class SdkLarkClient implements LarkClient {
     } catch {
       return undefined
     }
+  }
+
+  async listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]> {
+    const api = this.requireApi()
+    const botOpenId = this.botOpenId
+    if (botOpenId === undefined) throw new Error('The bot id is not known yet.')
+    const found: LarkIncomingMessage[] = []
+    let pageToken: string | undefined
+    for (let page = 0; page < 100; page += 1) {
+      const response = await api.im.v1.message.list({
+        params: {
+          container_id_type: 'chat',
+          container_id: chatId,
+          start_time: String(Math.floor(sinceMs / 1000)),
+          end_time: String(Math.floor(untilMs / 1000)),
+          sort_type: 'ByCreateTimeAsc',
+          page_size: 50,
+          ...(pageToken === undefined ? {} : { page_token: pageToken })
+        }
+      })
+      for (const item of response?.data?.items ?? []) {
+        const mapped = toListedMessage(item, botOpenId)
+        if (mapped !== undefined) found.push(mapped)
+      }
+      if (!response?.data?.has_more || !response.data.page_token) break
+      pageToken = response.data.page_token
+    }
+    return found
   }
 
   async downloadImage(messageId: string, imageKey: string, targetPath: string): Promise<void> {

@@ -19,6 +19,8 @@ import { agentMissingReply, exitReply, idleReply, LARK_REPLY, startedReply, type
 import type { LarkStore } from './lark-store'
 
 export const LARK_STALE_MESSAGE_MS = 5 * 60_000
+export const LARK_CATCH_UP_WINDOW_MS = 24 * 60 * 60_000
+export const LARK_ONLINE_STAMP_INTERVAL_MS = 60_000
 
 const UNKNOWN_NAME = '群成员'
 // Lark image keys are opaque tokens; one that is not is never passed to the API or into a path.
@@ -46,6 +48,7 @@ export class LarkBridgeService {
   private error?: string
   private disposed = false
   private unsubscribe?: () => void
+  private stampTimer?: NodeJS.Timeout
   // Last status seen per session; undefined until the first state arrives (the baseline).
   private statuses?: Map<string, SessionRecord['status']>
 
@@ -67,6 +70,7 @@ export class LarkBridgeService {
   }
 
   async applyConfig(): Promise<void> {
+    this.stopStamping()
     this.deps.client.disconnect()
     await this.connect()
   }
@@ -161,7 +165,78 @@ export class LarkBridgeService {
     this.disposed = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
+    this.stopStamping()
     this.deps.client.disconnect()
+  }
+
+  private now(): Date {
+    return this.deps.clock?.() ?? new Date()
+  }
+
+  // Stamps the time once more when a connected bridge is closed cleanly, so the next
+  // catch-up starts where this run stopped rather than up to a minute earlier.
+  private stopStamping(): void {
+    if (this.stampTimer === undefined) return
+    clearInterval(this.stampTimer)
+    this.stampTimer = undefined
+    void this.stamp()
+  }
+
+  private async stamp(): Promise<void> {
+    try {
+      await this.deps.store.setLastOnlineAt(this.now())
+    } catch (error) {
+      console.error('Lark could not record the online time:', error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
+  // Leaving `connected` by error: the timer stops, but no stamp, as the link has been down since the last tick.
+  private stopStampingQuietly(): void {
+    if (this.stampTimer !== undefined) clearInterval(this.stampTimer)
+    this.stampTimer = undefined
+  }
+
+  private startStamping(): void {
+    if (this.stampTimer !== undefined) clearInterval(this.stampTimer)
+    this.stampTimer = setInterval(() => void this.stamp(), LARK_ONLINE_STAMP_INTERVAL_MS)
+    this.stampTimer.unref()
+  }
+
+  // Runs on every transition to `connected`, on the same queue as live messages. History is only
+  // ever answered stale, never executed: the sender gets told to resend, nothing starts.
+  private async connectedTask(): Promise<void> {
+    if (this.disposed) return
+    const { store, client } = this.deps
+    try {
+      const now = this.now().getTime()
+      const last = await store.lastOnlineAt()
+      if (last !== undefined) {
+        const since = Math.max(last.getTime(), now - LARK_CATCH_UP_WINDOW_MS)
+        for (const chatId of await store.knownChats()) {
+          if (this.disposed) return
+          try {
+            for (const missed of await client.listMessages(chatId, since, now)) await this.catchUp(missed)
+          } catch (error) {
+            console.error('Lark catch-up failed for a chat:', error instanceof Error ? error.name : 'unknown error')
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Lark catch-up failed:', error instanceof Error ? error.name : 'unknown error')
+    }
+    if (this.disposed) return
+    await this.stamp()
+    this.startStamping()
+  }
+
+  private async catchUp(incoming: LarkIncomingMessage): Promise<void> {
+    if (this.disposed) return
+    if (!incoming.mentionsBot || incoming.senderType !== 'user' || !incoming.senderOpenId) return
+    const { store } = this.deps
+    if (!(await store.markProcessed(incoming.messageId))) return
+    // Strangers get nothing for history: a reply here would be a stream of 没有权限 for old chatter.
+    if ((await store.memberFor(incoming.senderOpenId)) === undefined) return
+    await this.reply(incoming.messageId, LARK_REPLY.stale)
   }
 
   private async connect(): Promise<void> {
@@ -174,7 +249,11 @@ export class LarkBridgeService {
       credentials,
       (incoming) => this.enqueue(incoming),
       (state, error) => {
-        this.enqueueTask(() => this.setConnection(state, error))
+        this.enqueueTask(async () => {
+          if (state !== 'connected') this.stopStampingQuietly()
+          await this.setConnection(state, error)
+          if (state === 'connected') await this.connectedTask()
+        })
       }
     )
   }
@@ -217,8 +296,13 @@ export class LarkBridgeService {
     const { store, client } = this.deps
 
     if (!(await store.markProcessed(incoming.messageId))) return
+    try {
+      await store.addKnownChat(incoming.chatId)
+    } catch (error) {
+      console.error('Lark could not remember a chat:', error instanceof Error ? error.name : 'unknown error')
+    }
 
-    const now = (this.deps.clock?.() ?? new Date()).getTime()
+    const now = this.now().getTime()
     if (!(Number.isFinite(incoming.createTimeMs) && now - incoming.createTimeMs <= LARK_STALE_MESSAGE_MS)) {
       await this.reply(incoming.messageId, LARK_REPLY.stale)
       return
