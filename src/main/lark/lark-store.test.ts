@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { LarkStore, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type SecretCipher } from './lark-store'
+import { LarkStore, LARK_PAIRING_MAX_FAILURES, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type SecretCipher } from './lark-store'
 
 class FakeCipher implements SecretCipher {
   available = true
@@ -181,17 +181,83 @@ describe('LarkStore', () => {
   })
 
   it('markProcessed is persistent and bounded', async () => {
+    const seeded = Array.from({ length: LARK_PROCESSED_LIMIT - 1 }, (_, index) => `om_${index + 1}`)
+    await writeFile(join(directory, 'processed.json'), JSON.stringify({ version: 1, ids: seeded }), 'utf8')
     const store = build()
-    expect(await store.markProcessed('om_1')).toBe(true)
     expect(await store.markProcessed('om_1')).toBe(false)
-    expect(await build().markProcessed('om_1')).toBe(false)
-
-    for (let index = 2; index <= LARK_PROCESSED_LIMIT; index += 1) await store.markProcessed(`om_${index}`)
-    expect(await store.markProcessed('om_1')).toBe(false)
+    expect(await build().markProcessed('om_2')).toBe(false)
+    expect(await store.markProcessed(`om_${LARK_PROCESSED_LIMIT}`)).toBe(true)
+    // The 501st id pushes the oldest one out.
     expect(await store.markProcessed(`om_${LARK_PROCESSED_LIMIT + 1}`)).toBe(true)
-    // The 501st id pushed the oldest one out.
     expect(await store.markProcessed('om_1')).toBe(true)
-  }, 60_000)
+  })
+
+  it('invalidates the code after 5 failed attempts', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    for (let attempt = 0; attempt < LARK_PAIRING_MAX_FAILURES; attempt += 1) {
+      expect(await store.redeemPairing('999999', 'ou_1', 'Alice')).toBe('invalid')
+    }
+    expect(await store.redeemPairing('123456', 'ou_1', 'Alice')).toBe('invalid')
+    expect((await store.status('off')).pairing).toBeUndefined()
+  })
+
+  it('a correct code after 4 failures still works', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    for (let attempt = 0; attempt < LARK_PAIRING_MAX_FAILURES - 1; attempt += 1) await store.redeemPairing('999999', 'ou_1', 'Alice')
+    expect(await store.redeemPairing('123456', 'ou_1', 'Alice')).toBe('added')
+  })
+
+  it('a new pairing resets the failure counter', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    for (let attempt = 0; attempt < LARK_PAIRING_MAX_FAILURES - 1; attempt += 1) await store.redeemPairing('999999', 'ou_1', 'Alice')
+    await store.startPairing('owner')
+    await store.redeemPairing('999999', 'ou_1', 'Alice')
+    expect(await store.redeemPairing('123456', 'ou_1', 'Alice')).toBe('added')
+  })
+
+  it('does not leak the failure counter through status', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    await store.redeemPairing('999999', 'ou_1', 'Alice')
+    expect(Object.keys((await store.status('off')).pairing ?? {}).sort()).toEqual(['code', 'expiresAt', 'role'])
+  })
+
+  it('a member code redeemed by the owner is consumed and keeps the owner', async () => {
+    const store = build()
+    await bindOwner(store)
+    await store.startPairing('member')
+    expect(await store.redeemPairing('123456', 'ou_owner', 'Owner')).toBe('added')
+    expect((await store.owner())?.openId).toBe('ou_owner')
+    expect((await store.status('off')).members).toHaveLength(1)
+    expect((await store.status('off')).pairing).toBeUndefined()
+    expect(await store.redeemPairing('123456', 'ou_other', 'Other')).toBe('invalid')
+  })
+
+  it('removing the owner clears any pending pairing', async () => {
+    const store = build()
+    await bindOwner(store)
+    await store.startPairing('member')
+    await store.removeMember('ou_owner')
+    expect((await store.status('off')).pairing).toBeUndefined()
+    expect(await store.redeemPairing('123456', 'ou_x', 'X')).toBe('invalid')
+  })
+
+  it('redeems one code for exactly one of two concurrent attempts', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    const results = await Promise.all([store.redeemPairing('123456', 'ou_1', 'A'), store.redeemPairing('123456', 'ou_2', 'B')])
+    expect(results.filter((result) => result === 'added')).toHaveLength(1)
+    expect((await store.status('off')).members).toHaveLength(1)
+  })
+
+  it('marks a message processed exactly once under concurrency', async () => {
+    const store = build()
+    const results = await Promise.all([store.markProcessed('x'), store.markProcessed('x')])
+    expect(results.filter(Boolean)).toHaveLength(1)
+  })
 
   it('a corrupt config file reads as empty', async () => {
     await writeFile(join(directory, 'config.json'), '{not json', 'utf8')

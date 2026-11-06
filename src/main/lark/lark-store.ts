@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -20,6 +21,8 @@ const writeFileAtomic = createRequire(import.meta.url)('write-file-atomic') as W
 
 export const LARK_PAIRING_TTL_MS = 10 * 60_000
 export const LARK_PROCESSED_LIMIT = 500
+/** Wrong guesses a pending pairing code survives; the fifth clears it. */
+export const LARK_PAIRING_MAX_FAILURES = 5
 
 // Lark message ids look like `om_x100b61e7abb0fca4ffa63c824cbbe7c`. The id becomes a directory
 // name, so anything that could climb out of the attachments folder is refused.
@@ -44,7 +47,8 @@ export type LarkSessionLink = {
 const pairingSchema = z.strictObject({
   code: z.string(),
   role: z.enum(['owner', 'member']),
-  expiresAt: z.string().datetime()
+  expiresAt: z.string().datetime(),
+  failures: z.number().int().min(0).default(0)
 })
 
 const configSchema = z.object({
@@ -88,7 +92,7 @@ export class LarkStore {
     private readonly directory: string,
     private readonly cipher: SecretCipher,
     private readonly clock: () => Date = () => new Date(),
-    private readonly random: (max: number) => number = (max) => Math.floor(Math.random() * max)
+    private readonly random: (max: number) => number = (max) => randomInt(max)
   ) {}
 
   promptDirectory(): string {
@@ -102,7 +106,8 @@ export class LarkStore {
 
   async status(connection: LarkConnection, error?: string): Promise<LarkStatus> {
     const config = await this.settledConfig()
-    const pairing = config.pairing
+    const pending = config.pairing
+    const pairing = pending === undefined ? undefined : { code: pending.code, role: pending.role, expiresAt: pending.expiresAt }
     return {
       enabled: config.enabled,
       domain: config.domain,
@@ -138,7 +143,7 @@ export class LarkStore {
     try {
       return { domain: config.domain, appId: config.appId, appSecret: this.cipher.decrypt(config.secret) }
     } catch (error) {
-      console.error('LarkStore: could not decrypt the stored App Secret.', error)
+      console.error('LarkStore: could not decrypt the stored App Secret.')
       return undefined
     }
   }
@@ -148,7 +153,7 @@ export class LarkStore {
       if (role === 'member' && !config.members.some((member) => member.role === 'owner')) throw new Error('Bind an owner first.')
       const code = String(this.random(1_000_000)).padStart(6, '0')
       const expiresAt = new Date(this.clock().getTime() + LARK_PAIRING_TTL_MS).toISOString()
-      return { ...config, pairing: { code, role, expiresAt } }
+      return { ...config, pairing: { code, role, expiresAt, failures: 0 } }
     })
   }
 
@@ -156,22 +161,39 @@ export class LarkStore {
     let outcome: 'added' | 'invalid' = 'invalid'
     await this.mutateConfig((config) => {
       const pairing = config.pairing
-      if (pairing === undefined || pairing.code !== code || Date.parse(pairing.expiresAt) < this.clock().getTime()) return config
+      if (pairing === undefined || Date.parse(pairing.expiresAt) < this.clock().getTime()) return config
+      if (pairing.code !== code) {
+        const failures = pairing.failures + 1
+        if (failures >= LARK_PAIRING_MAX_FAILURES) {
+          const { pairing: _spent, ...rest } = config
+          return rest
+        }
+        return { ...config, pairing: { ...pairing, failures } }
+      }
       outcome = 'added'
+      const { pairing: _used, ...withoutPairing } = config
+      // The owner redeeming a member code consumes it but must never be demoted.
+      if (pairing.role === 'member' && config.members.some((member) => member.openId === openId && member.role === 'owner')) return withoutPairing
       const entry: LarkMember = { openId, name, role: pairing.role, addedAt: this.clock().toISOString() }
       const previous = config.members.find((member) => member.openId === openId)
       const others = config.members.filter(
         (member) => member.openId !== openId && !(pairing.role === 'owner' && member.role === 'owner')
       )
       const kept = previous === undefined ? entry : { ...entry, addedAt: previous.addedAt }
-      const { pairing: _used, ...rest } = config
-      return { ...rest, members: [...others, kept] }
+      return { ...withoutPairing, members: [...others, kept] }
     })
     return outcome
   }
 
   removeMember(openId: string): Promise<void> {
-    return this.mutateConfig((config) => ({ ...config, members: config.members.filter((member) => member.openId !== openId) }))
+    return this.mutateConfig((config) => {
+      const removesOwner = config.members.some((member) => member.openId === openId && member.role === 'owner')
+      const { pairing: _pairing, ...rest } = config
+      return {
+        ...(removesOwner ? rest : config),
+        members: config.members.filter((member) => member.openId !== openId)
+      }
+    })
   }
 
   async memberFor(openId: string): Promise<LarkMember | undefined> {
@@ -261,13 +283,14 @@ export class LarkStore {
     try {
       text = await readFile(path, 'utf8')
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error(`LarkStore: could not read ${path}.`, error)
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error(`LarkStore: could not read ${path}.`, (error as Error).name)
       return empty
     }
     try {
       return pick(schema.parse(JSON.parse(text)))
     } catch (error) {
-      console.error(`LarkStore: ignoring unreadable ${path}.`, error)
+      // Not the error itself: a JSON parse message can quote a snippet of the file, which may be ciphertext.
+      console.error(`LarkStore: ignoring unreadable ${path} (${(error as Error).name}).`)
       return empty
     }
   }
