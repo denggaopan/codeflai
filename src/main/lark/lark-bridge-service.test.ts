@@ -4,9 +4,9 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { AppState, DeleteSessionResult, SessionKind, SessionRecord } from '../../shared/contracts'
+import type { AppState, SessionKind, SessionRecord } from '../../shared/contracts'
 import type { CommandResult, CommandRunner } from '../infrastructure/command-runner'
-import type { CreateSessionOptions } from '../services/session-coordinator'
+import { WorktreeRequiredError, type CreateSessionOptions } from '../services/session-coordinator'
 import {
   LARK_STALE_MESSAGE_MS,
   LarkBridgeService,
@@ -45,6 +45,7 @@ class FakeLarkClient implements LarkClient {
   names = new Map<string, string>()
   fetched = new Map<string, LarkFetchedMessage>()
   failDownloads = new Set<string>()
+  userNameCalls: string[] = []
   failReply = false
 
   connect(
@@ -69,6 +70,7 @@ class FakeLarkClient implements LarkClient {
     await writeFile(targetPath, 'png')
   }
   async userName(openId: string): Promise<string | undefined> {
+    this.userNameCalls.push(openId)
     return this.names.get(openId)
   }
   async reply(messageId: string, text: string): Promise<void> {
@@ -82,19 +84,23 @@ class FakeSessions implements LarkSessionSource {
     { id: 'p1', name: 'Alpha', path: 'C:/alpha', createdAt: '2026-11-06T00:00:00.000Z' },
     { id: 'p2', name: 'Beta', path: 'C:/beta', createdAt: '2026-11-06T00:00:00.000Z' }
   ]
+  createOptions: CreateSessionOptions[] = []
   created: Array<{ projectId: string; kind: SessionKind; options: CreateSessionOptions }> = []
-  deleted: string[] = []
   mode: 'worktree' | 'ordinary' = 'worktree'
   failCreate = false
+  failSnapshot = false
   events: string[] = []
   onCreate?: () => void
 
   async snapshot(): Promise<AppState> {
+    if (this.failSnapshot) throw new Error('snapshot failed')
     return { projects: this.projects, sessions: [] } as unknown as AppState
   }
   async create(projectId: string, kind: SessionKind, options: CreateSessionOptions): Promise<SessionRecord> {
     this.events.push('create')
+    this.createOptions.push(options)
     this.onCreate?.()
+    if (options.requireWorktree && this.mode !== 'worktree') throw new WorktreeRequiredError()
     if (this.failCreate) throw new Error('cannot create')
     this.created.push({ projectId, kind, options })
     const base = {
@@ -112,10 +118,6 @@ class FakeSessions implements LarkSessionSource {
         ? { ...base, mode: 'worktree', worktreeName: 'w', worktreePath: 'C:/alpha-wt', branchName: 'worktree-261106-1' }
         : { ...base, mode: 'ordinary' }
     ) as unknown as SessionRecord
-  }
-  async delete(sessionId: string): Promise<DeleteSessionResult> {
-    this.deleted.push(sessionId)
-    return { status: 'deleted' } as DeleteSessionResult
   }
   onStateChanged(): () => void {
     return () => undefined
@@ -437,13 +439,17 @@ describe('LarkBridgeService', () => {
     expect(client.replies).toHaveLength(1)
   })
 
-  it('deletes an ordinary session and replies notGit', async () => {
+  it('refuses a non-worktree location before any session exists and replies notGit', async () => {
     await makeOwner()
     sessions.mode = 'ordinary'
-    await deliver(message())
-    expect(sessions.deleted).toEqual(['s1'])
+    client.fetched.set('om_parent', { messageType: 'image', content: JSON.stringify({ image_key: 'k' }) })
+    const incoming = message({ parentId: 'om_parent' })
+    await deliver(incoming)
+    expect(sessions.created).toEqual([])
+    expect(sessions.createOptions[0]?.requireWorktree).toBe(true)
     expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.notGit])
     expect(await store.sessionLink('s1')).toBeUndefined()
+    await expect(stat(join(directory, 'attachments', incoming.messageId))).rejects.toThrow()
   })
 
   it('hoists the skill into taskPrompt.skill', async () => {
@@ -488,18 +494,124 @@ describe('LarkBridgeService', () => {
     expect(sessions.created).toHaveLength(2)
   })
 
-  it('applyConfig disconnects and reconnects, dispose disconnects', async () => {
+  it('applyConfig disconnects once and reconnects, dispose disconnects once more', async () => {
+    expect(client.disconnects).toBe(0)
     await bridge.applyConfig()
-    expect(client.disconnects).toBeGreaterThanOrEqual(1)
+    expect(client.disconnects).toBe(1)
     expect(client.connects).toBe(2)
-    const before = client.disconnects
     bridge.dispose()
-    expect(client.disconnects).toBe(before + 1)
+    expect(client.disconnects).toBe(2)
   })
 
-  it('writes nothing outside the lark directory for a message', async () => {
+  it('records the processed id of a handled message', async () => {
     await makeOwner()
+    const incoming = message()
+    await deliver(incoming)
+    expect(await readFile(join(directory, 'processed.json'), 'utf8')).toContain(incoming.messageId)
+  })
+
+  it('drops an image with an invalid key without calling the client', async () => {
+    await makeOwner()
+    const incoming = message({
+      messageType: 'post',
+      content: JSON.stringify({
+        title: '',
+        content: [[{ tag: 'text', text: 'Alpha go' }, { tag: 'img', image_key: '../evil' }, { tag: 'img', image_key: 'good_1' }]]
+      })
+    })
+    await deliver(incoming)
+    expect(client.downloads.map((d) => d.imageKey)).toEqual(['good_1'])
+    expect(sessions.created).toHaveLength(1)
+  })
+
+  it('still sends the started reply and keeps the files when linking the session fails', async () => {
+    await makeOwner()
+    store.linkSession = async () => {
+      throw new Error('disk full')
+    }
+    client.fetched.set('om_parent', { messageType: 'image', content: JSON.stringify({ image_key: 'k' }) })
+    const incoming = message({ parentId: 'om_parent' })
+    await deliver(incoming)
+    expect(client.replies.map((r) => r.text)).toEqual(['已在 Alpha 开了 Claude 会话（分支 worktree-261106-1）'])
+    expect((await stat(join(directory, 'attachments', incoming.messageId, '0.png'))).isFile()).toBe(true)
+  })
+
+  it('fails closed on an unsafe message id', async () => {
+    await makeOwner()
+    await deliver(message({ messageId: '../escape' }))
+    expect(sessions.created).toEqual([])
+    expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.startFailed])
+  })
+
+  it('replies startFailed when the project snapshot rejects', async () => {
+    await makeOwner()
+    sessions.failSnapshot = true
     await deliver(message())
-    expect(await readFile(join(directory, 'processed.json'), 'utf8')).toContain('om_')
+    expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.startFailed])
+    expect(sessions.created).toEqual([])
+  })
+
+  it('replies startFailed when the availability check rejects', async () => {
+    await makeOwner()
+    const failing = new LarkBridgeService({
+      store,
+      client,
+      sessions,
+      runner,
+      agentAvailable: async () => {
+        throw new Error('locator broke')
+      },
+      clock: () => now
+    })
+    await failing.start()
+    client.onMessage?.(message())
+    await failing.whenIdle()
+    expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.startFailed])
+    expect(sessions.created).toEqual([])
+    failing.dispose()
+  })
+
+  it('names the requester and the quote sender 群成员 when no name is known', async () => {
+    await store.startPairing('owner')
+    const code = (await store.status('connected')).pairing!.code
+    await store.redeemPairing(code, OWNER, 'Olivia')
+    await store.startPairing('member')
+    const memberCode = (await store.status('connected')).pairing!.code
+    await store.redeemPairing(memberCode, MEMBER, '')
+    client.fetched.set('om_parent', {
+      messageType: 'text',
+      content: JSON.stringify({ text: 'context' }),
+      senderOpenId: 'ou_unknown'
+    })
+    await deliver(message({ senderOpenId: MEMBER, parentId: 'om_parent' }))
+    expect(sessions.created[0]?.options.title).toContain('[群成员]')
+    const prompt = sessions.created[0]!.options.taskPrompt!.text
+    expect(prompt).toContain('发起人：群成员')
+    expect(prompt).toContain('发送者：群成员')
+    expect(client.replies[0]!.text).toContain('由 群成员 发起')
+  })
+
+  it('downloads quote images from the parent message and fences their paths', async () => {
+    await makeOwner()
+    client.fetched.set('om_parent', {
+      messageType: 'post',
+      content: JSON.stringify({ title: '', content: [[{ tag: 'text', text: 'see' }, { tag: 'img', image_key: 'q_1' }]] })
+    })
+    const incoming = message({ parentId: 'om_parent' })
+    await deliver(incoming)
+    expect(client.downloads).toEqual([
+      { messageId: 'om_parent', imageKey: 'q_1', targetPath: join(directory, 'attachments', incoming.messageId, '0.png') }
+    ])
+    const prompt = sessions.created[0]!.options.taskPrompt!.text
+    const fenced = prompt.slice(prompt.indexOf('<<<REFERENCE'), prompt.indexOf('REFERENCE>>>'))
+    expect(fenced).toContain(join(directory, 'attachments', incoming.messageId, '0.png'))
+  })
+
+  it('answers a stale bind message as stale and adds nobody', async () => {
+    await store.startPairing('owner')
+    const code = (await store.status('connected')).pairing!.code
+    await deliver(message({ content: text(`绑定 ${code}`), createTimeMs: now.getTime() - 6 * 60_000 }))
+    expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.stale])
+    expect(await store.owner()).toBeUndefined()
   })
 })

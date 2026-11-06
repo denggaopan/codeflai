@@ -8,7 +8,7 @@ import type { SessionStore } from './session-store'
 import type { RemoveWorktreeResult, SessionLocation, WorktreeService } from './worktree-service'
 import type { TerminalEventMap } from './terminal-service'
 import type { TitleService } from './title-service'
-import { SessionCoordinator, SessionNotFoundError, SessionOrderMismatchError, type SessionTerminal } from './session-coordinator'
+import { SessionCoordinator, SessionNotFoundError, SessionOrderMismatchError, WorktreeRequiredError, type SessionTerminal } from './session-coordinator'
 
 const emptyState = (): AppState => ({ version: 1, projects: [], sessions: [] })
 
@@ -249,6 +249,20 @@ describe('SessionCoordinator.create with an initial prompt', () => {
     expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
     expect((await store.load()).sessions).toHaveLength(0)
     expect(worktreeService.rollback).toHaveBeenCalledWith(worktreeLocation)
+  })
+
+  it('requireWorktree refuses an ordinary location without starting a PTY or persisting a record', async () => {
+    const { store, worktreeService, terminalService, promptFiles, coordinator } = buildHarness()
+    worktreeService.create.mockResolvedValue(ordinaryLocation)
+
+    await expect(
+      coordinator.create('project-1', 'claude', { worktree: true, requireWorktree: true, taskPrompt: { text: 'x' } })
+    ).rejects.toBeInstanceOf(WorktreeRequiredError)
+
+    expect(terminalService.start).not.toHaveBeenCalled()
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(promptFiles.write).not.toHaveBeenCalled()
+    expect(worktreeService.rollback).not.toHaveBeenCalled()
   })
 
   it('removes the record and rolls back when the prompt file itself cannot be written', async () => {

@@ -21,6 +21,13 @@ export class SessionNotFoundError extends Error {
   }
 }
 
+export class WorktreeRequiredError extends Error {
+  constructor() {
+    super('A worktree was required but the project cannot provide one.')
+    this.name = 'WorktreeRequiredError'
+  }
+}
+
 export class SessionOrderMismatchError extends Error {
   constructor() {
     super('The session order does not match the sessions on record.')
@@ -84,6 +91,11 @@ export type CreateSessionOptions = {
    * `initialPrompt`.
    */
   taskPrompt?: { text: string; skill?: string }
+  /**
+   * Refuse (with `WorktreeRequiredError`) instead of falling back to the project directory
+   * when no worktree can be made. Checked before the record is persisted or any PTY starts.
+   */
+  requireWorktree?: boolean
 }
 
 /**
@@ -177,6 +189,7 @@ export class SessionCoordinator {
       const location: SessionLocation = options.worktree
         ? await this.worktreeService.create(project, current.sessions)
         : { mode: 'ordinary', launchPath: project.path }
+      if (options.requireWorktree && location.mode !== 'worktree') throw new WorktreeRequiredError()
 
       const record: SessionRecord = {
         id: this.createId(),
