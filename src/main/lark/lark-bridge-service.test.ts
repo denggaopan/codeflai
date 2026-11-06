@@ -327,6 +327,14 @@ describe('LarkBridgeService', () => {
     expect((await store.memberFor('ou_stranger'))).toBeUndefined()
   })
 
+  it('publishes the new status when a code is redeemed so Settings shows the member', async () => {
+    await store.startPairing('owner')
+    const code = (await store.status('connected')).pairing!.code
+    const before = statuses.length
+    await deliver(message({ content: text(`绑定 ${code}`) }))
+    expect(statuses.length).toBe(before + 1)
+  })
+
   it('rejects an expired code', async () => {
     await makeOwner()
     await store.startPairing('member')

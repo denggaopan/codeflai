@@ -19,6 +19,7 @@ import { cliLocator, type CliLocator } from './infrastructure/cli-locator'
 import { commandRunner } from './infrastructure/command-runner'
 import { registerIpc, type LarkIpcPort } from './ipc/register-ipc'
 import { LarkBridgeService } from './lark/lark-bridge-service'
+import { FileLarkClient } from './lark/file-lark-client'
 import { SdkLarkClient, type LarkClient } from './lark/lark-client'
 import { LarkStore, type SecretCipher } from './lark/lark-store'
 import type { LarkStatus } from '../shared/contracts'
@@ -462,6 +463,12 @@ const electronCipher: SecretCipher = {
   decrypt: (cipher) => safeStorage.decryptString(Buffer.from(cipher, 'base64'))
 }
 
+const e2eLarkCipher: SecretCipher = {
+  isAvailable: () => true,
+  encrypt: (plain) => Buffer.from(plain, 'utf8').toString('base64'),
+  decrypt: (cipher) => Buffer.from(cipher, 'base64').toString('utf8')
+}
+
 /**
  * The Lark bridge is application-scoped (one connection, one whitelist), but the window it
  * reports status to is not: `onStatusChanged` is what each `openMainWindow()` re-subscribes, so
@@ -641,8 +648,15 @@ if (!app.requestSingleInstanceLock()) {
     // Lark bridge: app-level, started after reconciliation so its baseline of session statuses
     // is the reconciled one. Unconfigured it stays `off` and touches no network.
     const { bridge: larkBridge, ipc: larkIpc } = buildLarkBridge({
-      client: new SdkLarkClient(),
-      cipher: electronCipher,
+      // E2E swaps the network client for a directory-backed one and the keystore for plain
+      // base64 (always available), the only two things that differ from production.
+      client: isE2E
+        ? new FileLarkClient(
+            process.env.CODEFLAI_E2E_LARK_DIR ?? join(userDataPath, 'lark-e2e'),
+            join(app.getAppPath(), 'e2e', 'fixtures', 'lark-image.png')
+          )
+        : new SdkLarkClient(),
+      cipher: isE2E ? e2eLarkCipher : electronCipher,
       coordinator,
       agentLocator
     })

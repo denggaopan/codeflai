@@ -30,9 +30,9 @@ const createFakeApi = () => ({
   downloadUpdate: vi.fn(async (): Promise<UpdateDownloadResult> => ({ status: 'ready', version: '10.0.0', fileName: 'Setup.exe' })),
   setTheme: vi.fn(async () => undefined),
   larkStatus: vi.fn(async (): Promise<LarkStatus> => larkOff),
-  larkSaveConfig: vi.fn(async (_request: unknown): Promise<void> => undefined),
-  larkStartPairing: vi.fn(async (_role: 'owner' | 'member'): Promise<void> => undefined),
-  larkRemoveMember: vi.fn(async (_openId: string): Promise<void> => undefined),
+  larkSaveConfig: vi.fn(async (_request: unknown): Promise<LarkStatus> => larkOff),
+  larkStartPairing: vi.fn(async (_role: 'owner' | 'member'): Promise<LarkStatus> => larkOff),
+  larkRemoveMember: vi.fn(async (_openId: string): Promise<LarkStatus> => larkOff),
   onLarkStatusChanged: vi.fn((_listener: (status: LarkStatus) => void) => () => undefined)
 })
 
@@ -536,13 +536,16 @@ describe('SettingsDialog', () => {
     it('lists the owner with Re-bind only and members with Remove', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
-      api.larkStatus.mockResolvedValue({
+      const withMembers: LarkStatus = {
         ...larkOff,
         members: [
           { openId: 'ou_o', name: 'Olive', role: 'owner', addedAt: '2026-11-01T00:00:00.000Z' },
           { openId: 'ou_m', name: 'Mo', role: 'member', addedAt: '2026-11-02T00:00:00.000Z' }
         ]
-      })
+      }
+      api.larkStatus.mockResolvedValue(withMembers)
+      api.larkStartPairing.mockResolvedValue(withMembers)
+      api.larkRemoveMember.mockResolvedValue(withMembers)
       renderDialog(api)
 
       expect(await screen.findByText('Olive')).toBeInTheDocument()
@@ -553,6 +556,19 @@ describe('SettingsDialog', () => {
       expect(api.larkStartPairing).toHaveBeenCalledWith('member')
       await user.click(screen.getByRole('button', { name: 'Remove Mo' }))
       expect(api.larkRemoveMember).toHaveBeenCalledWith('ou_m')
+    })
+
+    it('shows the code a Bind me click produced', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      api.larkStartPairing.mockResolvedValue({
+        ...larkOff,
+        pairing: { code: '654321', role: 'owner', expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() }
+      })
+      renderDialog(api)
+
+      await user.click(await screen.findByRole('button', { name: 'Bind me' }))
+      expect(await screen.findByText('@Codeflai 绑定 654321')).toBeInTheDocument()
     })
 
     it('shows a pairing failure as a notice', async () => {

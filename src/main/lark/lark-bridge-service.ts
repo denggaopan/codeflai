@@ -233,6 +233,12 @@ export class LarkBridgeService {
       const code = bind.code
       const name = (await client.userName(openId)) ?? ''
       const outcome = await store.redeemPairing(code, openId, name)
+      // The pairing is consumed and the whitelist may have grown: Settings is watching.
+      try {
+        this.deps.onStatus?.(await store.status(this.connection, this.error))
+      } catch {
+        // A status push is a courtesy; the reply below is what the sender is waiting for.
+      }
       await this.reply(incoming.messageId, outcome === 'added' ? LARK_REPLY.bound : LARK_REPLY.bindInvalid)
       return
     }

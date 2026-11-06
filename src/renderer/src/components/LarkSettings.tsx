@@ -78,7 +78,7 @@ export default function LarkSettings() {
   const save = async (): Promise<void> => {
     setSaving(true)
     try {
-      await window.codeflai.larkSaveConfig({ enabled, domain, appId: appId.trim(), ...(secret === '' ? {} : { appSecret: secret }) })
+      adopt(await window.codeflai.larkSaveConfig({ enabled, domain, appId: appId.trim(), ...(secret === '' ? {} : { appSecret: secret }) }))
       setSecret('')
     } catch (error) {
       report(error)
@@ -87,8 +87,14 @@ export default function LarkSettings() {
     }
   }
 
+  // Pairing and member changes answer with the fresh status; the broadcast covers changes the
+  // main process makes on its own (connection, a code redeemed from chat).
+  const adopt = (next: LarkStatus | undefined): void => {
+    if (next) setStatus(next)
+  }
+
   const startPairing = (role: 'owner' | 'member'): void => {
-    void window.codeflai.larkStartPairing(role).catch(report)
+    void window.codeflai.larkStartPairing(role).then(adopt).catch(report)
   }
 
   const copy = (text: string): void => {
@@ -204,7 +210,7 @@ export default function LarkSettings() {
                 type="button"
                 className="settings-update-button"
                 aria-label={t('settings.larkRemoveMember', { name: member.name || member.openId })}
-                onClick={() => void window.codeflai.larkRemoveMember(member.openId).catch(report)}
+                onClick={() => void window.codeflai.larkRemoveMember(member.openId).then(adopt).catch(report)}
               >
                 {t('settings.larkRemove')}
               </button>

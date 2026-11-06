@@ -61,6 +61,10 @@ const handleLine = (line) => {
     const path = resultFilePath()
     if (path) fs.writeFileSync(path, outcome, 'utf8')
   }
+  // A Lark session reports the files its agent changed; this makes the "agent" change one.
+  if (line.trim() === 'CODEFLAI_TEST_WRITE_FILE') {
+    fs.writeFileSync('lark-e2e-output.txt', 'written by the fake agent\n', 'utf8')
+  }
   const activityOutput = {
     'CODEFLAI_TEST_CLAUDE_BACKGROUND_START': '\r\n\u273b Waiting for 2 background agents to finish\r\n',
     'CODEFLAI_TEST_CLAUDE_BACKGROUND_ONE_LEFT': '\r\n\u273b Waiting for 1 background agent to finish\r\n',
