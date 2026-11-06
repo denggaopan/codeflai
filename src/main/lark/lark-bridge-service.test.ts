@@ -538,6 +538,43 @@ describe('LarkBridgeService', () => {
     expect(client.disconnects).toBe(2)
   })
 
+  describe('switching Lark off while a message waits', () => {
+    beforeEach(async () => {
+      await makeOwner()
+      await makeMember()
+    })
+
+    it('drops a queued fresh member message', async () => {
+      await store.saveConfig({ enabled: false, domain: 'feishu', appId: 'cli_x' })
+      client.onMessage?.(message({ senderOpenId: MEMBER }))
+      await bridge.applyConfig()
+      await bridge.whenIdle()
+      expect(sessions.created).toEqual([])
+      expect(client.replies).toEqual([])
+    })
+
+    it('drops a message whose link went away while it was being prepared', async () => {
+      const incoming = message({ senderOpenId: MEMBER })
+      client.userName = async () => {
+        await store.saveConfig({ enabled: false, domain: 'feishu', appId: 'cli_x' })
+        await bridge.applyConfig()
+        return 'Mike'
+      }
+      await deliver(incoming)
+      expect(sessions.events).toEqual([])
+      expect(client.replies).toEqual([])
+      await expect(stat(join(directory, 'attachments', incoming.messageId))).rejects.toThrow()
+    })
+
+    it('drops a message delivered by a link that has since been replaced', async () => {
+      const staleCallback = client.onMessage!
+      await bridge.applyConfig()
+      staleCallback(message({ senderOpenId: MEMBER }))
+      await bridge.whenIdle()
+      expect(sessions.created).toEqual([])
+    })
+  })
+
   it('records the processed id of a handled message', async () => {
     await makeOwner()
     const incoming = message()

@@ -256,7 +256,7 @@ export class LarkBridgeService {
     }
     this.deps.client.connect(
       credentials,
-      (incoming) => this.enqueue(incoming),
+      (incoming) => this.enqueue(incoming, generation),
       (state, error) => {
         this.enqueueTask(async () => {
           if (generation !== this.generation) return
@@ -274,9 +274,15 @@ export class LarkBridgeService {
     this.deps.onStatus?.(await this.deps.store.status(connection, error))
   }
 
-  // Never throws and returns at once: the SDK's ack window must not depend on our work.
-  private enqueue(incoming: LarkIncomingMessage): void {
-    this.enqueueTask(() => this.handle(incoming))
+  // Never throws and returns at once: the SDK's ack window must not depend on our work. The
+  // message belongs to the link that delivered it: once that link is replaced (applyConfig,
+  // switching Lark off) or the bridge is disposed, it is dropped unhandled.
+  private enqueue(incoming: LarkIncomingMessage, generation: number): void {
+    this.enqueueTask(() => this.handle(incoming, generation))
+  }
+
+  private live(generation: number): boolean {
+    return !this.disposed && generation === this.generation
   }
 
   private enqueueTask(task: () => Promise<void>): void {
@@ -316,8 +322,8 @@ export class LarkBridgeService {
     }
   }
 
-  private async handle(incoming: LarkIncomingMessage): Promise<void> {
-    if (this.disposed) return
+  private async handle(incoming: LarkIncomingMessage, generation: number): Promise<void> {
+    if (!this.live(generation)) return
     if (!incoming.mentionsBot || incoming.senderType !== 'user' || !incoming.senderOpenId) {
       // Ignored, except that a code posted without the mention (with `im:message.group_msg`
       // every group message arrives here) is now known to the whole group.
@@ -391,11 +397,12 @@ export class LarkBridgeService {
       return
     }
 
-    await this.run(incoming, command, member.role === 'owner', member.name, own?.imageKeys ?? [])
+    await this.run(incoming, generation, command, member.role === 'owner', member.name, own?.imageKeys ?? [])
   }
 
   private async run(
     incoming: LarkIncomingMessage,
+    generation: number,
     command: RunCommand,
     requesterIsOwner: boolean,
     storedName: string,
@@ -458,6 +465,11 @@ export class LarkBridgeService {
         ...(requesterIsOwner ? {} : { requesterName }),
         instruction: command.instruction,
         ...(quoteText === undefined ? {} : { quoteText })
+      }
+      // Everything above awaited the network; the link may have been switched off meanwhile.
+      if (!this.live(generation)) {
+        await discardAttachments()
+        return
       }
       let record: SessionRecord
       try {
