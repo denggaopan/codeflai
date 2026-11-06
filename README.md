@@ -578,9 +578,9 @@ while Codeflai is running.
    `im:message.group_msg`, `im:message:readonly`, `im:message:send_as_bot`, `im:resource`,
    `contact:contact.base:readonly`. (`im:message.group_msg` reads all group messages, which is
    what lets the bot fetch the message you quoted.)
-3. Open **Settings › Lark** in Codeflai, paste the **App ID** and **App Secret**, switch it on
-   and save. The secret is stored encrypted with the operating system's key store and is never
-   shown again.
+3. Open **Settings › Lark** in Codeflai, paste the **App ID** (`cli_` followed by 16 letters
+   or digits; Settings refuses anything else) and **App Secret**, switch it on and save. The
+   secret is stored encrypted with the operating system's key store and is never shown again.
 4. Back on the open platform, under **Events and callbacks**, choose **long connection**
    (receive events through a persistent connection) and subscribe to
    `im.message.receive_v1`. Lark only lets you save the long-connection subscription while a
@@ -590,6 +590,14 @@ while Codeflai is running.
 6. Add the bot to the group chat.
 
 Settings shows the connection state (off, connecting, connected, or the error Lark returned).
+Until step 5 is done Lark does not know the app has a bot, so Settings shows an error asking
+you to publish a new version of the app. That is expected: Codeflai asks Lark for the bot again
+whenever a message arrives while it does not know it (at most every 30 seconds), so the first
+message after publishing turns the state to connected and is answered. A message sent within
+30 seconds of a failed attempt is not recognised as addressed to the bot; send it again.
+
+Every request to Lark gives up after 15 seconds without progress, and an image larger than
+20 MB is not downloaded (the session starts without it).
 
 ### Who may use it
 
@@ -597,13 +605,20 @@ Only people on the whitelist. Identity is the sender's Lark `open_id`, never a n
 a message, and the whitelist can only be edited in Settings on your computer, never from the
 chat.
 
-- **Bind yourself**: in Settings click **Bind me**; a six-digit code appears. In the group
-  send `@Codeflai 绑定 123456`. The bot replies `已绑定`.
+- **Bind yourself**: in Settings click **Bind me**; a six-digit code appears. In Lark type `@`
+  and pick the bot from the list yourself, then paste the text Settings copies (`绑定 123456`)
+  after it and send. A pasted `@Codeflai` is plain text, not a mention, and the bot never sees
+  that message. Best sent in a private chat with the bot rather than in the group (receiving
+  private messages needs the `im:message.p2p_msg:readonly` scope as well). The bot replies
+  `已绑定`.
 - **Add a teammate**: click **Add teammate** (available once you are bound) and give them
   the code to send the same way.
 
 A code works once and expires after 10 minutes. It is also invalidated after 5 wrong
-attempts, so it cannot be guessed. Owner and teammates have the same powers; sessions started
+attempts, so it cannot be guessed, and as soon as it shows up in any message the bot sees
+without redeeming it: a message that does not mention the bot, a bind that arrived too late,
+a mistyped one such as `绑定123456 谢谢`, or older chat history read after a reconnect. Anyone in
+that chat could have read it. Generate a new one in Settings. Owner and teammates have the same powers; sessions started
 by a teammate are titled `[Name] ...` and the start reply says who asked. Remove a person from
 the list in Settings at any time.
 
@@ -621,8 +636,11 @@ to hand its text and images to the agent:
   `codeflai-web`, while Chinese text around the name needs no spaces.
 - **Agent**: write `claude` or `codex`; without either, Claude is used. Naming both is an
   error.
-- **Skill**: a token such as `/fast-do` (or `$fast-do`) that stands alone between spaces is
-  passed to the agent as its skill.
+- **Skill**: a token such as `/fast-do` (or `$fast-do`) that **opens** the instruction is
+  passed to the agent as its skill: `@Codeflai /fast-do 修复 codeflai 的登录 bug`. Anywhere
+  else in the sentence it is just text. Claude Code's own commands (`/login`, `/logout`,
+  `/exit`, `/quit`, `/clear`, `/compact`, `/resume`, `/config`, `/permissions`, `/model`,
+  `/upgrade`, `/doctor`, `/init`) are never passed as a skill.
 - **Always a new worktree.** The session gets its own worktree and branch, like New session
   (new worktree); Codeflai never touches your working tree for a Lark request. A project that
   is not a Git repository, or has no commit yet, is refused before any agent starts.

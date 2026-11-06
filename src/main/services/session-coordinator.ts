@@ -76,10 +76,13 @@ const errorMessage = (error: unknown): string => (error instanceof Error ? error
  * directory without asking WorktreeService for anything, so no branch, directory, or
  * `.git/info/exclude` entry is created for a session that did not ask for one.
  *
- * `initialPrompt` and `title` are set only by the renderer's issue-automation watcher: the
- * prompt is written to a file the agent is told to read on its first turn, and the title is
- * stored as final because that prompt never passes through the PTY, so the first-input
- * tracker would never see one to title from.
+ * A session started with a prompt gets it as a file the agent is told to read on its first
+ * turn. There are two kinds, never both: `initialPrompt` is the issue-automation template
+ * (marks the session `automation: 'issue'` and records an issue run), `taskPrompt` is a
+ * neutral task (Lark). `title`, set by both callers, is stored as final because such a prompt
+ * never passes through the PTY, so the first-input tracker would never see one to title from.
+ * `requireWorktree` makes a missing worktree an error instead of a fallback to the project
+ * directory.
  */
 export type CreateSessionOptions = {
   worktree?: boolean
