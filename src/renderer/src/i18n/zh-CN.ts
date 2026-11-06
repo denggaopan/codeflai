@@ -259,7 +259,8 @@ export const zhCN: Translations = {
   'settings.larkPairingTitle': '配对码（{role}）',
   'settings.larkPairingRoleOwner': '所有者',
   'settings.larkPairingRoleMember': '同事',
-  'settings.larkPairingSend': '请在飞书里把下面这句话发给机器人：',
+  'settings.larkPairingSend':
+    '在飞书里先自己输入 @ 并选中机器人（直接粘贴的「@Codeflai」只是普通文字，机器人收不到），再把下面这句粘贴在后面发送。最好在与机器人的私聊里发：配对码一旦出现在其他任何消息里就会作废。',
   'settings.larkPairingExpires': '{time} 后失效',
   'settings.larkPairingExpired': '已失效',
   'settings.larkCopy': '复制',

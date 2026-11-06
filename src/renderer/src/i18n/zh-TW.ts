@@ -264,7 +264,8 @@ export const zhTW: Translations = {
   'settings.larkPairingTitle': '配對碼（{role}）',
   'settings.larkPairingRoleOwner': '擁有者',
   'settings.larkPairingRoleMember': '同事',
-  'settings.larkPairingSend': '請在飛書裡把下面這句話傳給機器人：',
+  'settings.larkPairingSend':
+    '在飛書裡先自行輸入 @ 並選取機器人（直接貼上的「@Codeflai」只是一般文字，機器人收不到），再把下面這句貼在後面送出。建議在與機器人的私人對話裡傳送：配對碼一旦出現在其他任何訊息裡就會失效。',
   'settings.larkPairingExpires': '{time} 後失效',
   'settings.larkPairingExpired': '已失效',
   'settings.larkCopy': '複製',

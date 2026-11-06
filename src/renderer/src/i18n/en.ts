@@ -266,7 +266,8 @@ export const en = {
   'settings.larkPairingTitle': 'Pairing code ({role})',
   'settings.larkPairingRoleOwner': 'owner',
   'settings.larkPairingRoleMember': 'teammate',
-  'settings.larkPairingSend': 'Send this to the bot in Lark:',
+  'settings.larkPairingSend':
+    'In Lark, type @ and pick the bot yourself (a pasted "@Codeflai" is plain text the bot never sees), then paste this after it. Best sent in a private chat with the bot: once the code appears in any other message it stops working.',
   'settings.larkPairingExpires': 'Expires in {time}',
   'settings.larkPairingExpired': 'Expired',
   'settings.larkCopy': 'Copy',

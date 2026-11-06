@@ -236,6 +236,8 @@ export class LarkBridgeService {
 
   private async catchUp(incoming: LarkIncomingMessage): Promise<void> {
     if (this.disposed) return
+    // History is read, so a code posted in it has been seen; it never redeems one.
+    await this.burnLeakedCode(incoming)
     if (!incoming.mentionsBot || incoming.senderType !== 'user' || !incoming.senderOpenId) return
     const { store } = this.deps
     if (!(await store.markProcessed(incoming.messageId))) return
@@ -297,9 +299,31 @@ export class LarkBridgeService {
     }
   }
 
+  /**
+   * Spends the pending pairing code if this message carries it. Every path that sees a message
+   * and does not redeem it comes through here: the code must reach the bot only as a bind.
+   */
+  private async burnLeakedCode(incoming: LarkIncomingMessage): Promise<void> {
+    const text = extractMessageText(incoming.messageType, incoming.content)?.text ?? ''
+    if (text === '') return
+    try {
+      if (await this.deps.store.invalidatePairingIfContains(text)) {
+        console.warn(`Lark dropped the pending pairing code: it appeared in ${incoming.messageId} without redeeming it.`)
+        this.deps.onStatus?.(await this.deps.store.status(this.connection, this.error))
+      }
+    } catch (error) {
+      console.error('Lark could not check a message for the pairing code:', error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
   private async handle(incoming: LarkIncomingMessage): Promise<void> {
     if (this.disposed) return
-    if (!incoming.mentionsBot || incoming.senderType !== 'user' || !incoming.senderOpenId) return
+    if (!incoming.mentionsBot || incoming.senderType !== 'user' || !incoming.senderOpenId) {
+      // Ignored, except that a code posted without the mention (with `im:message.group_msg`
+      // every group message arrives here) is now known to the whole group.
+      await this.burnLeakedCode(incoming)
+      return
+    }
     const openId = incoming.senderOpenId
     const { store, client } = this.deps
 
@@ -307,6 +331,7 @@ export class LarkBridgeService {
 
     const now = this.now().getTime()
     if (!(Number.isFinite(incoming.createTimeMs) && now - incoming.createTimeMs <= LARK_STALE_MESSAGE_MS)) {
+      await this.burnLeakedCode(incoming)
       await this.reply(incoming.messageId, LARK_REPLY.stale)
       return
     }
@@ -316,6 +341,7 @@ export class LarkBridgeService {
 
     // Binding comes before the whitelist: it is how a member gets onto it.
     const bind = parseLarkCommand(text, [])
+    if (bind.type !== 'bind') await this.burnLeakedCode(incoming)
     if (bind.type === 'bind') {
       const code = bind.code
       const name = (await client.userName(openId)) ?? ''

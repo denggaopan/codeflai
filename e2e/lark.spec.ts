@@ -94,7 +94,7 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
     await dialog.getByRole('button', { name: 'Bind me' }).click()
     const code = (await dialog.locator('.settings-lark-code').textContent())!.trim()
     expect(code).toMatch(/^\d{6}$/)
-    await expect(dialog.getByText(`@Codeflai 绑定 ${code}`)).toBeVisible()
+    await expect(dialog.getByText(`绑定 ${code}`, { exact: true })).toBeVisible()
     const bindId = send('ou_owner', `绑定 ${code}`)
     await expect.poll(() => replyTo(bindId), { timeout: 15_000 }).toEqual([LARK_REPLY.bound])
     await expect(dialog.getByText('E2E ou_owner')).toBeVisible()

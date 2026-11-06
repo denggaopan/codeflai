@@ -195,6 +195,25 @@ export class LarkStore {
     return outcome
   }
 
+  /**
+   * Drops the pending code when `text` carries its six digits (spaces ignored). Called for every
+   * message the bot sees that does not redeem the code: once a code has been posted anywhere
+   * else (a group message without the mention, a stale or malformed bind), anyone who read it
+   * could redeem it, so it is spent. Resolves true when a code was dropped.
+   */
+  async invalidatePairingIfContains(text: string): Promise<boolean> {
+    let dropped = false
+    const compact = text.replace(/\s+/gu, '')
+    await this.mutateConfig((config) => {
+      const pairing = config.pairing
+      if (pairing === undefined || !(text.includes(pairing.code) || compact.includes(pairing.code))) return config
+      dropped = true
+      const { pairing: _leaked, ...rest } = config
+      return rest
+    })
+    return dropped
+  }
+
   removeMember(openId: string): Promise<void> {
     return this.mutateConfig((config) => {
       const removesOwner = config.members.some((member) => member.openId === openId && member.role === 'owner')

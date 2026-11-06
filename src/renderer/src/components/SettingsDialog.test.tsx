@@ -492,8 +492,25 @@ describe('SettingsDialog', () => {
       renderDialog(api)
 
       expect(await screen.findByText('123456')).toBeInTheDocument()
-      expect(screen.getByText('@Codeflai 绑定 123456')).toBeInTheDocument()
+      expect(screen.getByText('绑定 123456')).toBeInTheDocument()
+      expect(screen.queryByText(/@Codeflai 绑定/)).not.toBeInTheDocument()
+      expect(screen.getByText(/type @ and pick the bot yourself/)).toBeInTheDocument()
       expect(screen.getByText(/Expires in 0?[89]:\d\d/)).toBeInTheDocument()
+    })
+
+    it('copies the bind text without the mention, which only a typed @ can make', async () => {
+      const user = userEvent.setup()
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({
+        ...larkOff,
+        pairing: { code: '123456', role: 'owner', expiresAt: new Date(Date.now() + 9 * 60_000).toISOString() }
+      })
+      renderDialog(api)
+      const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+
+      await user.click(await screen.findByRole('button', { name: 'Copy' }))
+      expect(writeText).toHaveBeenCalledWith('绑定 123456')
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
     })
 
     it('never renders the stored secret', async () => {
@@ -568,7 +585,7 @@ describe('SettingsDialog', () => {
       renderDialog(api)
 
       await user.click(await screen.findByRole('button', { name: 'Bind me' }))
-      expect(await screen.findByText('@Codeflai 绑定 654321')).toBeInTheDocument()
+      expect(await screen.findByText('绑定 654321')).toBeInTheDocument()
     })
 
     it('shows a pairing failure as a notice', async () => {

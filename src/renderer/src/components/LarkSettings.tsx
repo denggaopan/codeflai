@@ -114,7 +114,8 @@ export default function LarkSettings() {
     error: t('settings.larkConnectionError')
   }[connection]
   const remaining = pairing ? new Date(pairing.expiresAt).getTime() - now : 0
-  const messageToSend = pairing ? `@Codeflai 绑定 ${pairing.code}` : ''
+  // Without the mention: a pasted "@Codeflai" is plain text, not a mention the bot receives.
+  const messageToSend = pairing ? `绑定 ${pairing.code}` : ''
 
   return (
     <>

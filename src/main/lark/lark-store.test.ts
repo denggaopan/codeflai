@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -234,6 +234,26 @@ describe('LarkStore', () => {
     expect((await store.status('off')).members).toHaveLength(1)
     expect((await store.status('off')).pairing).toBeUndefined()
     expect(await store.redeemPairing('123456', 'ou_other', 'Other')).toBe('invalid')
+  })
+
+  it('drops the pending code when a text carries its digits', async () => {
+    const store = build()
+    expect(await store.invalidatePairingIfContains('123456')).toBe(false) // nothing pending
+    await store.startPairing('owner')
+    expect(await store.invalidatePairingIfContains('see you at 12:34')).toBe(false)
+    expect((await store.status('off')).pairing).toBeDefined()
+    expect(await store.invalidatePairingIfContains('the code is 123 456')).toBe(true)
+    expect((await store.status('off')).pairing).toBeUndefined()
+    expect(await store.redeemPairing('123456', 'ou_1', 'Alice')).toBe('invalid')
+  })
+
+  it('does not rewrite the config for a text without the code', async () => {
+    const store = build()
+    await store.startPairing('owner')
+    const { mtimeMs } = await stat(join(directory, 'config.json'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    await store.invalidatePairingIfContains('nothing here')
+    expect((await stat(join(directory, 'config.json'))).mtimeMs).toBe(mtimeMs)
   })
 
   it('removing the owner clears any pending pairing', async () => {

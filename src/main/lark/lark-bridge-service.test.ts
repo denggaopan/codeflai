@@ -650,6 +650,76 @@ describe('LarkBridgeService', () => {
     expect(await store.owner()).toBeUndefined()
   })
 
+  describe('a pairing code seen anywhere but a bind', () => {
+    const pendingCode = async (): Promise<string> => {
+      await store.startPairing('owner')
+      return (await store.status('connected')).pairing!.code
+    }
+    const redeemNow = async (code: string): Promise<string | undefined> => {
+      const bind = message({ content: text(`绑定 ${code}`) })
+      await deliver(bind)
+      return client.replies.find((reply) => reply.messageId === bind.messageId)?.text
+    }
+
+    it('is spent by a group message that does not mention the bot', async () => {
+      const code = await pendingCode()
+      await deliver(message({ senderOpenId: 'ou_stranger', mentionsBot: false, content: JSON.stringify({ text: `code is ${code}` }) }))
+      expect(client.replies).toEqual([])
+      expect((await store.status('connected')).pairing).toBeUndefined()
+      expect(await redeemNow(code)).toBe(LARK_REPLY.bindInvalid)
+      expect(await store.owner()).toBeUndefined()
+    })
+
+    it('is spent by a message from an app or without a sender, and with spaces in the digits', async () => {
+      const code = await pendingCode()
+      const spaced = `${code.slice(0, 3)} ${code.slice(3)}`
+      await deliver(message({ senderType: 'app', mentionsBot: false, content: JSON.stringify({ text: spaced }) }))
+      expect(await redeemNow(code)).toBe(LARK_REPLY.bindInvalid)
+    })
+
+    it('is spent by a stale bind', async () => {
+      const code = await pendingCode()
+      await deliver(message({ content: text(`绑定 ${code}`), createTimeMs: now.getTime() - 6 * 60_000 }))
+      expect((await store.status('connected')).pairing).toBeUndefined()
+      expect(await redeemNow(code)).toBe(LARK_REPLY.bindInvalid)
+    })
+
+    it('is spent by a malformed bind', async () => {
+      const code = await pendingCode()
+      await deliver(message({ content: text(`绑定${code} 谢谢`) }))
+      expect(client.replies.map((reply) => reply.text)).toEqual([LARK_REPLY.unbound])
+      expect(await redeemNow(code)).toBe(LARK_REPLY.bindInvalid)
+      expect(await store.owner()).toBeUndefined()
+    })
+
+    it('is spent by catch-up history', async () => {
+      await makeOwner()
+      await store.addKnownChat('oc_chat')
+      await store.setLastOnlineAt(new Date(now.getTime() - 600_000))
+      await store.startPairing('member')
+      const code = (await store.status('connected')).pairing!.code
+      client.history.set('oc_chat', [
+        message({ senderOpenId: 'ou_stranger', mentionsBot: false, createTimeMs: now.getTime() - 60_000, content: JSON.stringify({ text: code }) })
+      ])
+      client.onState?.('connected')
+      await bridge.whenIdle()
+      expect((await store.status('connected')).pairing).toBeUndefined()
+    })
+
+    it('publishes the status so Settings stops showing the spent code', async () => {
+      const code = await pendingCode()
+      const before = statuses.length
+      await deliver(message({ mentionsBot: false, content: JSON.stringify({ text: code }) }))
+      expect(statuses.length).toBe(before + 1)
+    })
+
+    it('survives unrelated chatter and still redeems', async () => {
+      const code = await pendingCode()
+      await deliver(message({ mentionsBot: false, content: JSON.stringify({ text: 'lunch at 12?' }) }))
+      expect(await redeemNow(code)).toBe(LARK_REPLY.bound)
+    })
+  })
+
   it('a redelivered offline message is answered stale', async () => {
     await makeOwner()
     await deliver(message({ createTimeMs: now.getTime() - 316_000 }))
