@@ -1,6 +1,21 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { LarkDomain } from '../../shared/contracts'
 
+export const LARK_BOT_INFO_TIMEOUT_MS = 10_000
+
+/** Resolves with the bot id, or undefined when the lookup fails or takes longer than `timeoutMs`. */
+export async function awaitBotId(lookup: Promise<string | undefined>, timeoutMs = LARK_BOT_INFO_TIMEOUT_MS): Promise<string | undefined> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), timeoutMs)
+  })
+  try {
+    return await Promise.race([lookup.catch(() => undefined), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export type LarkIncomingMessage = {
   messageId: string
   chatId: string
@@ -123,6 +138,8 @@ export class SdkLarkClient implements LarkClient {
   private botOpenId?: string
   // Bumped on every connect/disconnect so callbacks from a closed client are ignored.
   private generation = 0
+  // Bumped per connected attempt and when reconnecting, so a late bot-info answer cannot report a dead link as connected.
+  private connectAttempt = 0
 
   connect(
     credentials: { domain: LarkDomain; appId: string; appSecret: string },
@@ -147,15 +164,16 @@ export class SdkLarkClient implements LarkClient {
     // `connected` is reported only after the bot id lookup settles, so the catch-up that runs on
     // it can already tell which listed messages mention the bot.
     const reportConnected = (): void => {
-      void api
+      const attempt = ++this.connectAttempt
+      const lookup = api
         .request({ method: 'GET', url: '/open-apis/bot/v3/info' })
-        .then((info: { bot?: { open_id?: string } }) => {
-          if (current() && info?.bot?.open_id) this.botOpenId = info.bot.open_id
-        })
-        .catch(() => undefined)
-        .then(() => {
-          if (current()) onState('connected')
-        })
+        .then((info: { bot?: { open_id?: string } }) => info?.bot?.open_id)
+      void awaitBotId(lookup).then((botOpenId) => {
+        // A newer reconnect attempt (or a drop) supersedes this one.
+        if (!current() || attempt !== this.connectAttempt) return
+        if (botOpenId) this.botOpenId = botOpenId
+        onState('connected')
+      })
     }
 
     onState('connecting')
@@ -170,7 +188,9 @@ export class SdkLarkClient implements LarkClient {
         reportConnected()
       },
       onReconnecting: () => {
-        if (current()) onState('connecting')
+        if (!current()) return
+        this.connectAttempt += 1
+        onState('connecting')
       },
       onError: (error: Error) => {
         if (current()) onState('error', safeErrorMessage(error, credentials.appSecret))

@@ -49,6 +49,8 @@ export class LarkBridgeService {
   private disposed = false
   private unsubscribe?: () => void
   private stampTimer?: NodeJS.Timeout
+  // Bumped on every connect, disconnect, applyConfig and dispose; queued work for an older link does nothing.
+  private generation = 0
   // Last status seen per session; undefined until the first state arrives (the baseline).
   private statuses?: Map<string, SessionRecord['status']>
 
@@ -70,6 +72,7 @@ export class LarkBridgeService {
   }
 
   async applyConfig(): Promise<void> {
+    this.generation += 1
     this.stopStamping()
     this.deps.client.disconnect()
     await this.connect()
@@ -165,6 +168,7 @@ export class LarkBridgeService {
     this.disposed = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
+    this.generation += 1
     this.stopStamping()
     this.deps.client.disconnect()
   }
@@ -204,8 +208,8 @@ export class LarkBridgeService {
 
   // Runs on every transition to `connected`, on the same queue as live messages. History is only
   // ever answered stale, never executed: the sender gets told to resend, nothing starts.
-  private async connectedTask(): Promise<void> {
-    if (this.disposed) return
+  private async connectedTask(generation: number): Promise<void> {
+    if (this.disposed || generation !== this.generation) return
     const { store, client } = this.deps
     try {
       const now = this.now().getTime()
@@ -213,7 +217,7 @@ export class LarkBridgeService {
       if (last !== undefined) {
         const since = Math.max(last.getTime(), now - LARK_CATCH_UP_WINDOW_MS)
         for (const chatId of await store.knownChats()) {
-          if (this.disposed) return
+          if (this.disposed || generation !== this.generation) return
           try {
             for (const missed of await client.listMessages(chatId, since, now)) await this.catchUp(missed)
           } catch (error) {
@@ -224,8 +228,9 @@ export class LarkBridgeService {
     } catch (error) {
       console.error('Lark catch-up failed:', error instanceof Error ? error.name : 'unknown error')
     }
-    if (this.disposed) return
+    if (this.disposed || generation !== this.generation) return
     await this.stamp()
+    if (this.disposed || generation !== this.generation) return
     this.startStamping()
   }
 
@@ -241,7 +246,9 @@ export class LarkBridgeService {
 
   private async connect(): Promise<void> {
     const credentials = await this.deps.store.credentials()
+    const generation = ++this.generation
     if (credentials === undefined) {
+      this.stopStampingQuietly()
       await this.setConnection('off')
       return
     }
@@ -250,9 +257,10 @@ export class LarkBridgeService {
       (incoming) => this.enqueue(incoming),
       (state, error) => {
         this.enqueueTask(async () => {
+          if (generation !== this.generation) return
           if (state !== 'connected') this.stopStampingQuietly()
           await this.setConnection(state, error)
-          if (state === 'connected') await this.connectedTask()
+          if (state === 'connected') await this.connectedTask(generation)
         })
       }
     )
@@ -296,11 +304,6 @@ export class LarkBridgeService {
     const { store, client } = this.deps
 
     if (!(await store.markProcessed(incoming.messageId))) return
-    try {
-      await store.addKnownChat(incoming.chatId)
-    } catch (error) {
-      console.error('Lark could not remember a chat:', error instanceof Error ? error.name : 'unknown error')
-    }
 
     const now = this.now().getTime()
     if (!(Number.isFinite(incoming.createTimeMs) && now - incoming.createTimeMs <= LARK_STALE_MESSAGE_MS)) {
@@ -335,6 +338,12 @@ export class LarkBridgeService {
     if (member === undefined) {
       await this.reply(incoming.messageId, LARK_REPLY.denied)
       return
+    }
+    // Only a member chat is worth catching up on; strangers must not push real chats out.
+    try {
+      await store.addKnownChat(incoming.chatId)
+    } catch (error) {
+      console.error('Lark could not remember a chat:', error instanceof Error ? error.name : 'unknown error')
     }
 
     let command: LarkCommand

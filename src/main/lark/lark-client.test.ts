@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { toIncomingMessage, toListedMessage } from './lark-client'
+import { describe, expect, it, vi } from 'vitest'
+import { LARK_BOT_INFO_TIMEOUT_MS, awaitBotId, toIncomingMessage, toListedMessage } from './lark-client'
 
 const event = {
   sender: {
@@ -90,5 +90,26 @@ describe('toListedMessage', () => {
     expect(mapped?.senderOpenId).toBeUndefined()
     expect(toListedMessage({ ...item, message_id: undefined }, 'ou_bot')).toBeUndefined()
     expect(toListedMessage({ ...item, body: undefined }, 'ou_bot')).toBeUndefined()
+  })
+})
+
+describe('awaitBotId', () => {
+  it('gives the id when the lookup answers', async () => {
+    expect(await awaitBotId(Promise.resolve('ou_bot'))).toBe('ou_bot')
+  })
+
+  it('gives undefined when the lookup fails', async () => {
+    expect(await awaitBotId(Promise.reject(new Error('x')))).toBeUndefined()
+  })
+
+  it('gives up on a lookup that never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = awaitBotId(new Promise<string | undefined>(() => undefined))
+      await vi.advanceTimersByTimeAsync(LARK_BOT_INFO_TIMEOUT_MS)
+      expect(await pending).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

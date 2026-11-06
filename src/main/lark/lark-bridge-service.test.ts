@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppState, SessionKind, SessionRecord } from '../../shared/contracts'
 import type { CommandResult, CommandRunner } from '../infrastructure/command-runner'
@@ -743,6 +743,29 @@ describe('LarkBridgeService', () => {
       await connectAndCatchUp()
       expect(client.replies).toEqual([])
       expect(await store.lastOnlineAt()).toEqual(now)
+    })
+
+    it('does nothing for a connected task queued before applyConfig disabled the link', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      try {
+        const before = await store.lastOnlineAt()
+        client.history.set('oc_chat', [missed()])
+        await store.saveConfig({ enabled: false, domain: 'feishu', appId: 'cli_x' })
+        client.onState?.('connected')
+        await bridge.applyConfig()
+        await bridge.whenIdle()
+        expect(client.listed).toEqual([])
+        expect(client.replies).toEqual([])
+        expect(vi.getTimerCount()).toBe(0)
+        expect(await store.lastOnlineAt()).toEqual(before)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not remember the chat of a stranger', async () => {
+      await deliver(message({ chatId: 'oc_stranger', senderOpenId: 'ou_stranger' }))
+      expect(await store.knownChats()).toEqual(['oc_chat'])
     })
 
     it('records the chats of live messages and stamps the time on a clean disconnect', async () => {
