@@ -494,11 +494,11 @@ describe('PtyHostClient session lifecycle', () => {
     const { client, socket } = await connectedHarness()
     socket.acknowledgeAll()
 
-    await client.start(session('one'), { initialPromptFile: 'C:\\prompts\\one.md' })
+    await client.start(session('one'), { initialPrompt: { file: 'C:\\prompts\\one.md', source: 'task', skill: 'fast-do' } })
     await client.start(session('two'))
 
-    expect(socket.requests[0]).toMatchObject({ type: 'spawn', sessionId: 'one', resume: false, initialPromptFile: 'C:\\prompts\\one.md' })
-    expect(socket.requests[1]).not.toHaveProperty('initialPromptFile')
+    expect(socket.requests[0]).toMatchObject({ type: 'spawn', sessionId: 'one', resume: false, initialPrompt: { file: 'C:\\prompts\\one.md', source: 'task', skill: 'fast-do' } })
+    expect(socket.requests[1]).not.toHaveProperty('initialPrompt')
   })
 
   it('refuses to start a session the host is already running', async () => {

@@ -21,8 +21,21 @@ import { sessionKindSchema } from './contracts'
  * exactly one `result`; events arrive unsolicited and carry no `id`.
  *
  * Version 2 added the optional `initialPromptFile` on spawn (automatic issue sessions).
+ * Version 3 replaced `initialPromptFile` with `initialPrompt { file, source, skill? }` (Lark sessions).
  */
-export const PTY_PROTOCOL_VERSION = 2
+export const PTY_PROTOCOL_VERSION = 3
+
+/**
+ * The prompt file of a freshly started agent session, already written by the main process.
+ * `source` selects which fixed sentence the host appends to argv; `skill` is the only
+ * free-form input and is limited to a skill-name alphabet (meaningful for 'task' only).
+ */
+export const initialPromptSchema = z.strictObject({
+  file: z.string().min(1).max(1024),
+  source: z.enum(['issue', 'task']),
+  skill: z.string().regex(/^[A-Za-z0-9:_-]{1,64}$/u).optional()
+})
+export type InitialPrompt = z.infer<typeof initialPromptSchema>
 
 /**
  * How much recent output the host retains per session so a freshly attached UI can repaint a
@@ -72,9 +85,9 @@ export const ptyRequestSchema = z.discriminatedUnion('type', [
     kind: sessionKindSchema,
     launchPath: z.string().min(1),
     resume: z.boolean(),
-    // An automatic issue session's prompt file, already written by the main process. The host
-    // only ever appends the fixed sentence that names it (see shared/issue-automation.ts).
-    initialPromptFile: z.string().min(1).max(1024).optional(),
+    // The session's prompt file, already written by the main process. The host only ever
+    // appends the fixed sentence for `source` that names it (see shared/issue-automation.ts).
+    initialPrompt: initialPromptSchema.optional(),
     cols: dimensionSchema,
     rows: dimensionSchema
   }),

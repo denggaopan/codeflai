@@ -1,4 +1,5 @@
 import type { ProjectRecord, RepoHost, RepoRemote, SessionKind } from './contracts'
+import type { InitialPrompt } from './pty-protocol'
 
 /**
  * Automatic issue resolution: everything pure that the renderer (watcher, Settings, project
@@ -128,6 +129,21 @@ export const issueAutomationPromptArgument = (kind: SessionKind, promptFilePath:
   if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
   validatePromptFilePath(promptFilePath)
   return `${SKILL_INVOCATION[kind]} Read the task file at ${promptFilePath} and carry it out exactly, without asking questions.`
+}
+
+/**
+ * The one argv element a session with a prompt file starts with, chosen by the prompt's
+ * source. 'issue' is the automatic-issue sentence; 'task' is neutral (no fast-do, no "without
+ * asking questions") and hoists an optional skill with the agent's own prefix.
+ */
+export const initialPromptArgument = (kind: SessionKind, prompt: InitialPrompt): string => {
+  if (prompt.source === 'issue') return issueAutomationPromptArgument(kind, prompt.file)
+  if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
+  validatePromptFilePath(prompt.file)
+  // The wire schema already enforces this; the in-process fallback never crosses the wire.
+  if (prompt.skill !== undefined && !/^[A-Za-z0-9:_-]{1,64}$/u.test(prompt.skill)) throw new Error('The skill name is not valid.')
+  const skill = prompt.skill === undefined ? '' : `${kind === 'claude' ? '/' : '$'}${prompt.skill} `
+  return `${skill}Read the task file at ${prompt.file} and carry it out.`
 }
 
 /** `MM-DD HH:mm` in local time, for the session title. */

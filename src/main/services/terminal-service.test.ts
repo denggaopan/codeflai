@@ -564,9 +564,24 @@ describe('TerminalService initial prompt', () => {
     const factory = new FakePtyFactory(new FakePty())
     const service = serviceWith(factory, { locator: locatorWith({ claude: 'C:\\Agents With Spaces\\claude.exe' }) })
 
-    await service.start(session('auto-1', 'claude'), { initialPromptFile: promptFile })
+    await service.start(session('auto-1', 'claude'), { initialPrompt: { file: promptFile, source: 'issue' } })
 
     expect(factory.spawn).toHaveBeenCalledWith('C:\\Agents With Spaces\\claude.exe', ['--dangerously-skip-permissions', sentence], expect.any(Object))
+  })
+
+  it('passes a task prompt unquoted on a direct executable and double-quoted inside a cmd shim', async () => {
+    const taskSentence = `/fast-do Read the task file at ${promptFile} and carry it out.`
+    const direct = new FakePtyFactory(new FakePty())
+    await serviceWith(direct, { locator: locatorWith({ claude: 'C:\\Agents\\claude.exe' }) })
+      .start(session('task-1', 'claude'), { initialPrompt: { file: promptFile, source: 'task', skill: 'fast-do' } })
+    expect(direct.spawn).toHaveBeenCalledWith('C:\\Agents\\claude.exe', ['--dangerously-skip-permissions', taskSentence], expect.any(Object))
+
+    const shim = 'C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\claude.cmd'
+    const comspec = 'C:\\Windows\\System32\\cmd.exe'
+    const hosted = new FakePtyFactory(new FakePty())
+    await serviceWith(hosted, { locator: locatorWith({ claude: shim }), environment: { ComSpec: comspec } })
+      .start(session('task-2', 'claude'), { initialPrompt: { file: promptFile, source: 'task', skill: 'fast-do' } })
+    expect(hosted.spawn).toHaveBeenCalledWith(comspec, `/d /s /c ""${shim}" --dangerously-skip-permissions "${taskSentence}""`, expect.any(Object))
   })
 
   it('double-quotes the sentence inside a hosted .cmd shim command', async () => {
@@ -575,7 +590,7 @@ describe('TerminalService initial prompt', () => {
     const factory = new FakePtyFactory(new FakePty())
     const service = serviceWith(factory, { locator: locatorWith({ claude: shim }), environment: { ComSpec: comspec } })
 
-    await service.start(session('auto-2', 'claude'), { initialPromptFile: promptFile })
+    await service.start(session('auto-2', 'claude'), { initialPrompt: { file: promptFile, source: 'issue' } })
 
     expect(factory.spawn).toHaveBeenCalledWith(comspec, `/d /s /c ""${shim}" --dangerously-skip-permissions "${sentence}""`, expect.any(Object))
   })
@@ -584,8 +599,8 @@ describe('TerminalService initial prompt', () => {
     const factory = new FakePtyFactory(new FakePty())
     const service = serviceWith(factory, { locator: locatorWith({ claude: 'C:\\a\\claude.exe' }) })
 
-    await expect(service.start(session('auto-3', 'claude'), { resume: true, initialPromptFile: promptFile })).rejects.toThrow('cannot be combined with resume')
-    await expect(service.start(session('auto-4', 'claude'), { initialPromptFile: 'C:\\odd|path\\s1.md' })).rejects.toThrow('cmd.exe would reinterpret')
+    await expect(service.start(session('auto-3', 'claude'), { resume: true, initialPrompt: { file: promptFile, source: 'issue' } })).rejects.toThrow('cannot be combined with resume')
+    await expect(service.start(session('auto-4', 'claude'), { initialPrompt: { file: 'C:\\odd|path\\s1.md', source: 'issue' } })).rejects.toThrow('cmd.exe would reinterpret')
     expect(factory.spawn).not.toHaveBeenCalled()
   })
 })

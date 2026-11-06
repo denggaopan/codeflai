@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentKind } from '../shared/agent-kinds'
 import type { SessionKind } from '../shared/contracts'
+import type { InitialPrompt } from '../shared/pty-protocol'
 import { LaunchSpecResolver, hostedShimSpec, validateShimPath } from './launch-spec'
 
 type Locator = {
@@ -334,11 +335,30 @@ describe('LaunchSpecResolver Windows shim chain', () => {
 describe('LaunchSpecResolver initial prompt', () => {
   const promptFile = 'C:\\Users\\Dev Name\\AppData\\Roaming\\Codeflai\\issue-automation\\s1.md'
   const sentence = (prefix: string): string => `${prefix} Read the task file at ${promptFile} and carry it out exactly, without asking questions.`
+  const issue = (file: string): InitialPrompt => ({ file, source: 'issue' })
+  const taskSentence = `/fast-do Read the task file at ${promptFile} and carry it out.`
+
+  it('appends a task prompt unquoted on a direct executable and double-quoted in a cmd-hosted shim', async () => {
+    const direct = resolverWith({ locator: locatorWith({ claude: 'C:\\Agents\\claude.exe' }) })
+    await expect(direct.resolveLaunchSpec('claude', false, { file: promptFile, source: 'task', skill: 'fast-do' })).resolves.toEqual({
+      file: 'C:\\Agents\\claude.exe',
+      args: ['--dangerously-skip-permissions', taskSentence],
+      env: {}
+    })
+
+    const shim = 'C:\\Users\\Dev Name\\AppData\\Roaming\\npm\\claude.cmd'
+    const hosted = resolverWith({ locator: locatorWith({ claude: shim }), environment: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' } })
+    await expect(hosted.resolveLaunchSpec('claude', false, { file: promptFile, source: 'task', skill: 'fast-do' })).resolves.toEqual({
+      file: 'C:\\Windows\\System32\\cmd.exe',
+      args: `/d /s /c ""${shim}" --dangerously-skip-permissions "${taskSentence}""`,
+      env: {}
+    })
+  })
 
   it('appends the sentence as the last argv element on a direct executable', async () => {
     const resolver = resolverWith({ locator: locatorWith({ claude: 'C:\\Agents With Spaces\\claude.exe' }) })
 
-    await expect(resolver.resolveLaunchSpec('claude', false, promptFile)).resolves.toEqual({
+    await expect(resolver.resolveLaunchSpec('claude', false, issue(promptFile))).resolves.toEqual({
       file: 'C:\\Agents With Spaces\\claude.exe',
       args: ['--dangerously-skip-permissions', sentence('/fast-do')],
       env: {}
@@ -355,7 +375,7 @@ describe('LaunchSpecResolver initial prompt', () => {
       candidateExists: vi.fn(async () => false)
     })
 
-    await expect(resolver.resolveLaunchSpec('codex', false, promptFile)).resolves.toEqual({
+    await expect(resolver.resolveLaunchSpec('codex', false, issue(promptFile))).resolves.toEqual({
       file: 'C:\\Windows\\System32\\cmd.exe',
       args: `/d /s /c ""${shim}" --dangerously-bypass-approvals-and-sandbox --no-daemon "${sentence('$fast-do')}""`,
       env: {}
@@ -366,7 +386,7 @@ describe('LaunchSpecResolver initial prompt', () => {
     const macPrompt = '/Users/dev/Library/Application Support/Codeflai/issue-automation/s1.md'
     const resolver = resolverWith({ locator: locatorWith({ claude: '/opt/homebrew/bin/claude' }), platform: 'darwin' })
 
-    await expect(resolver.resolveLaunchSpec('claude', false, macPrompt)).resolves.toEqual({
+    await expect(resolver.resolveLaunchSpec('claude', false, issue(macPrompt))).resolves.toEqual({
       file: '/opt/homebrew/bin/claude',
       args: ['--dangerously-skip-permissions', `/fast-do Read the task file at ${macPrompt} and carry it out exactly, without asking questions.`],
       env: {}
@@ -376,9 +396,9 @@ describe('LaunchSpecResolver initial prompt', () => {
   it('refuses a prompt together with resume, on a shell, on a non-automation agent, and with an unsafe path', async () => {
     const resolver = resolverWith({ locator: locatorWith({ claude: 'C:\\a\\claude.exe', gemini: 'C:\\a\\gemini.exe' }) })
 
-    await expect(resolver.resolveLaunchSpec('claude', true, promptFile)).rejects.toThrow('cannot be combined with resume')
-    await expect(resolver.resolveLaunchSpec('powershell', false, promptFile)).rejects.toThrow('powershell cannot run an automatic issue session.')
-    await expect(resolver.resolveLaunchSpec('gemini', false, promptFile)).rejects.toThrow('gemini cannot run an automatic issue session.')
-    await expect(resolver.resolveLaunchSpec('claude', false, 'C:\\odd&path\\s1.md')).rejects.toThrow('cmd.exe would reinterpret')
+    await expect(resolver.resolveLaunchSpec('claude', true, issue(promptFile))).rejects.toThrow('cannot be combined with resume')
+    await expect(resolver.resolveLaunchSpec('powershell', false, issue(promptFile))).rejects.toThrow('powershell cannot run an automatic issue session.')
+    await expect(resolver.resolveLaunchSpec('gemini', false, issue(promptFile))).rejects.toThrow('gemini cannot run an automatic issue session.')
+    await expect(resolver.resolveLaunchSpec('claude', false, issue('C:\\odd&path\\s1.md'))).rejects.toThrow('cmd.exe would reinterpret')
   })
 })

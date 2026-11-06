@@ -4,6 +4,7 @@ import { AgentActivityTracker } from '../shared/agent-activity'
 import type { SessionKind } from '../shared/contracts'
 import {
   REPLAY_BUFFER_CHARS,
+  type InitialPrompt,
   type PtyResponse,
   type PtySessionSummary
 } from '../shared/pty-protocol'
@@ -133,7 +134,7 @@ export class PtyRegistry {
     resume: boolean,
     cols: number,
     rows: number,
-    initialPromptFile?: string
+    initialPrompt?: InitialPrompt
   ): Promise<void> {
     if (this.entries.has(sessionId) || this.starting.has(sessionId)) {
       throw new Error(`Terminal session is already running or starting: ${sessionId}`)
@@ -142,7 +143,7 @@ export class PtyRegistry {
 
     this.starting.add(sessionId)
     try {
-      const launch = await this.resolver.resolveLaunchSpec(kind, resume, initialPromptFile)
+      const launch = await this.resolver.resolveLaunchSpec(kind, resume, initialPrompt)
       const pty = this.ptyFactory.spawn(launch.file, launch.args, {
         name: 'xterm-256color',
         cols,

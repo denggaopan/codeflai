@@ -234,10 +234,10 @@ describe('PtyHostServer requests', () => {
 
     await request(socket, {
       type: 'spawn', id: 1, sessionId: 's1', kind: 'claude', launchPath: 'C:\\Projects',
-      resume: false, cols: 80, rows: 24, initialPromptFile: 'C:\\prompts\\s1.md'
+      resume: false, cols: 80, rows: 24, initialPrompt: { file: 'C:\\prompts\\s1.md', source: 'task' }
     })
 
-    expect(harness.registry.spawn).toHaveBeenCalledWith('s1', 'claude', 'C:\\Projects', false, 80, 24, 'C:\\prompts\\s1.md')
+    expect(harness.registry.spawn).toHaveBeenCalledWith('s1', 'claude', 'C:\\Projects', false, 80, 24, { file: 'C:\\prompts\\s1.md', source: 'task' })
   })
 
   it('forwards spawn, write, resize, kill and replay to the registry', async () => {

@@ -4,7 +4,8 @@ import { win32 as windowsPath } from 'node:path'
 
 import { agentLaunchArgs, agentLaunchEnv } from '../shared/agent-kinds'
 import type { SessionKind } from '../shared/contracts'
-import { isIssueAutomationAgent, issueAutomationPromptArgument } from '../shared/issue-automation'
+import { initialPromptArgument, isIssueAutomationAgent } from '../shared/issue-automation'
+import type { InitialPrompt } from '../shared/pty-protocol'
 import { cliLocator, type CliLocator } from '../main/infrastructure/cli-locator'
 
 /**
@@ -114,13 +115,13 @@ export class LaunchSpecResolver {
   ) {}
 
   /**
-   * `initialPromptFile` is the automatic-issue prompt the main process already wrote; it adds
-   * one fixed argv sentence naming that file (shared/issue-automation.ts) and nothing else.
+   * `initialPrompt` is the prompt file the main process already wrote; it adds one fixed argv
+   * sentence for its source naming that file (shared/issue-automation.ts) and nothing else.
    * Only a fresh Claude/Codex session can take one: a resumed session continues its own
    * conversation, and a shell has nobody to read the file.
    */
-  async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPromptFile?: string): Promise<LaunchSpec> {
-    if (initialPromptFile !== undefined) {
+  async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPrompt?: InitialPrompt): Promise<LaunchSpec> {
+    if (initialPrompt !== undefined) {
       if (resume) throw new Error('An initial prompt cannot be combined with resume.')
       if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
     }
@@ -147,9 +148,9 @@ export class LaunchSpecResolver {
     const resolved = await this.locator.resolveAgent(kind)
     if (!resolved) throw new Error(`${kind} is not available.`)
     const launchArgs = agentLaunchArgs(kind, resume, this.platform)
-    const logicalArgs = initialPromptFile === undefined
+    const logicalArgs = initialPrompt === undefined
       ? launchArgs
-      : [...launchArgs, issueAutomationPromptArgument(kind, initialPromptFile)]
+      : [...launchArgs, initialPromptArgument(kind, initialPrompt)]
     const env = agentLaunchEnv(kind)
     const spec = this.platform === 'win32'
       ? await windowsAgentSpec(resolved, logicalArgs, this.environment, this.candidateExists)

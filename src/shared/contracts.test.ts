@@ -396,14 +396,21 @@ void incompleteWorktreeSession
 describe('pty-protocol spawn', () => {
   const spawn = { type: 'spawn', id: 1, sessionId: 's1', kind: 'claude', launchPath: 'C:\\x', resume: false, cols: 80, rows: 24 }
 
-  it('speaks version 2 so a host without the prompt-file field is retired rather than confused', () => {
-    expect(PTY_PROTOCOL_VERSION).toBe(2)
+  it('speaks version 3 so a host with the v2 prompt-file field is retired rather than confused', () => {
+    expect(PTY_PROTOCOL_VERSION).toBe(3)
   })
 
-  it('carries an optional prompt file path within bounds', () => {
-    expect(ptyRequestSchema.parse({ ...spawn, initialPromptFile: 'C:\\p\\s1.md' })).toMatchObject({ initialPromptFile: 'C:\\p\\s1.md' })
+  it('carries an optional initial prompt with a bounded file path and a source', () => {
+    const initialPrompt = { file: 'C:\\p\\s1.md', source: 'task', skill: 'fast-do' }
+    expect(ptyRequestSchema.parse({ ...spawn, initialPrompt })).toMatchObject({ initialPrompt })
     expect(ptyRequestSchema.safeParse(spawn).success).toBe(true)
-    expect(ptyRequestSchema.safeParse({ ...spawn, initialPromptFile: '' }).success).toBe(false)
-    expect(ptyRequestSchema.safeParse({ ...spawn, initialPromptFile: 'x'.repeat(1025) }).success).toBe(false)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPrompt: { file: '', source: 'issue' } }).success).toBe(false)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPrompt: { file: 'x'.repeat(1025), source: 'issue' } }).success).toBe(false)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPrompt: { file: 'C:\\p.md', source: 'other' } }).success).toBe(false)
+  })
+
+  it('rejects the retired initialPromptFile field and a skill name outside the allowed alphabet', () => {
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPromptFile: 'C:\\p\\s1.md' }).success).toBe(false)
+    expect(ptyRequestSchema.safeParse({ ...spawn, initialPrompt: { file: 'C:\\p.md', source: 'task', skill: 'a b' } }).success).toBe(false)
   })
 })

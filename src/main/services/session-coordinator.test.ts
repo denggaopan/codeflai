@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AppState, IssueRun, ProjectRecord, SessionRecord } from '../../shared/contracts'
+import type { InitialPrompt } from '../../shared/pty-protocol'
 import type { IssueRunSettlement, IssueRunStart } from './issue-run-history'
 import type { ProjectService } from './project-service'
 import type { SessionStore } from './session-store'
@@ -67,7 +68,7 @@ type ExitListener = (payload: TerminalEventMap['exit']) => void
 
 /** Stands in for the in-process TerminalService: owns its PTYs, so it cannot detach. */
 class FakeTerminalService implements SessionTerminal {
-  readonly start = vi.fn(async (_session: SessionRecord, _options?: { resume?: boolean; initialPromptFile?: string }) => undefined)
+  readonly start = vi.fn(async (_session: SessionRecord, _options?: { resume?: boolean; initialPrompt?: InitialPrompt }) => undefined)
   readonly stop = vi.fn(async (_sessionId: string) => undefined)
   readonly stopAll = vi.fn(async () => undefined)
   private readonly exitListeners = new Set<ExitListener>()
@@ -174,7 +175,7 @@ describe('SessionCoordinator.create with an initial prompt', () => {
     const record = await coordinator.create('project-1', 'claude', { worktree: true, initialPrompt: 'Pick an issue', title: 'Auto issue 10-09 14:30' })
 
     expect(promptFiles.write).toHaveBeenCalledWith('session-1', 'Pick an issue')
-    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { initialPromptFile: 'C:\\Profile\\issue-automation\\session-1.md' })
+    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), { initialPrompt: { file: 'C:\\Profile\\issue-automation\\session-1.md', source: 'issue' } })
     expect(record).toMatchObject({ title: 'Auto issue 10-09 14:30', titleState: 'complete', titleManuallySet: true, status: 'running' })
     // The file is written after the creating record exists and before the PTY starts.
     expect(store.update.mock.invocationCallOrder[0]).toBeLessThan(promptFiles.write.mock.invocationCallOrder[0]!)
@@ -204,6 +205,38 @@ describe('SessionCoordinator.create with an initial prompt', () => {
     expect(promptFiles.write).toHaveBeenCalledWith('session-1', 'Write C:\\Profile\\issue-automation\\session-1.result.json; keep {{other}}')
     expect(record).toMatchObject({ automation: 'issue' })
     expect(record).not.toHaveProperty('issue')
+  })
+
+  it('taskPrompt starts with a task prompt and no automation marker', async () => {
+    const { terminalService, promptFiles, issueRuns, coordinator } = buildHarness()
+
+    const record = await coordinator.create('project-1', 'claude', { worktree: true, taskPrompt: { text: 'Do the thing', skill: 'fast-do' } })
+
+    expect(promptFiles.write).toHaveBeenCalledWith('session-1', 'Do the thing')
+    expect(terminalService.start).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }), {
+      initialPrompt: { file: 'C:\\Profile\\issue-automation\\session-1.md', source: 'task', skill: 'fast-do' }
+    })
+    expect(record).not.toHaveProperty('automation')
+    expect(issueRuns.started).not.toHaveBeenCalled()
+    expect(issueRuns.settle).not.toHaveBeenCalled()
+  })
+
+  it('removes the task prompt file and the record when the PTY fails to start, without issue history', async () => {
+    const { store, terminalService, promptFiles, issueRuns, coordinator } = buildHarness()
+    terminalService.start.mockRejectedValue(new Error('agent CLI not found'))
+
+    await expect(coordinator.create('project-1', 'claude', { taskPrompt: { text: 'x' } })).rejects.toThrow('agent CLI not found')
+
+    expect(promptFiles.remove).toHaveBeenCalledWith('session-1')
+    expect((await store.load()).sessions).toHaveLength(0)
+    expect(issueRuns.settle).not.toHaveBeenCalled()
+  })
+
+  it('rejects initialPrompt and taskPrompt together', async () => {
+    const { terminalService, coordinator } = buildHarness()
+
+    await expect(coordinator.create('project-1', 'claude', { initialPrompt: 'a', taskPrompt: { text: 'b' } })).rejects.toThrow('cannot be combined')
+    expect(terminalService.start).not.toHaveBeenCalled()
   })
 
   it('removes the prompt file, the record and the worktree when the PTY fails to start', async () => {

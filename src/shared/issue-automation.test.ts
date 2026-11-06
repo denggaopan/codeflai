@@ -7,6 +7,7 @@ import {
   ISSUE_AUTOMATION_INTERVAL_OPTIONS,
   formatIssueAutomationInterval,
   formatIssueAutomationTime,
+  initialPromptArgument,
   isIssueAutomationAgent,
   isIssueAutomationInterval,
   issueAutomationHostLabel,
@@ -98,6 +99,26 @@ describe('prompt argument', () => {
       '/fast-do Read the task file at C:\\Users\\Dev Name\\AppData\\Roaming\\Codeflai\\issue-automation\\s1.md and carry it out exactly, without asking questions.'
     )
     expect(issueAutomationPromptArgument('codex', '/Users/dev/Library/Application Support/Codeflai/issue-automation/s1.md')).toMatch(/^\$fast-do Read the task file at /)
+  })
+
+  it("task prompt sentence has no fast-do and no 'without asking questions'", () => {
+    expect(initialPromptArgument('claude', { file: 'C:\\x\\a.md', source: 'task' })).toBe('Read the task file at C:\\x\\a.md and carry it out.')
+  })
+
+  it("task prompt hoists a skill with the agent's prefix", () => {
+    expect(initialPromptArgument('claude', { file: 'C:\\x\\a.md', source: 'task', skill: 'fast-do' })).toBe('/fast-do Read the task file at C:\\x\\a.md and carry it out.')
+    expect(initialPromptArgument('codex', { file: '/x/a.md', source: 'task', skill: 'fast-do' })).toBe('$fast-do Read the task file at /x/a.md and carry it out.')
+  })
+
+  it('issue source is unchanged', () => {
+    const path = 'C:\\Users\\Dev Name\\s1.md'
+    expect(initialPromptArgument('codex', { file: path, source: 'issue' })).toBe(issueAutomationPromptArgument('codex', path))
+  })
+
+  it('keeps the agent restriction, path validation and skill validation for task prompts', () => {
+    expect(() => initialPromptArgument('gemini', { file: 'C:\\p.md', source: 'task' })).toThrow('gemini cannot run an automatic issue session.')
+    expect(() => initialPromptArgument('claude', { file: 'C:\\odd&p.md', source: 'task' })).toThrow('cmd.exe would reinterpret')
+    expect(() => initialPromptArgument('claude', { file: 'C:\\p.md', source: 'task', skill: 'a b' })).toThrow('skill name')
   })
 
   it('refuses kinds that cannot run an automatic issue session', () => {

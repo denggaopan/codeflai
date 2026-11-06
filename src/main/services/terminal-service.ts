@@ -6,8 +6,8 @@ import { spawn as spawnPty } from 'node-pty'
 
 import { agentLaunchArgs, agentLaunchEnv } from '../../shared/agent-kinds'
 import type { SessionKind, SessionRecord } from '../../shared/contracts'
-import { isIssueAutomationAgent, issueAutomationPromptArgument } from '../../shared/issue-automation'
-import type { TerminalDataEvent } from '../../shared/pty-protocol'
+import { initialPromptArgument, isIssueAutomationAgent } from '../../shared/issue-automation'
+import type { InitialPrompt, TerminalDataEvent } from '../../shared/pty-protocol'
 import { cliLocator, type CliLocator } from '../infrastructure/cli-locator'
 
 const DEFAULT_COLS = 120
@@ -18,8 +18,8 @@ const STOP_TIMEOUT_MS = 2_000
 export type TerminalStartOptions = {
   /** Relaunch an agent CLI so it reattaches its previous conversation instead of starting a new one. */
   resume?: boolean
-  /** An automatic issue session's prompt file; one fixed argv sentence names it. Never with resume. */
-  initialPromptFile?: string
+  /** A session's prompt file and its source; one fixed argv sentence names it. Never with resume. */
+  initialPrompt?: InitialPrompt
 }
 
 export type TerminalEventMap = {
@@ -154,7 +154,7 @@ export class TerminalService {
 
     this.starting.add(session.id)
     try {
-      const launch = await this.resolveLaunchSpec(session.kind, options.resume === true, options.initialPromptFile)
+      const launch = await this.resolveLaunchSpec(session.kind, options.resume === true, options.initialPrompt)
       const pty = this.ptyFactory.spawn(launch.file, launch.args, {
         name: 'xterm-256color',
         cols: DEFAULT_COLS,
@@ -239,8 +239,8 @@ export class TerminalService {
 
   // Mirrors src/pty-host/launch-spec.ts, including the initial-prompt rule: only a fresh
   // Claude/Codex session takes one, and it is always the last argv element.
-  private async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPromptFile?: string): Promise<LaunchSpec> {
-    if (initialPromptFile !== undefined) {
+  private async resolveLaunchSpec(kind: SessionKind, resume: boolean, initialPrompt?: InitialPrompt): Promise<LaunchSpec> {
+    if (initialPrompt !== undefined) {
       if (resume) throw new Error('An initial prompt cannot be combined with resume.')
       if (!isIssueAutomationAgent(kind)) throw new Error(`${kind} cannot run an automatic issue session.`)
     }
@@ -266,9 +266,9 @@ export class TerminalService {
     const resolved = await this.locator.resolveAgent(kind)
     if (!resolved) throw new Error(`${kind} is not available.`)
     const launchArgs = agentLaunchArgs(kind, resume, this.platform)
-    const logicalArgs = initialPromptFile === undefined
+    const logicalArgs = initialPrompt === undefined
       ? launchArgs
-      : [...launchArgs, issueAutomationPromptArgument(kind, initialPromptFile)]
+      : [...launchArgs, initialPromptArgument(kind, initialPrompt)]
     const env = agentLaunchEnv(kind)
     const spec = this.platform === 'win32'
       ? await windowsAgentSpec(resolved, logicalArgs, this.environment, this.candidateExists)

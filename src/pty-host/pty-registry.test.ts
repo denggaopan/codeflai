@@ -141,9 +141,9 @@ describe('PtyRegistry spawning', () => {
   it('hands the prompt file to the launch resolver along with the kind and resume intent', async () => {
     const harness = buildHarness()
 
-    await harness.registry.spawn('s1', 'claude', 'C:\\Projects\\App', false, 80, 24, 'C:\\prompts\\s1.md')
+    await harness.registry.spawn('s1', 'claude', 'C:\\Projects\\App', false, 80, 24, { file: 'C:\\prompts\\s1.md', source: 'issue' })
 
-    expect(harness.resolveLaunchSpec).toHaveBeenCalledWith('claude', false, 'C:\\prompts\\s1.md')
+    expect(harness.resolveLaunchSpec).toHaveBeenCalledWith('claude', false, { file: 'C:\\prompts\\s1.md', source: 'issue' })
   })
 
   it('spawns with the resolved launch spec, the requested geometry and the merged environment', async () => {

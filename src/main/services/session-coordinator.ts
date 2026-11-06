@@ -78,6 +78,12 @@ export type CreateSessionOptions = {
   worktree?: boolean
   initialPrompt?: string
   title?: string
+  /**
+   * A neutral task prompt (Lark sessions): written to a file like the issue prompt, but the
+   * session carries no `automation` marker and no issue run history. Exclusive with
+   * `initialPrompt`.
+   */
+  taskPrompt?: { text: string; skill?: string }
 }
 
 /**
@@ -159,6 +165,9 @@ export class SessionCoordinator {
   }
 
   async create(projectId: string, kind: SessionKind, options: CreateSessionOptions = {}): Promise<SessionRecord> {
+    if (options.initialPrompt !== undefined && options.taskPrompt !== undefined) {
+      throw new Error('initialPrompt and taskPrompt cannot be combined.')
+    }
     return this.withLock(`project:${projectId}`, async () => {
       const project = await this.projectService.get(projectId)
       const current = await this.store.load()
@@ -189,18 +198,29 @@ export class SessionCoordinator {
       }
 
       try {
-        if (options.initialPrompt === undefined) {
+        if (options.taskPrompt !== undefined) {
+          const file = await this.promptFiles.write(record.id, options.taskPrompt.text)
+          await this.terminalService.start(record, {
+            initialPrompt: {
+              file,
+              source: 'task',
+              ...(options.taskPrompt.skill === undefined ? {} : { skill: options.taskPrompt.skill })
+            }
+          })
+        } else if (options.initialPrompt === undefined) {
           await this.terminalService.start(record)
         } else {
           // The renderer filled the project placeholders; the result file is the one value
           // only this side knows, because it is named after the session id minted above.
           const prompt = renderIssueAutomationTemplate(options.initialPrompt, { resultFile: this.promptFiles.resultPath(record.id) })
           const initialPromptFile = await this.promptFiles.write(record.id, prompt)
-          await this.terminalService.start(record, { initialPromptFile })
+          await this.terminalService.start(record, { initialPrompt: { file: initialPromptFile, source: 'issue' } })
         }
       } catch (error) {
-        if (options.initialPrompt !== undefined) {
+        if (options.taskPrompt !== undefined || options.initialPrompt !== undefined) {
           await this.promptFiles.remove(record.id)
+        }
+        if (options.initialPrompt !== undefined) {
           await this.issueRuns.settle(record.id, { outcome: 'failed', finishedAt: this.clock().toISOString(), error: errorMessage(error) })
         }
         await this.removeSession(record.id)
