@@ -897,6 +897,11 @@ export const useAppStore = create<AppStore>()((set, get) => {
         window.codeflai.notifySessionIdle(sessionId, session.title.slice(0, 200), body)
       }
       const onAgentIdle = (sessionId: string): void => {
+        // The Lark bridge decides whether this is one of its sessions, and a chat reply is owed
+        // whether or not the user is looking at the window, so neither the notifications switch
+        // nor attendance gates it. Replay never gets here (noteAgentOutput only calls onIdle for
+        // live output); before the snapshot the id is not trustworthy yet.
+        if (snapshotLoaded) window.codeflai.reportLarkIdle(sessionId)
         recordUnread(sessionId)
         notifySessionEvent(sessionId, 'idle')
       }

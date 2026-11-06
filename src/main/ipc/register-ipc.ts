@@ -5,6 +5,8 @@ import type {
   AppSnapshot,
   DeleteSessionResult,
   IssueRun,
+  LarkSaveConfigRequest,
+  LarkStatus,
   ProjectRecord,
   SessionRecord,
   ShutdownResult,
@@ -18,6 +20,10 @@ import {
   cloneProjectRequestSchema,
   createSessionRequestSchema,
   firstInputRequestSchema,
+  larkPairingRequestSchema,
+  larkRemoveMemberRequestSchema,
+  larkSaveConfigRequestSchema,
+  larkSessionIdleRequestSchema,
   notificationIdleRequestSchema,
   openExternalLinkRequestSchema,
   projectIdRequestSchema,
@@ -57,6 +63,21 @@ export type IpcTerminal = Pick<TerminalService, 'write' | 'resize' | 'on'> & {
   replay?(sessionId: string): Promise<TerminalReplay>
 }
 
+/**
+ * What the IPC layer needs from the Lark bridge, as one seam: the composition root joins the
+ * store (config, pairing, whitelist) and the bridge (connection, idle reports) behind it, and
+ * owns the status fan-out so a reopened window can subscribe again.
+ */
+export interface LarkIpcPort {
+  status(): Promise<LarkStatus>
+  saveConfig(request: LarkSaveConfigRequest): Promise<void>
+  startPairing(role: 'owner' | 'member'): Promise<void>
+  removeMember(openId: string): Promise<void>
+  applyConfig(): Promise<void>
+  reportIdle(sessionId: string): Promise<void>
+  onStatusChanged(listener: (status: LarkStatus) => void): () => void
+}
+
 export type RegisterIpcDependencies = {
   ipcMain: IpcMain
   dialog: Dialog
@@ -68,6 +89,7 @@ export type RegisterIpcDependencies = {
   updaterService: UpdaterService
   powerService: PowerService
   notificationService: NotificationService
+  lark: LarkIpcPort
   terminalService: IpcTerminal
   getSnapshot: () => Promise<AppSnapshot>
   saveWorkspace: (workspace: WorkspaceState) => Promise<void>
@@ -108,6 +130,7 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     updaterService,
     powerService,
     notificationService,
+    lark,
     terminalService,
     getSnapshot,
     saveWorkspace,
@@ -118,6 +141,30 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
 
   const invokeHandlers: ReadonlyArray<readonly [string, InvokeHandler]> = [
     [IPC.snapshotGet, async (): Promise<AppSnapshot> => getSnapshot()],
+
+    [IPC.larkStatusGet, async (): Promise<LarkStatus> => lark.status()],
+    [
+      IPC.larkSaveConfig,
+      async (_event, payload): Promise<LarkStatus> => {
+        await lark.saveConfig(larkSaveConfigRequestSchema.parse(payload))
+        await lark.applyConfig()
+        return lark.status()
+      }
+    ],
+    [
+      IPC.larkStartPairing,
+      async (_event, payload): Promise<LarkStatus> => {
+        await lark.startPairing(larkPairingRequestSchema.parse(payload).role)
+        return lark.status()
+      }
+    ],
+    [
+      IPC.larkRemoveMember,
+      async (_event, payload): Promise<LarkStatus> => {
+        await lark.removeMember(larkRemoveMemberRequestSchema.parse(payload).openId)
+        return lark.status()
+      }
+    ],
     [IPC.workspaceSave, async (_event, payload): Promise<void> => saveWorkspace(workspaceStateSchema.parse(payload))],
 
     [
@@ -405,10 +452,20 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     notificationService.notify(parsed.data)
   }
 
+  const onLarkSessionIdle = (event: IpcMainEvent, payload: unknown): void => {
+    if (event.sender !== window.webContents) return
+    const parsed = larkSessionIdleRequestSchema.safeParse(payload)
+    if (!parsed.success) {
+      console.error('registerIpc: lark:session-idle carried an invalid payload.')
+      return
+    }
+    void lark.reportIdle(parsed.data.sessionId)
+  }
 
   ipcMain.on(IPC.terminalWrite, onTerminalWrite)
   ipcMain.on(IPC.terminalResize, onTerminalResize)
   ipcMain.on(IPC.notificationIdle, onNotificationIdle)
+  ipcMain.on(IPC.larkSessionIdle, onLarkSessionIdle)
 
   const unsubscribeState = coordinator.onStateChanged((state) => {
     publish(window, IPC.stateChanged, state)
@@ -425,6 +482,9 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
   const unsubscribeCloneProgress = projectService.onProgress((progress) => {
     publish(window, IPC.projectCloneProgress, progress)
   })
+  const unsubscribeLarkStatus = lark.onStatusChanged((status) => {
+    publish(window, IPC.larkStatusChanged, status)
+  })
   const unsubscribeNotificationActivate = notificationService.onActivate((sessionId) => {
     publish(window, IPC.notificationActivate, { sessionId })
   })
@@ -436,11 +496,13 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     ipcMain.removeListener(IPC.terminalWrite, onTerminalWrite)
     ipcMain.removeListener(IPC.terminalResize, onTerminalResize)
     ipcMain.removeListener(IPC.notificationIdle, onNotificationIdle)
+    ipcMain.removeListener(IPC.larkSessionIdle, onLarkSessionIdle)
     unsubscribeState()
     unsubscribeTerminalData()
     unsubscribeTerminalExit()
     unsubscribeUpdateProgress()
     unsubscribeCloneProgress()
+    unsubscribeLarkStatus()
     unsubscribeNotificationActivate()
   }
 }

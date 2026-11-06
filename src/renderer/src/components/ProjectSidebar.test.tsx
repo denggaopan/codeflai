@@ -32,6 +32,10 @@ import { useAppStore } from '../store/use-app-store'
 import NoticeToast from './NoticeToast'
 import ProjectSidebarPanel from './ProjectSidebar'
 
+const larkIdleStatus = {
+  enabled: false, domain: 'feishu' as const, appId: '', secretSet: false, connection: 'off' as const, members: []
+}
+
 type FakeApi = Window['codeflai']
 
 const createFakeApi = (): FakeApi => ({
@@ -79,6 +83,12 @@ const createFakeApi = (): FakeApi => ({
   shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
   writeTerminal: vi.fn(),
   notifySessionIdle: vi.fn(),
+  larkStatus: vi.fn(async () => larkIdleStatus),
+  larkSaveConfig: vi.fn(async () => larkIdleStatus),
+  larkStartPairing: vi.fn(async () => larkIdleStatus),
+  larkRemoveMember: vi.fn(async () => larkIdleStatus),
+  onLarkStatusChanged: vi.fn(() => () => undefined),
+  reportLarkIdle: vi.fn(),
   resizeTerminal: vi.fn(),
   replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
   onStateChanged: vi.fn(() => () => undefined),

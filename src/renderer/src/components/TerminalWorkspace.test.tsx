@@ -26,6 +26,10 @@ import { AGENT_NEWLINE_SEQUENCE } from '../terminal/terminal-key-bindings'
 import { SGR_WHEEL_DOWN, SGR_WHEEL_UP } from '../terminal/terminal-wheel'
 import TerminalWorkspace from './TerminalWorkspace'
 
+const larkIdleStatus = {
+  enabled: false, domain: 'feishu' as const, appId: '', secretSet: false, connection: 'off' as const, members: []
+}
+
 // TerminalWorkspace embeds real @xterm/xterm and @xterm/addon-fit instances, which rely on
 // canvas/ResizeObserver browser APIs jsdom does not provide. Both packages are mocked with
 // minimal, introspectable test doubles below (vi.hoisted so the factory can reference them)
@@ -239,6 +243,12 @@ const createFakeApi = () => {
     onUpdateProgress: vi.fn(() => () => undefined),
     writeTerminal: vi.fn(),
     notifySessionIdle: vi.fn(),
+    larkStatus: vi.fn(async () => larkIdleStatus),
+    larkSaveConfig: vi.fn(async () => larkIdleStatus),
+    larkStartPairing: vi.fn(async () => larkIdleStatus),
+    larkRemoveMember: vi.fn(async () => larkIdleStatus),
+    onLarkStatusChanged: vi.fn(() => () => undefined),
+    reportLarkIdle: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn(() => () => undefined),

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage } from 'electron'
 import type { Dialog } from 'electron'
 
 import { AGENT_KINDS, type AgentKind } from '../shared/agent-kinds'
@@ -16,7 +16,12 @@ import {
 } from '../shared/contracts'
 import { legacyPtyHostEndpoint, type TerminalReplay } from '../shared/pty-protocol'
 import { cliLocator, type CliLocator } from './infrastructure/cli-locator'
-import { registerIpc } from './ipc/register-ipc'
+import { commandRunner } from './infrastructure/command-runner'
+import { registerIpc, type LarkIpcPort } from './ipc/register-ipc'
+import { LarkBridgeService } from './lark/lark-bridge-service'
+import { SdkLarkClient, type LarkClient } from './lark/lark-client'
+import { LarkStore, type SecretCipher } from './lark/lark-store'
+import type { LarkStatus } from '../shared/contracts'
 import { createBeforeQuitHandler } from './shutdown-controller'
 import { createSecondInstanceHandler } from './single-instance'
 import { AppInfoService } from './services/app-info-service'
@@ -450,6 +455,54 @@ const recordE2EHostPid = (hostPid: number): void => {
   }
 }
 
+/** The App Secret is encrypted with the OS keystore; the ciphertext travels as base64 inside config.json. */
+const electronCipher: SecretCipher = {
+  isAvailable: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+  decrypt: (cipher) => safeStorage.decryptString(Buffer.from(cipher, 'base64'))
+}
+
+/**
+ * The Lark bridge is application-scoped (one connection, one whitelist), but the window it
+ * reports status to is not: `onStatusChanged` is what each `openMainWindow()` re-subscribes, so
+ * a window reopened on macOS keeps receiving status. The client and cipher are the only things
+ * that differ between production and a test composition, hence they are the parameters.
+ */
+const buildLarkBridge = (options: {
+  client: LarkClient
+  cipher: SecretCipher
+  coordinator: SessionCoordinator
+  agentLocator: AgentLocator
+}): { bridge: LarkBridgeService; ipc: LarkIpcPort } => {
+  const larkStore = new LarkStore(join(app.getPath('userData'), 'lark'), options.cipher)
+  const statusListeners = new Set<(status: LarkStatus) => void>()
+  const bridge = new LarkBridgeService({
+    store: larkStore,
+    client: options.client,
+    sessions: options.coordinator,
+    runner: commandRunner,
+    agentAvailable: async (agent) => (await options.agentLocator.resolveAgent(agent)) !== undefined,
+    onStatus: (status) => {
+      for (const listener of [...statusListeners]) listener(status)
+    }
+  })
+  const ipc: LarkIpcPort = {
+    status: () => bridge.status(),
+    saveConfig: (request) => larkStore.saveConfig(request),
+    startPairing: (role) => larkStore.startPairing(role),
+    removeMember: (openId) => larkStore.removeMember(openId),
+    applyConfig: () => bridge.applyConfig(),
+    reportIdle: (sessionId) => bridge.reportIdle(sessionId),
+    onStatusChanged: (listener) => {
+      statusListeners.add(listener)
+      return () => {
+        statusListeners.delete(listener)
+      }
+    }
+  }
+  return { bridge, ipc }
+}
+
 const customUserData = app.commandLine.getSwitchValue('user-data-dir')
 const userDataPath = customUserData ? resolve(customUserData) : join(app.getPath('appData'), 'Codeflai')
 app.setName('Codeflai')
@@ -585,6 +638,17 @@ if (!app.requestSingleInstanceLock()) {
       dialog.showErrorBox('Codeflai could not reconnect your terminals', error instanceof Error ? error.message : String(error))
       app.exit(1)
     })
+    // Lark bridge: app-level, started after reconciliation so its baseline of session statuses
+    // is the reconciled one. Unconfigured it stays `off` and touches no network.
+    const { bridge: larkBridge, ipc: larkIpc } = buildLarkBridge({
+      client: new SdkLarkClient(),
+      cipher: electronCipher,
+      coordinator,
+      agentLocator
+    })
+    void sessionsReconciled.then(() => larkBridge.start()).catch((error: unknown) => {
+      console.error('Codeflai: the Lark bridge could not start.', error)
+    })
     // Polls the result files of automatic issue sessions (rename on a claimed issue, delete on
     // "no issue"). Started after reconciliation so its first snapshot is the reconciled one.
     const issueOutcomeWatcher = new IssueOutcomeWatcher(coordinator)
@@ -622,6 +686,7 @@ if (!app.requestSingleInstanceLock()) {
         updaterService,
         powerService,
         notificationService,
+        lark: larkIpc,
         terminalService: terminal,
         saveWorkspace: (workspace) => store.saveWorkspace(workspace),
         getSnapshot: buildGetSnapshot(
@@ -663,6 +728,7 @@ if (!app.requestSingleInstanceLock()) {
       createBeforeQuitHandler({
         shutdown: () => {
           issueOutcomeWatcher.dispose()
+          larkBridge.dispose()
           return coordinator.shutdown()
         },
         quit: () => app.quit(),

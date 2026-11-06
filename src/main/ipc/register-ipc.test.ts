@@ -6,6 +6,7 @@ import type {
   AppInfo,
   AppSnapshot,
   AppState,
+  LarkStatus,
   CloneProgress,
   DeleteSessionResult,
   IssueRun,
@@ -200,6 +201,49 @@ class FakeNotificationService {
   }
 }
 
+class FakeLark {
+  readonly calls: string[] = []
+  readonly idle: string[] = []
+  private readonly listeners = new Set<(status: LarkStatus) => void>()
+  pairingError?: Error
+
+  async status(): Promise<LarkStatus> {
+    return larkStatus
+  }
+  async saveConfig(request: unknown): Promise<void> {
+    this.calls.push(`save:${JSON.stringify(request)}`)
+  }
+  async startPairing(role: string): Promise<void> {
+    if (this.pairingError) throw this.pairingError
+    this.calls.push(`pair:${role}`)
+  }
+  async removeMember(openId: string): Promise<void> {
+    this.calls.push(`remove:${openId}`)
+  }
+  async applyConfig(): Promise<void> {
+    this.calls.push('apply')
+  }
+  async reportIdle(sessionId: string): Promise<void> {
+    this.idle.push(sessionId)
+  }
+  onStatusChanged(listener: (status: LarkStatus) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+  emitStatus(status: LarkStatus): void {
+    for (const listener of [...this.listeners]) listener(status)
+  }
+  listenerCount(): number {
+    return this.listeners.size
+  }
+}
+
+const larkStatus: LarkStatus = {
+  enabled: true, domain: 'feishu', appId: 'cli_x', secretSet: true, connection: 'connected', members: []
+}
+
 const emptyState = (): AppState => ({ version: 1, projects: [], sessions: [] })
 
 // One entry per agent kind, as the real snapshot always carries; Codex is the missing one so
@@ -252,6 +296,7 @@ type Harness = {
   updaterService: FakeUpdaterService
   powerService: { shutdown: ReturnType<typeof vi.fn> }
   notificationService: FakeNotificationService
+  lark: FakeLark
   terminalService: FakeTerminalService
   getSnapshot: ReturnType<typeof vi.fn>
   saveWorkspace: ReturnType<typeof vi.fn>
@@ -305,6 +350,7 @@ const buildHarness = (options: {
   const updaterService = new FakeUpdaterService()
   const powerService = { shutdown: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })) }
   const notificationService = new FakeNotificationService()
+  const lark = new FakeLark()
   const terminalService = new FakeTerminalService(options.terminalCanReplay ?? true)
   const getSnapshot = vi.fn(async (): Promise<AppSnapshot> => ({ platform: 'win32', state: emptyState(), capabilities: capabilities() }))
   const applyTheme = vi.fn()
@@ -323,6 +369,7 @@ const buildHarness = (options: {
     updaterService: updaterService as unknown as UpdaterService,
     powerService: powerService as unknown as PowerService,
     notificationService: notificationService as unknown as NotificationService,
+    lark,
     terminalService: terminalService as unknown as TerminalService,
     getSnapshot,
     applyTheme,
@@ -342,6 +389,7 @@ const buildHarness = (options: {
     updaterService,
     powerService,
     notificationService,
+    lark,
     terminalService,
     getSnapshot,
     applyTheme,
@@ -1001,6 +1049,73 @@ describe('registerIpc: terminal:write (send-only)', () => {
     })
 
     expect(() => ipcMain.emit(IPC.terminalWrite, { sessionId: 'session-1', data: 'x' })).not.toThrow()
+  })
+})
+
+describe('registerIpc: lark', () => {
+  it('lark:save-config rejects an unknown field', async () => {
+    const { ipcMain, lark } = buildHarness()
+
+    await expect(
+      ipcMain.invoke(IPC.larkSaveConfig, { enabled: true, domain: 'feishu', appId: 'a', extra: 1 })
+    ).rejects.toThrow()
+    expect(lark.calls).toEqual([])
+  })
+
+  it('lark:save-config saves, reconnects, and answers with the fresh status', async () => {
+    const { ipcMain, lark } = buildHarness()
+    const request = { enabled: true, domain: 'feishu', appId: 'cli_x', appSecret: 's' }
+
+    await expect(ipcMain.invoke(IPC.larkSaveConfig, request)).resolves.toEqual(larkStatus)
+
+    expect(lark.calls).toEqual([`save:${JSON.stringify(request)}`, 'apply'])
+  })
+
+  it('lark:start-pairing and lark:remove-member parse, act, and return the status', async () => {
+    const { ipcMain, lark } = buildHarness()
+
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'owner' })).resolves.toEqual(larkStatus)
+    await expect(ipcMain.invoke(IPC.larkRemoveMember, { openId: 'ou_1' })).resolves.toEqual(larkStatus)
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'admin' })).rejects.toThrow()
+
+    expect(lark.calls).toEqual(['pair:owner', 'remove:ou_1'])
+  })
+
+  it('lets a pairing error reach the renderer as a rejection', async () => {
+    const { ipcMain, lark } = buildHarness()
+    lark.pairingError = new Error('Bind an owner first.')
+
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'member' })).rejects.toThrow('Bind an owner first.')
+  })
+
+  it('lark:session-idle forwards a valid sessionId', () => {
+    const { ipcMain, lark } = buildHarness()
+
+    ipcMain.emit(IPC.larkSessionIdle, { sessionId: 's1' })
+
+    expect(lark.idle).toEqual(['s1'])
+  })
+
+  it('lark:session-idle drops an invalid payload or a foreign sender', () => {
+    const { ipcMain, lark } = buildHarness()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    ipcMain.emit(IPC.larkSessionIdle, { sessionId: '' })
+    ipcMain.emit(IPC.larkSessionIdle, { sessionId: 's1', text: 'hi' })
+    ipcMain.emitFrom({}, IPC.larkSessionIdle, { sessionId: 's1' })
+
+    expect(lark.idle).toEqual([])
+    log.mockRestore()
+  })
+
+  it('publishes status changes and stops after dispose', () => {
+    const { window, lark, dispose } = buildHarness()
+
+    lark.emitStatus(larkStatus)
+    expect(window.webContents.send).toHaveBeenCalledWith(IPC.larkStatusChanged, larkStatus)
+
+    dispose()
+    expect(lark.listenerCount()).toBe(0)
   })
 })
 

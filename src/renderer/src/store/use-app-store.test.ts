@@ -36,6 +36,10 @@ import {
   useAppStore
 } from './use-app-store'
 
+const larkIdleStatus = {
+  enabled: false, domain: 'feishu' as const, appId: '', secretSet: false, connection: 'off' as const, members: []
+}
+
 const defaultCapabilities = (): CapabilityState => ({
   ...(Object.fromEntries(AGENT_KINDS.map((kind) => [kind, { available: true, detail: '' }])) as Record<
     AgentKind,
@@ -111,6 +115,12 @@ const createFakeApi = () => {
     shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
     notifySessionIdle: vi.fn(),
+    larkStatus: vi.fn(async () => larkIdleStatus),
+    larkSaveConfig: vi.fn(async () => larkIdleStatus),
+    larkStartPairing: vi.fn(async () => larkIdleStatus),
+    larkRemoveMember: vi.fn(async () => larkIdleStatus),
+    onLarkStatusChanged: vi.fn(() => () => undefined),
+    reportLarkIdle: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((_listener: (state: AppState) => void) => () => undefined),
@@ -1728,6 +1738,29 @@ describe('session notifications', () => {
     await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
 
     expect(api.notifySessionIdle).toHaveBeenCalledWith(claudeSession.id, 'Fix login bug', 'Project · Done')
+  })
+
+  it("reports a Lark session's idle edge even while the window is attended", async () => {
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(true)
+    useAppStore.getState().setNotificationsEnabled(false)
+
+    api.emitTerminalData({ sessionId: claudeSession.id, data: 'working…' })
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS)
+
+    expect(api.reportLarkIdle).toHaveBeenCalledWith(claudeSession.id)
+    expect(api.notifySessionIdle).not.toHaveBeenCalled()
+  })
+
+  it('does not report to Lark for replayed output', async () => {
+    api.replayTerminal.mockResolvedValue({ data: 'old output', throughSequence: 3, cols: 80, rows: 24 })
+    seedProject()
+    vi.mocked(document.hasFocus).mockReturnValue(false)
+
+    await useAppStore.getState().setActiveSession(claudeSession.id, project.id)
+    await vi.advanceTimersByTimeAsync(AGENT_IDLE_MS * 2)
+
+    expect(api.reportLarkIdle).not.toHaveBeenCalled()
   })
 
   it('notifies once per finished turn, not again for repaints of the idle prompt', async () => {

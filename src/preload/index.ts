@@ -8,6 +8,8 @@ import type {
   CloneProjectRequest,
   DeleteSessionResult,
   IssueRun,
+  LarkSaveConfigRequest,
+  LarkStatus,
   ProjectRecord,
   SessionKind,
   SessionRecord,
@@ -74,6 +76,14 @@ export type CodeflaiApi = {
   writeTerminal(sessionId: string, data: string): void
   // One-way like the terminal writes: a notification nobody can raise is not worth a round trip.
   notifySessionIdle(sessionId: string, title: string, body: string): void
+  larkStatus(): Promise<LarkStatus>
+  // The App Secret goes in but is never handed back: LarkStatus only carries `secretSet`.
+  larkSaveConfig(request: LarkSaveConfigRequest): Promise<LarkStatus>
+  larkStartPairing(role: 'owner' | 'member'): Promise<LarkStatus>
+  larkRemoveMember(openId: string): Promise<LarkStatus>
+  onLarkStatusChanged(listener: (status: LarkStatus) => void): () => void
+  // One-way like notifySessionIdle: the main process decides whether the session is a Lark one.
+  reportLarkIdle(sessionId: string): void
   onNotificationActivate(listener: (event: { sessionId: string }) => void): () => void
   resizeTerminal(sessionId: string, cols: number, rows: number): void
   // Answers `undefined` — never rejects — for a session the pty-host is not holding, which is
@@ -130,6 +140,20 @@ const api: CodeflaiApi = {
   },
   notifySessionIdle: (sessionId, title, body) => {
     ipcRenderer.send(IPC.notificationIdle, { sessionId, title, body })
+  },
+  larkStatus: () => ipcRenderer.invoke(IPC.larkStatusGet),
+  larkSaveConfig: (request) => ipcRenderer.invoke(IPC.larkSaveConfig, request),
+  larkStartPairing: (role) => ipcRenderer.invoke(IPC.larkStartPairing, { role }),
+  larkRemoveMember: (openId) => ipcRenderer.invoke(IPC.larkRemoveMember, { openId }),
+  onLarkStatusChanged: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: LarkStatus): void => listener(payload)
+    ipcRenderer.on(IPC.larkStatusChanged, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC.larkStatusChanged, wrapped)
+    }
+  },
+  reportLarkIdle: (sessionId) => {
+    ipcRenderer.send(IPC.larkSessionIdle, { sessionId })
   },
   resizeTerminal: (sessionId, cols, rows) => {
     ipcRenderer.send(IPC.terminalResize, { sessionId, cols, rows })

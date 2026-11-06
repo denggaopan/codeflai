@@ -41,5 +41,11 @@ export const IPC = {
   notificationActivate: 'notification:activate',
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
-  appUpdateProgress: 'app:update-progress'
+  appUpdateProgress: 'app:update-progress',
+  larkStatusGet: 'lark:status-get',
+  larkSaveConfig: 'lark:save-config',
+  larkStartPairing: 'lark:start-pairing',
+  larkRemoveMember: 'lark:remove-member',
+  larkStatusChanged: 'lark:status-changed',
+  larkSessionIdle: 'lark:session-idle'
 } as const

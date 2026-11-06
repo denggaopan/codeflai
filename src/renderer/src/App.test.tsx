@@ -25,6 +25,10 @@ import type { TerminalReplay } from '../../shared/pty-protocol'
 import App from './App'
 import { SESSION_KINDS_STORAGE_KEY, useAppStore } from './store/use-app-store'
 
+const larkIdleStatus = {
+  enabled: false, domain: 'feishu' as const, appId: '', secretSet: false, connection: 'off' as const, members: []
+}
+
 // App renders TerminalWorkspace, which embeds real @xterm/xterm and @xterm/addon-fit
 // instances. Both rely on browser APIs (canvas, matchMedia, ResizeObserver) that jsdom does
 // not provide, so — same as TerminalWorkspace's own tests — they are replaced here with
@@ -105,6 +109,12 @@ const createFakeApi = (state: AppState, capabilities: CapabilityState, platform:
     shutdownSystem: vi.fn(async (): Promise<ShutdownResult> => ({ status: 'launched' })),
     writeTerminal: vi.fn(),
     notifySessionIdle: vi.fn(),
+    larkStatus: vi.fn(async () => larkIdleStatus),
+    larkSaveConfig: vi.fn(async () => larkIdleStatus),
+    larkStartPairing: vi.fn(async () => larkIdleStatus),
+    larkRemoveMember: vi.fn(async () => larkIdleStatus),
+    onLarkStatusChanged: vi.fn(() => () => undefined),
+    reportLarkIdle: vi.fn(),
     resizeTerminal: vi.fn(),
     replayTerminal: vi.fn(async (_sessionId: string): Promise<TerminalReplay | undefined> => undefined),
     onStateChanged: vi.fn((listener: (state: AppState) => void) => {
