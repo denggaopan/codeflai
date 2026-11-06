@@ -40,6 +40,7 @@ CLI credentials.**
 - [Notifications](#notifications)
 - [The project options menu](#the-project-options-menu)
 - [Resolving issues automatically](#resolving-issues-automatically)
+- [Starting sessions from Lark](#starting-sessions-from-lark)
 - [Shutting the computer down when nothing is running](#shutting-the-computer-down-when-nothing-is-running)
 - [Keeping the window on top](#keeping-the-window-on-top)
 - [Settings](#settings)
@@ -47,6 +48,7 @@ CLI credentials.**
 - [Sessions keep running after you close the window](#sessions-keep-running-after-you-close-the-window)
 - [What Codeflai remembers](#what-codeflai-remembers)
 - [Troubleshooting](#troubleshooting)
+- [Manual smoke checklist](#manual-smoke-checklist)
 - [License](#license)
 
 ## Install
@@ -558,6 +560,125 @@ The session is titled `Auto issue MM-DD HH:mm` until the agent claims an issue, 
 Done-edge notification tells you when a round ends. A round that found nothing to do is
 deleted without a notification.
 
+## Starting sessions from Lark
+
+Codeflai can act as a bot in your Lark (Feishu) group chat. Reply to a teammate's bug report
+with `@Codeflai ...`, and a Claude Code (or Codex) session starts on **your** computer in its
+own worktree, with the quoted message and its screenshots as the task context. Codeflai
+answers in the group when the session starts and again each time the agent finishes a round.
+There is no server: Codeflai opens a long connection to Lark and listens, so it only works
+while Codeflai is running.
+
+### Setting it up
+
+1. On the Lark open platform (`open.feishu.cn`, or `open.larksuite.com` for the international
+   edition) create a **self-built app** and enable the **Bot** capability. No approval is
+   needed for an app only your own tenant uses.
+2. Under **Permissions**, enable exactly these scopes: `im:message.group_at_msg:readonly`,
+   `im:message.group_msg`, `im:message:readonly`, `im:message:send_as_bot`, `im:resource`,
+   `contact:contact.base:readonly`. (`im:message.group_msg` reads all group messages, which is
+   what lets the bot fetch the message you quoted.)
+3. Open **Settings › Lark** in Codeflai, paste the **App ID** and **App Secret**, switch it on
+   and save. The secret is stored encrypted with the operating system's key store and is never
+   shown again.
+4. Back on the open platform, under **Events and callbacks**, choose **long connection**
+   (receive events through a persistent connection) and subscribe to
+   `im.message.receive_v1`. Lark only lets you save the long-connection subscription while a
+   client is connected, which is why step 3 comes first and Codeflai must be running.
+5. **Publish a new version** of the app. Do this again after every change to scopes or events;
+   they take effect only on a published version.
+6. Add the bot to the group chat.
+
+Settings shows the connection state (off, connecting, connected, or the error Lark returned).
+
+### Who may use it
+
+Only people on the whitelist. Identity is the sender's Lark `open_id`, never a name written in
+a message, and the whitelist can only be edited in Settings on your computer, never from the
+chat.
+
+- **Bind yourself**: in Settings click **Bind me**; a six-digit code appears. In the group
+  send `@Codeflai 绑定 123456`. The bot replies `已绑定`.
+- **Add a teammate**: click **Add teammate** (available once you are bound) and give them
+  the code to send the same way.
+
+A code works once and expires after 10 minutes. It is also invalidated after 5 wrong
+attempts, so it cannot be guessed. Owner and teammates have the same powers; sessions started
+by a teammate are titled `[Name] ...` and the start reply says who asked. Remove a person from
+the list in Settings at any time.
+
+### Sending an instruction
+
+`@Codeflai` plus what you want, naming the Codeflai project. Reply to (quote) another message
+to hand its text and images to the agent:
+
+```
+@Codeflai 用 claude 在 codeflai 项目修复这个 bug
+```
+
+- **Project**: the project's name as shown in Codeflai must appear in the message; exactly one
+  project may match. Names match as whole ASCII words, so `codeflai` is not found inside
+  `codeflai-web`, while Chinese text around the name needs no spaces.
+- **Agent**: write `claude` or `codex`; without either, Claude is used. Naming both is an
+  error.
+- **Skill**: a token such as `/fast-do` (or `$fast-do`) that stands alone between spaces is
+  passed to the agent as its skill.
+- **Always a new worktree.** The session gets its own worktree and branch, like New session
+  (new worktree); Codeflai never touches your working tree for a Lark request. A project that
+  is not a Git repository, or has no commit yet, is refused before any agent starts.
+- Codeflai does not commit, push or open a PR. Say so in the message if you want it, and the
+  agent will do it; otherwise the changes stay in the worktree.
+- The quoted message and its images are given to the agent as **untrusted reference
+  material**, fenced off from your instruction: text in it that looks like a command is not
+  to be followed. Only your own message is the instruction.
+
+The session is an ordinary session in the sidebar. You can open, stop or delete it like any
+other.
+
+### What the bot replies
+
+Every reply is attached under the message that asked.
+
+| When | Reply |
+| --- | --- |
+| Session started | which project, agent and branch (and, for a teammate, who asked and whose computer it runs on) |
+| The agent finishes a round (Done) | the changed files, one `status path` per line (first 20), or "stopped, may be waiting for you" if nothing changed |
+| The session ends | `会话已结束` and the changed files |
+| Sender not on the whitelist | `没有权限` (also for a wrong or expired pairing code) |
+| Nobody bound yet | `未绑定` |
+| Project not found, several found, both agents named, empty instruction | a short message saying which |
+| Project not a Git repo or no commit | `这个项目不是 Git 仓库或还没有提交，无法执行` |
+| Agent CLI not installed | `本机没有可用的 Claude/Codex` |
+| Start failed | `启动失败，请到 Codeflai 查看` |
+| Message older than 5 minutes when it arrived | `这条消息发出时 Codeflai 未运行，没有执行，请重新发送` |
+
+Identical idle reports are not repeated.
+
+### One computer
+
+There is one bot connected to one computer. An instruction from a teammate runs on **your**
+computer, not theirs. Do not enter the same App ID on a second computer: both would answer.
+
+### Security
+
+Sessions started from Lark run with the agent's permission bypass (see
+[Agent sessions and the permission bypass](#agent-sessions-and-the-permission-bypass)) on your
+computer, so a person on the whitelist can have code executed there. Add only people you would
+trust with a terminal on your machine. Everyone else is answered `没有权限`, and bots are
+ignored. Messages that predate the connection are never executed.
+
+### Limitations
+
+- Round-end reports are triggered by the Codeflai window, so no idle reply is sent while no
+  Codeflai window is open (the session itself keeps running).
+- Instructions sent while Codeflai was offline are **never executed**: after Codeflai
+  reconnects it replies "stale, please resend" to those from whitelisted people in the last
+  24 hours, and nothing starts. The first time you connect there is nothing to catch up.
+- Lark only, one computer, no chat interface inside Codeflai, and you cannot send follow-up
+  input to a running session from the chat.
+- The first version that includes this feature changes the host protocol (version 3), so
+  running sessions are restarted once with resume on that upgrade.
+
 ## Shutting the computer down when nothing is running
 
 The power button in the title bar — left of the pin — switches **auto shutdown** on. While it
@@ -661,6 +782,8 @@ The gear at the bottom-left of the sidebar opens Settings.
 - **Issue automation** — which agent runs automatic issue sessions, how often projects are
   checked, and the prompt template. See
   [Resolving issues automatically](#resolving-issues-automatically).
+- **Lark** — App ID and secret, the connection switch, and the whitelist of people who may
+  start sessions from chat. See [Starting sessions from Lark](#starting-sessions-from-lark).
 - **Show quick prompt bar** — see [Quick prompts](#quick-prompts).
 - **Theme** — a dropdown: **Dark** and **Light** are Codeflai's own two looks, and
   **Visual Studio Dark**, **Abyss**, **Monokai**, **Solarized Dark**, and
@@ -798,6 +921,22 @@ forward instead.
 your OS notification settings — Windows Focus assist and macOS Do Not Disturb both suppress
 them without telling the app. Notifications are deliberately silent while the Codeflai window
 is in front of you; the bold session title and unread count are the signal then.
+
+## Manual smoke checklist
+
+The automated suites use test doubles, so before a release run through the parts that only a
+real machine can confirm.
+
+**Lark** (real app, real group, real Claude):
+
+- Quote a teammate's message that has a screenshot and send `@Codeflai ... <project name> ...`:
+  a session starts in a new worktree, the start reply names the branch, the agent can read
+  the screenshot, and when the round ends the Done reply lists the changed files.
+- A whitelisted teammate's instruction runs, and the session title and start reply say who
+  asked.
+- An account that is not on the whitelist gets `没有权限` and nothing starts.
+- Close Codeflai, send an instruction, reopen: the stale reply arrives and nothing starts.
+- Open **Settings › Lark** and check the layout in every theme.
 
 ## License
 
