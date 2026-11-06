@@ -6,9 +6,16 @@ import type { CommandRunner } from '../infrastructure/command-runner'
 import type { CreateSessionOptions } from '../services/session-coordinator'
 import { extractMessageText, parseLarkCommand, type LarkCommand } from './lark-command'
 import type { LarkClient, LarkIncomingMessage } from './lark-client'
-import { buildLarkTaskPrompt, larkSessionTitle, type LarkQuote } from './lark-prompt'
+import {
+  buildLarkTaskPrompt,
+  formatChangeList,
+  larkSessionTitle,
+  parseChangedFiles,
+  type ChangedFile,
+  type LarkQuote
+} from './lark-prompt'
 import { WorktreeRequiredError } from '../services/session-coordinator'
-import { agentMissingReply, LARK_REPLY, startedReply, type LarkAgent } from './lark-replies'
+import { agentMissingReply, exitReply, idleReply, LARK_REPLY, startedReply, type LarkAgent } from './lark-replies'
 import type { LarkStore } from './lark-store'
 
 export const LARK_STALE_MESSAGE_MS = 5 * 60_000
@@ -39,6 +46,8 @@ export class LarkBridgeService {
   private error?: string
   private disposed = false
   private unsubscribe?: () => void
+  // Last status seen per session; undefined until the first state arrives (the baseline).
+  private statuses?: Map<string, SessionRecord['status']>
 
   constructor(
     private readonly deps: {
@@ -53,7 +62,7 @@ export class LarkBridgeService {
   ) {}
 
   async start(): Promise<void> {
-    this.unsubscribe ??= this.deps.sessions.onStateChanged(() => undefined)
+    this.unsubscribe ??= this.deps.sessions.onStateChanged((state) => this.handleState(state))
     await this.connect()
   }
 
@@ -66,9 +75,81 @@ export class LarkBridgeService {
     return this.deps.store.status(this.connection, this.error)
   }
 
-  // Task 8 reports idle sessions back to the chat.
-  async reportIdle(_sessionId: string): Promise<void> {
-    return undefined
+  /** The renderer's Done edge for a session; queued behind inbound work and never throws. */
+  async reportIdle(sessionId: string): Promise<void> {
+    this.enqueueTask(() => this.idleTask(sessionId))
+  }
+
+  private async idleTask(sessionId: string): Promise<void> {
+    if (this.disposed) return
+    try {
+      const link = await this.deps.store.sessionLink(sessionId)
+      if (link === undefined || link.baseCommit === '') return
+      const record = (await this.deps.sessions.snapshot()).sessions.find((session) => session.id === sessionId)
+      if (record === undefined || record.status !== 'running') return
+      const files = await this.changedFiles(record.launchPath, link.baseCommit)
+      const text = idleReply(link.agent, formatChangeList(files))
+      if (text === link.lastReport) return
+      if (await this.send(link.triggerMessageId, text)) {
+        await this.deps.store.updateSessionLink(sessionId, { lastReport: text })
+      }
+    } catch (error) {
+      console.error(`Lark idle report failed for ${sessionId}:`, error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
+  private async changedFiles(cwd: string, baseCommit: string): Promise<ChangedFile[]> {
+    const git = ['-c', 'core.quotepath=false']
+    const diff = await this.deps.runner.run('git', [...git, 'diff', '--name-status', baseCommit], cwd)
+    const untracked = await this.deps.runner.run('git', [...git, 'ls-files', '--others', '--exclude-standard'], cwd)
+    return parseChangedFiles(diff.stdout, untracked.stdout)
+  }
+
+  // Runs on the queue so a report never interleaves with a create for the same session.
+  private handleState(state: AppState): void {
+    this.enqueueTask(() => this.stateTask(state))
+  }
+
+  private async stateTask(state: AppState): Promise<void> {
+    if (this.disposed) return
+    const previous = this.statuses
+    const next = new Map(state.sessions.map((session) => [session.id, session.status] as const))
+    this.statuses = next
+    if (previous === undefined) return // the first state is only a baseline
+
+    for (const session of state.sessions) {
+      const before = previous.get(session.id)
+      if (!(before === 'running' || before === 'creating')) continue
+      if (!(session.status === 'stopped' || session.status === 'error')) continue
+      await this.exitTask(session)
+    }
+    // Only sessions seen in an earlier state can disappear; a state that merely predates a
+    // just-linked session must not unlink it.
+    for (const id of previous.keys()) {
+      if (!next.has(id)) await this.forget(id)
+    }
+  }
+
+  private async exitTask(session: SessionRecord): Promise<void> {
+    try {
+      const link = await this.deps.store.sessionLink(session.id)
+      if (link === undefined) return
+      const files = link.baseCommit === '' ? [] : await this.changedFiles(session.launchPath, link.baseCommit).catch(() => [])
+      await this.send(link.triggerMessageId, exitReply(formatChangeList(files)))
+    } catch (error) {
+      console.error(`Lark exit report failed for ${session.id}:`, error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
+  private async forget(sessionId: string): Promise<void> {
+    try {
+      const link = await this.deps.store.sessionLink(sessionId)
+      if (link === undefined) return
+      await this.deps.store.removeSessionLink(sessionId)
+      await rm(this.deps.store.attachmentDirectory(link.triggerMessageId), { recursive: true, force: true })
+    } catch (error) {
+      console.error(`Lark could not forget session ${sessionId}:`, error instanceof Error ? error.name : 'unknown error')
+    }
   }
 
   /** Resolves once everything queued so far has been handled. */
@@ -116,10 +197,16 @@ export class LarkBridgeService {
   }
 
   private async reply(messageId: string, text: string): Promise<void> {
+    await this.send(messageId, text)
+  }
+
+  private async send(messageId: string, text: string): Promise<boolean> {
     try {
       await this.deps.client.reply(messageId, text)
+      return true
     } catch (error) {
       console.error(`Lark reply failed for ${messageId}:`, error instanceof Error ? error.name : 'unknown error')
+      return false
     }
   }
 

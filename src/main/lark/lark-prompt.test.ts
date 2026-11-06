@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { buildLarkTaskPrompt, formatChangeList, larkSessionTitle } from './lark-prompt'
+import { buildLarkTaskPrompt, formatChangeList, larkSessionTitle, parseChangedFiles } from './lark-prompt'
+
+describe('parseChangedFiles', () => {
+  it('parses statuses, uses the new path for renames and copies, and handles CRLF', () => {
+    const diff = 'M\tsrc/a.ts\r\nA\tnew.ts\r\nD\told.ts\r\nR100\tfrom.ts\tto.ts\r\nC075\torig.ts\tcopy.ts\r\nT\tlink\r\n'
+    expect(parseChangedFiles(diff, '')).toEqual([
+      { status: 'M', path: 'src/a.ts' },
+      { status: 'A', path: 'new.ts' },
+      { status: 'D', path: 'old.ts' },
+      { status: 'R', path: 'to.ts' },
+      { status: 'C', path: 'copy.ts' },
+      { status: 'T', path: 'link' }
+    ])
+  })
+
+  it('adds untracked files as ?? and lets the tracked entry win on duplicates', () => {
+    expect(parseChangedFiles('A\tnew.ts\n', 'new.ts\r\nextra.txt\n\n')).toEqual([
+      { status: 'A', path: 'new.ts' },
+      { status: '??', path: 'extra.txt' }
+    ])
+  })
+
+  it('returns nothing for empty output', () => {
+    expect(parseChangedFiles('', '')).toEqual([])
+  })
+})
 
 describe('buildLarkTaskPrompt', () => {
   it('wraps the quote as untrusted reference', () => {

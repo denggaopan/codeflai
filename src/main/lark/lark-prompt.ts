@@ -50,6 +50,31 @@ export function buildLarkTaskPrompt(input: {
 
 export type ChangedFile = { status: string; path: string }
 
+const LINE_SPLIT = /\r?\n/u
+
+/**
+ * `diffOutput` is `git diff --name-status`; renames and copies keep only their letter and the new
+ * path. `untrackedOutput` is `git ls-files --others` (status `??`). A tracked entry wins a duplicate.
+ */
+export function parseChangedFiles(diffOutput: string, untrackedOutput: string): ChangedFile[] {
+  const files: ChangedFile[] = []
+  const seen = new Set<string>()
+  const add = (status: string, path: string): void => {
+    if (path === '' || seen.has(path)) return
+    seen.add(path)
+    files.push({ status, path })
+  }
+  for (const line of diffOutput.split(LINE_SPLIT)) {
+    if (line.trim() === '') continue
+    const fields = line.split('\t')
+    const status = (fields[0] ?? '').trim().charAt(0)
+    const path = fields[fields.length - 1] ?? ''
+    if (status !== '' && fields.length >= 2) add(status, path)
+  }
+  for (const line of untrackedOutput.split(LINE_SPLIT)) add('??', line)
+  return files
+}
+
 export function formatChangeList(files: readonly ChangedFile[]): string {
   if (files.length === 0) return ''
   const lines = files.slice(0, LARK_CHANGE_LIST_LIMIT).map((f) => `${f.status} ${f.path}`)

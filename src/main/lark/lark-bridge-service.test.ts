@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -91,10 +91,12 @@ class FakeSessions implements LarkSessionSource {
   failSnapshot = false
   events: string[] = []
   onCreate?: () => void
+  records: SessionRecord[] = []
+  listeners = new Set<(state: AppState) => void>()
 
   async snapshot(): Promise<AppState> {
     if (this.failSnapshot) throw new Error('snapshot failed')
-    return { projects: this.projects, sessions: [] } as unknown as AppState
+    return { projects: this.projects, sessions: this.records } as unknown as AppState
   }
   async create(projectId: string, kind: SessionKind, options: CreateSessionOptions): Promise<SessionRecord> {
     this.events.push('create')
@@ -119,17 +121,30 @@ class FakeSessions implements LarkSessionSource {
         : { ...base, mode: 'ordinary' }
     ) as unknown as SessionRecord
   }
-  onStateChanged(): () => void {
-    return () => undefined
+  onStateChanged(listener: (state: AppState) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+  emit(): void {
+    const state = { projects: this.projects, sessions: [...this.records] } as unknown as AppState
+    for (const listener of this.listeners) listener(state)
+  }
+  setStatus(id: string, status: string): void {
+    this.records = this.records.map((r) => (r.id === id ? ({ ...r, status } as SessionRecord) : r))
+    this.emit()
   }
 }
 
 class FakeRunner implements CommandRunner {
   calls: Array<{ file: string; args: readonly string[]; cwd?: string }> = []
   fail = false
+  diff = ''
+  untracked = ''
   async run(file: string, args: readonly string[], cwd?: string): Promise<CommandResult> {
     this.calls.push({ file, args, ...(cwd === undefined ? {} : { cwd }) })
     if (this.fail) throw new Error('git failed')
+    if (args.includes('diff')) return { stdout: this.diff, stderr: '', exitCode: 0 }
+    if (args.includes('ls-files')) return { stdout: this.untracked, stderr: '', exitCode: 0 }
     return { stdout: 'abc123\n', stderr: '', exitCode: 0 }
   }
 }
@@ -613,5 +628,141 @@ describe('LarkBridgeService', () => {
     await deliver(message({ content: text(`绑定 ${code}`), createTimeMs: now.getTime() - 6 * 60_000 }))
     expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.stale])
     expect(await store.owner()).toBeUndefined()
+  })
+
+  describe('reports', () => {
+    const rec = (id: string, status: string, kind = 'claude'): SessionRecord =>
+      ({ id, projectId: 'p1', kind, status, launchPath: 'C:/alpha-wt' }) as unknown as SessionRecord
+    const linked = async (agent: 'claude' | 'codex' = 'claude', baseCommit = 'abc123'): Promise<string> => {
+      await store.linkSession({ sessionId: 's1', chatId: 'oc_chat', triggerMessageId: 'om_trigger', baseCommit, agent })
+      sessions.records = [rec('s1', 'running', agent)]
+      sessions.emit() // baseline
+      await bridge.whenIdle()
+      return 's1'
+    }
+
+    it('reports changed files on idle', async () => {
+      const id = await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      runner.untracked = 'new.ts\n'
+      runner.calls = []
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([{ messageId: 'om_trigger', text: '本轮结束，改了：\nM src/a.ts\n?? new.ts' }])
+      expect(runner.calls[0]).toEqual({
+        file: 'git',
+        args: ['-c', 'core.quotepath=false', 'diff', '--name-status', 'abc123'],
+        cwd: 'C:/alpha-wt'
+      })
+      expect(runner.calls[1]?.args).toEqual(['-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard'])
+    })
+
+    it('reports waiting when nothing changed', async () => {
+      const id = await linked('codex')
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies.map((r) => r.text)).toEqual(['Codex 停下了，可能在等你回复，请到 Codeflai 查看'])
+    })
+
+    it('does not repeat an identical report', async () => {
+      const id = await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      await bridge.reportIdle(id)
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toHaveLength(1)
+      runner.diff = 'M\tsrc/a.ts\nM\tsrc/b.ts\n'
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toHaveLength(2)
+    })
+
+    it('does not remember a report whose reply failed', async () => {
+      const id = await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      client.failReply = true
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      client.failReply = false
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toHaveLength(1)
+    })
+
+    it('ignores idle for a session without a link', async () => {
+      sessions.records = [rec('sx', 'running')]
+      await bridge.reportIdle('sx')
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([])
+      expect(runner.calls).toEqual([])
+    })
+
+    it('ignores idle for a session that is not running', async () => {
+      const id = await linked()
+      sessions.setStatus(id, 'stopped')
+      await bridge.whenIdle()
+      client.replies = []
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([])
+    })
+
+    it('sends nothing on idle and runs no git on exit when the base commit is empty', async () => {
+      const id = await linked('claude', '')
+      runner.calls = []
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([])
+      sessions.setStatus(id, 'stopped')
+      await bridge.whenIdle()
+      expect(client.replies.map((r) => r.text)).toEqual(['会话已结束。'])
+      expect(runner.calls).toEqual([])
+    })
+
+    it('sends no idle reply when git fails', async () => {
+      const id = await linked()
+      runner.fail = true
+      await bridge.reportIdle(id)
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([])
+    })
+
+    it('reports exit once when a linked session stops', async () => {
+      const id = await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      sessions.setStatus(id, 'stopped')
+      await bridge.whenIdle()
+      sessions.emit()
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([{ messageId: 'om_trigger', text: '会话已结束。\n改动：\nM src/a.ts' }])
+    })
+
+    it('reports exit when a session errors', async () => {
+      const id = await linked()
+      sessions.setStatus(id, 'error')
+      await bridge.whenIdle()
+      expect(client.replies).toHaveLength(1)
+    })
+
+    it('does not report anything for the first state it sees', async () => {
+      await store.linkSession({ sessionId: 's1', chatId: 'c', triggerMessageId: 'om_trigger', baseCommit: 'abc', agent: 'claude' })
+      sessions.records = [rec('s1', 'stopped')]
+      sessions.emit()
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([])
+    })
+
+    it('forgets a deleted session without replying and removes its attachments', async () => {
+      const id = await linked()
+      const dir = store.attachmentDirectory('om_trigger')
+      await mkdir(dir, { recursive: true })
+      await writeFile(join(dir, '0.png'), 'x')
+      sessions.records = []
+      sessions.emit()
+      await bridge.whenIdle()
+      expect(await store.sessionLink(id)).toBeUndefined()
+      await expect(stat(dir)).rejects.toThrow()
+      expect(client.replies).toEqual([])
+    })
   })
 })
