@@ -77,15 +77,25 @@ const sessionLinkSchema = z.strictObject({
 })
 const sessionsSchema = z.object({ version: z.literal(1), links: z.array(z.unknown()) })
 
+// 'strict' is for the read half of a read-modify-write: only a missing file counts as empty.
+type ReadMode = 'lenient' | 'strict'
+
 const emptyConfig = (): LarkConfig => ({ version: 1, enabled: false, domain: 'feishu', appId: '', members: [] })
+
+export type ReadText = (path: string) => Promise<string>
+
+const readText: ReadText = (path) => readFile(path, 'utf8')
 
 /**
  * Everything the Lark trigger keeps on disk: settings, the encrypted App Secret, the sender
  * whitelist, a pending pairing code, processed message ids and session links. Three files, each
  * parsed on its own, so a corrupt one costs only itself.
  *
- * Never rejects on read problems (a corrupt file is logged and treated as empty). The whitelist
- * is changed only through the methods here, which are only reachable from local Settings IPC.
+ * A missing file is empty, and so is a corrupt one (logged). Any other read failure (no access,
+ * a locked file) is empty for plain reads, but rejects a mutation without writing: rewriting a
+ * file it could not read would replace the whitelist or the processed ids with nothing. The
+ * whitelist is changed only through the methods here, which are only reachable from local
+ * Settings IPC.
  */
 export class LarkStore {
   // Every write is read-modify-write on one file; one chain keeps concurrent ones from overwriting each other.
@@ -95,12 +105,9 @@ export class LarkStore {
     private readonly directory: string,
     private readonly cipher: SecretCipher,
     private readonly clock: () => Date = () => new Date(),
-    private readonly random: (max: number) => number = (max) => randomInt(max)
+    private readonly random: (max: number) => number = (max) => randomInt(max),
+    private readonly read: ReadText = readText
   ) {}
-
-  promptDirectory(): string {
-    return join(this.directory, 'prompts')
-  }
 
   attachmentDirectory(triggerMessageId: string): string {
     if (!SAFE_MESSAGE_ID.test(triggerMessageId)) throw new Error('Unsafe Lark message id.')
@@ -211,7 +218,7 @@ export class LarkStore {
     let fresh = false
     await this.serialize(async () => {
       const path = join(this.directory, 'processed.json')
-      const ids = await this.readJson(path, processedSchema, (file) => file.ids, [])
+      const ids = await this.readJson(path, processedSchema, (file) => file.ids, [], 'strict')
       if (ids.includes(messageId)) return
       fresh = true
       await this.writeJson(path, { version: 1, ids: [...ids, messageId].slice(-LARK_PROCESSED_LIMIT) })
@@ -265,16 +272,19 @@ export class LarkStore {
     return next
   }
 
+  // `change` returning the very object it was given means "nothing to do": no write.
   private mutateConfig(change: (config: LarkConfig) => LarkConfig): Promise<void> {
     return this.serialize(async () => {
-      const next = change(await this.readConfig())
+      const current = await this.readConfig('strict')
+      const next = change(current)
+      if (next === current) return
       await this.writeJson(join(this.directory, 'config.json'), next)
     })
   }
 
   private mutateLinks(change: (links: LarkSessionLink[]) => LarkSessionLink[]): Promise<void> {
     return this.serialize(async () => {
-      await this.writeJson(join(this.directory, 'sessions.json'), { version: 1, links: change(await this.readLinks()) })
+      await this.writeJson(join(this.directory, 'sessions.json'), { version: 1, links: change(await this.readLinks('strict')) })
     })
   }
 
@@ -285,11 +295,11 @@ export class LarkStore {
     return this.readConfig()
   }
 
-  private readConfig(): Promise<LarkConfig> {
-    return this.readJson(join(this.directory, 'config.json'), configSchema, (file) => file, emptyConfig())
+  private readConfig(mode: ReadMode = 'lenient'): Promise<LarkConfig> {
+    return this.readJson(join(this.directory, 'config.json'), configSchema, (file) => file, emptyConfig(), mode)
   }
 
-  private async readLinks(): Promise<LarkSessionLink[]> {
+  private async readLinks(mode: ReadMode = 'lenient'): Promise<LarkSessionLink[]> {
     return this.readJson(
       join(this.directory, 'sessions.json'),
       sessionsSchema,
@@ -298,16 +308,25 @@ export class LarkStore {
           const parsed = sessionLinkSchema.safeParse(entry)
           return parsed.success ? [parsed.data] : []
         }),
-      []
+      [],
+      mode
     )
   }
 
-  private async readJson<File, Result>(path: string, schema: z.ZodType<File>, pick: (file: File) => Result, empty: Result): Promise<Result> {
+  private async readJson<File, Result>(
+    path: string,
+    schema: z.ZodType<File>,
+    pick: (file: File) => Result,
+    empty: Result,
+    mode: ReadMode = 'lenient'
+  ): Promise<Result> {
     let text: string
     try {
-      text = await readFile(path, 'utf8')
+      text = await this.read(path)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error(`LarkStore: could not read ${path}.`, (error as Error).name)
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return empty
+      console.error(`LarkStore: could not read ${path}.`, (error as Error).name)
+      if (mode === 'strict') throw new Error(`Could not read ${path}; not overwriting it.`)
       return empty
     }
     try {

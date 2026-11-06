@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { LarkStore, LARK_PAIRING_MAX_FAILURES, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type SecretCipher } from './lark-store'
+import { LarkStore, LARK_PAIRING_MAX_FAILURES, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type ReadText, type SecretCipher } from './lark-store'
 
 class FakeCipher implements SecretCipher {
   available = true
@@ -273,6 +273,51 @@ describe('LarkStore', () => {
     expect(await build().markProcessed('om_1')).toBe(true)
   })
 
+  describe('a file that exists but cannot be read', () => {
+    const denied = (name: string): ReadText => async (path) => {
+      if (path === join(directory, name)) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+      return readFile(path, 'utf8')
+    }
+    const buildDenying = (name: string): LarkStore => new LarkStore(directory, cipher, () => now, () => nextRandom, denied(name))
+
+    it('rejects a config change without rewriting the file', async () => {
+      const store = build()
+      await bindOwner(store)
+      const before = await readFile(join(directory, 'config.json'), 'utf8')
+      const locked = buildDenying('config.json')
+      await expect(locked.saveConfig({ ...config, appSecret: 's' })).rejects.toThrow()
+      await expect(locked.startPairing('member')).rejects.toThrow()
+      await expect(locked.setLastOnlineAt(now)).rejects.toThrow()
+      await expect(locked.redeemPairing('123456', 'ou_x', 'X')).rejects.toThrow()
+      expect(await readFile(join(directory, 'config.json'), 'utf8')).toBe(before)
+      // The store is not wedged: a later write with a readable file goes through.
+      expect((await build().owner())?.openId).toBe('ou_owner')
+    })
+
+    it('rejects markProcessed without forgetting the processed ids', async () => {
+      await build().markProcessed('om_1')
+      const before = await readFile(join(directory, 'processed.json'), 'utf8')
+      await expect(buildDenying('processed.json').markProcessed('om_2')).rejects.toThrow()
+      expect(await readFile(join(directory, 'processed.json'), 'utf8')).toBe(before)
+      expect(await build().markProcessed('om_1')).toBe(false)
+    })
+
+    it('rejects session-link writes without dropping the links', async () => {
+      const link = { sessionId: 's1', chatId: 'oc_1', triggerMessageId: 'om_1', baseCommit: 'abc', agent: 'claude' as const }
+      await build().linkSession(link)
+      const locked = buildDenying('sessions.json')
+      await expect(locked.linkSession({ ...link, sessionId: 's2' })).rejects.toThrow()
+      await expect(locked.updateSessionLink('s1', { lastReport: 'x' })).rejects.toThrow()
+      await expect(locked.removeSessionLink('s1')).rejects.toThrow()
+      expect(await build().sessionLink('s1')).toEqual(link)
+    })
+
+    it('still reads as empty outside a mutation', async () => {
+      await bindOwner(build())
+      expect(await buildDenying('config.json').owner()).toBeUndefined()
+    })
+  })
+
   it('links, patches and removes sessions', async () => {
     const store = build()
     const link = { sessionId: 's1', chatId: 'oc_1', triggerMessageId: 'om_1', baseCommit: 'abc', agent: 'claude' as const }
@@ -291,9 +336,8 @@ describe('LarkStore', () => {
     expect(await build().sessionLink('s1')).toBeUndefined()
   })
 
-  it('resolves prompt and attachment directories under the store', () => {
+  it('resolves attachment directories under the store', () => {
     const store = build()
-    expect(store.promptDirectory()).toBe(join(directory, 'prompts'))
     expect(store.attachmentDirectory('om_x100b61e7abb0fca4ffa63c824cbbe7c')).toBe(
       join(directory, 'attachments', 'om_x100b61e7abb0fca4ffa63c824cbbe7c')
     )
