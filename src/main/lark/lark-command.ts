@@ -77,15 +77,21 @@ export function extractMessageText(
   return undefined
 }
 
-const NAME_CHAR = '[\\p{L}\\p{N}_.-]'
+const WORD_CHAR = /[A-Za-z0-9_-]/
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// Word characters are ASCII only ([A-Za-z0-9_-], plus "." when followed by one of those);
+// everything else (CJK, whitespace, punctuation, text edges) is a boundary. A boundary is
+// only required on a side where the token's own edge character is a word character.
 function containsToken(text: string, token: string): boolean {
-  const pattern = new RegExp(`(?<!${NAME_CHAR})${escapeRegExp(token)}(?!${NAME_CHAR})`, 'iu')
-  return pattern.test(text)
+  const first = token[0] ?? ''
+  const last = token[token.length - 1] ?? ''
+  const before = WORD_CHAR.test(first) ? '(?<![A-Za-z0-9_.-])' : ''
+  const after = WORD_CHAR.test(last) ? '(?![A-Za-z0-9_-])(?!\\.[A-Za-z0-9_-])' : ''
+  return new RegExp(`${before}${escapeRegExp(token)}${after}`, 'i').test(text)
 }
 
 // Same alphabet as initialPromptSchema in shared/pty-protocol.ts.

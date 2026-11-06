@@ -47,6 +47,35 @@ describe('parseLarkCommand', () => {
     })
   })
 
+  it('matches a project name embedded in Chinese without spaces', () => {
+    expect(parseLarkCommand('用claude在codeflai项目修复这个bug', projects)).toMatchObject({
+      type: 'run',
+      agent: 'claude',
+      projectName: 'codeflai'
+    })
+    expect(parseLarkCommand('用codex在codeflai项目修', projects)).toMatchObject({ agent: 'codex' })
+  })
+
+  it('accepts a sentence-final period', () => {
+    expect(parseLarkCommand('修复 codeflai.', projects)).toMatchObject({ projectId: 'p1' })
+  })
+
+  it('matches a CJK project name inside CJK text', () => {
+    const cjk = [{ id: 'c1', name: '后台管理' }, ...projects]
+    expect(parseLarkCommand('在后台管理项目修复登录', cjk)).toMatchObject({
+      type: 'run',
+      projectId: 'c1'
+    })
+  })
+
+  it('does not match across an ASCII word', () => {
+    const list = [
+      { id: 'a', name: 'code' },
+      { id: 'b', name: 'codeflai' }
+    ]
+    expect(parseLarkCommand('用 codeflai 修复', list)).toMatchObject({ projectId: 'b' })
+  })
+
   it('reports no project and ambiguity', () => {
     expect(parseLarkCommand('修一下', projects)).toEqual({ type: 'error', reason: 'noProject' })
     expect(parseLarkCommand('在 codeflai 和 codeflai-web 修', projects)).toEqual({
