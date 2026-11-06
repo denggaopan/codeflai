@@ -406,3 +406,39 @@ export type UpdateInstallResult = { status: 'launched' } | { status: 'error'; me
 // report on success. Failures (no permission, a policy that blocks the command) come back as
 // a message instead of a rejection — the auto-shutdown watcher folds them into a notice.
 export type ShutdownResult = { status: 'launched' } | { status: 'error'; message: string }
+
+export const larkDomainSchema = z.enum(['feishu', 'lark'])
+export const larkMemberSchema = z.strictObject({
+  openId: z.string().min(1),
+  name: z.string(),
+  role: z.enum(['owner', 'member']),
+  addedAt: z.string().datetime()
+})
+export const larkConnectionSchema = z.enum(['off', 'connecting', 'connected', 'error'])
+export const larkStatusSchema = z.strictObject({
+  enabled: z.boolean(),
+  domain: larkDomainSchema,
+  appId: z.string(),
+  secretSet: z.boolean(),
+  connection: larkConnectionSchema,
+  error: z.string().optional(),
+  members: z.array(larkMemberSchema),
+  pairing: z
+    .strictObject({ code: z.string(), role: z.enum(['owner', 'member']), expiresAt: z.string().datetime() })
+    .optional()
+})
+export const larkSaveConfigRequestSchema = z.strictObject({
+  enabled: z.boolean(),
+  domain: larkDomainSchema,
+  appId: z.string().trim().max(128),
+  appSecret: z.string().min(1).max(256).optional()
+})
+export const larkPairingRequestSchema = z.strictObject({ role: z.enum(['owner', 'member']) })
+export const larkRemoveMemberRequestSchema = z.strictObject({ openId: z.string().min(1) })
+export const larkSessionIdleRequestSchema = z.strictObject({ sessionId: z.string().min(1) })
+
+export type LarkDomain = z.infer<typeof larkDomainSchema>
+export type LarkMember = z.infer<typeof larkMemberSchema>
+export type LarkConnection = z.infer<typeof larkConnectionSchema>
+export type LarkStatus = z.infer<typeof larkStatusSchema>
+export type LarkSaveConfigRequest = z.infer<typeof larkSaveConfigRequestSchema>

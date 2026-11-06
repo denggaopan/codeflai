@@ -1,0 +1,279 @@
+import { mkdir, readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+
+import { z } from 'zod'
+
+import {
+  larkDomainSchema,
+  larkMemberSchema,
+  type LarkConnection,
+  type LarkDomain,
+  type LarkMember,
+  type LarkSaveConfigRequest,
+  type LarkStatus
+} from '../../shared/contracts'
+
+type WriteFileAtomic = (filePath: string, contents: string, options: { encoding: 'utf8' }) => Promise<void>
+
+const writeFileAtomic = createRequire(import.meta.url)('write-file-atomic') as WriteFileAtomic
+
+export const LARK_PAIRING_TTL_MS = 10 * 60_000
+export const LARK_PROCESSED_LIMIT = 500
+
+// Lark message ids look like `om_x100b61e7abb0fca4ffa63c824cbbe7c`. The id becomes a directory
+// name, so anything that could climb out of the attachments folder is refused.
+const SAFE_MESSAGE_ID = /^[A-Za-z0-9_-]+$/u
+
+/** Base64 in and out, so the ciphertext can sit in a JSON file. Backed by Electron `safeStorage` in production. */
+export interface SecretCipher {
+  isAvailable(): boolean
+  encrypt(plain: string): string
+  decrypt(cipher: string): string
+}
+
+export type LarkSessionLink = {
+  sessionId: string
+  chatId: string
+  triggerMessageId: string
+  baseCommit: string
+  agent: 'claude' | 'codex'
+  lastReport?: string
+}
+
+const pairingSchema = z.strictObject({
+  code: z.string(),
+  role: z.enum(['owner', 'member']),
+  expiresAt: z.string().datetime()
+})
+
+const configSchema = z.object({
+  version: z.literal(1),
+  enabled: z.boolean(),
+  domain: larkDomainSchema,
+  appId: z.string(),
+  secret: z.string().optional(),
+  members: z.array(larkMemberSchema),
+  pairing: pairingSchema.optional()
+})
+type LarkConfig = z.infer<typeof configSchema>
+
+const processedSchema = z.object({ version: z.literal(1), ids: z.array(z.string()) })
+
+const sessionLinkSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  chatId: z.string(),
+  triggerMessageId: z.string(),
+  baseCommit: z.string(),
+  agent: z.enum(['claude', 'codex']),
+  lastReport: z.string().optional()
+})
+const sessionsSchema = z.object({ version: z.literal(1), links: z.array(z.unknown()) })
+
+const emptyConfig = (): LarkConfig => ({ version: 1, enabled: false, domain: 'feishu', appId: '', members: [] })
+
+/**
+ * Everything the Lark trigger keeps on disk: settings, the encrypted App Secret, the sender
+ * whitelist, a pending pairing code, processed message ids and session links. Three files, each
+ * parsed on its own, so a corrupt one costs only itself.
+ *
+ * Never rejects on read problems (a corrupt file is logged and treated as empty). The whitelist
+ * is changed only through the methods here, which are only reachable from local Settings IPC.
+ */
+export class LarkStore {
+  // Every write is read-modify-write on one file; one chain keeps concurrent ones from overwriting each other.
+  private queue: Promise<unknown> = Promise.resolve()
+
+  constructor(
+    private readonly directory: string,
+    private readonly cipher: SecretCipher,
+    private readonly clock: () => Date = () => new Date(),
+    private readonly random: (max: number) => number = (max) => Math.floor(Math.random() * max)
+  ) {}
+
+  promptDirectory(): string {
+    return join(this.directory, 'prompts')
+  }
+
+  attachmentDirectory(triggerMessageId: string): string {
+    if (!SAFE_MESSAGE_ID.test(triggerMessageId)) throw new Error('Unsafe Lark message id.')
+    return join(this.directory, 'attachments', triggerMessageId)
+  }
+
+  async status(connection: LarkConnection, error?: string): Promise<LarkStatus> {
+    const config = await this.settledConfig()
+    const pairing = config.pairing
+    return {
+      enabled: config.enabled,
+      domain: config.domain,
+      appId: config.appId,
+      secretSet: config.secret !== undefined && config.secret !== '',
+      connection,
+      ...(error === undefined ? {} : { error }),
+      members: config.members,
+      ...(pairing === undefined || Date.parse(pairing.expiresAt) < this.clock().getTime() ? {} : { pairing })
+    }
+  }
+
+  saveConfig(request: LarkSaveConfigRequest): Promise<void> {
+    return this.mutateConfig((config) => {
+      let secret = config.secret
+      if (request.appSecret !== undefined) {
+        if (!this.cipher.isAvailable()) throw new Error('Secure storage is not available on this system.')
+        secret = this.cipher.encrypt(request.appSecret)
+      }
+      return {
+        ...config,
+        enabled: request.enabled,
+        domain: request.domain,
+        appId: request.appId,
+        ...(secret === undefined ? {} : { secret })
+      }
+    })
+  }
+
+  async credentials(): Promise<{ domain: LarkDomain; appId: string; appSecret: string } | undefined> {
+    const config = await this.settledConfig()
+    if (!config.enabled || config.appId === '' || config.secret === undefined || config.secret === '') return undefined
+    try {
+      return { domain: config.domain, appId: config.appId, appSecret: this.cipher.decrypt(config.secret) }
+    } catch (error) {
+      console.error('LarkStore: could not decrypt the stored App Secret.', error)
+      return undefined
+    }
+  }
+
+  startPairing(role: 'owner' | 'member'): Promise<void> {
+    return this.mutateConfig((config) => {
+      if (role === 'member' && !config.members.some((member) => member.role === 'owner')) throw new Error('Bind an owner first.')
+      const code = String(this.random(1_000_000)).padStart(6, '0')
+      const expiresAt = new Date(this.clock().getTime() + LARK_PAIRING_TTL_MS).toISOString()
+      return { ...config, pairing: { code, role, expiresAt } }
+    })
+  }
+
+  async redeemPairing(code: string, openId: string, name: string): Promise<'added' | 'invalid'> {
+    let outcome: 'added' | 'invalid' = 'invalid'
+    await this.mutateConfig((config) => {
+      const pairing = config.pairing
+      if (pairing === undefined || pairing.code !== code || Date.parse(pairing.expiresAt) < this.clock().getTime()) return config
+      outcome = 'added'
+      const entry: LarkMember = { openId, name, role: pairing.role, addedAt: this.clock().toISOString() }
+      const previous = config.members.find((member) => member.openId === openId)
+      const others = config.members.filter(
+        (member) => member.openId !== openId && !(pairing.role === 'owner' && member.role === 'owner')
+      )
+      const kept = previous === undefined ? entry : { ...entry, addedAt: previous.addedAt }
+      const { pairing: _used, ...rest } = config
+      return { ...rest, members: [...others, kept] }
+    })
+    return outcome
+  }
+
+  removeMember(openId: string): Promise<void> {
+    return this.mutateConfig((config) => ({ ...config, members: config.members.filter((member) => member.openId !== openId) }))
+  }
+
+  async memberFor(openId: string): Promise<LarkMember | undefined> {
+    return (await this.settledConfig()).members.find((member) => member.openId === openId)
+  }
+
+  async owner(): Promise<LarkMember | undefined> {
+    return (await this.settledConfig()).members.find((member) => member.role === 'owner')
+  }
+
+  async markProcessed(messageId: string): Promise<boolean> {
+    let fresh = false
+    await this.serialize(async () => {
+      const path = join(this.directory, 'processed.json')
+      const ids = await this.readJson(path, processedSchema, (file) => file.ids, [])
+      if (ids.includes(messageId)) return
+      fresh = true
+      await this.writeJson(path, { version: 1, ids: [...ids, messageId].slice(-LARK_PROCESSED_LIMIT) })
+    })
+    return fresh
+  }
+
+  linkSession(link: LarkSessionLink): Promise<void> {
+    return this.mutateLinks((links) => [...links.filter((entry) => entry.sessionId !== link.sessionId), link])
+  }
+
+  async sessionLink(sessionId: string): Promise<LarkSessionLink | undefined> {
+    await this.queue.catch(() => undefined)
+    return (await this.readLinks()).find((link) => link.sessionId === sessionId)
+  }
+
+  updateSessionLink(sessionId: string, patch: Partial<Pick<LarkSessionLink, 'lastReport'>>): Promise<void> {
+    return this.mutateLinks((links) => links.map((link) => (link.sessionId === sessionId ? { ...link, ...patch } : link)))
+  }
+
+  removeSessionLink(sessionId: string): Promise<void> {
+    return this.mutateLinks((links) => links.filter((link) => link.sessionId !== sessionId))
+  }
+
+  // Runs `task` after everything queued before it. The returned promise carries the task's own
+  // failure, but the chain itself always recovers so one throw does not wedge later writes.
+  private serialize(task: () => Promise<void>): Promise<void> {
+    const next = this.queue.catch(() => undefined).then(task)
+    this.queue = next
+    return next
+  }
+
+  private mutateConfig(change: (config: LarkConfig) => LarkConfig): Promise<void> {
+    return this.serialize(async () => {
+      const next = change(await this.readConfig())
+      await this.writeJson(join(this.directory, 'config.json'), next)
+    })
+  }
+
+  private mutateLinks(change: (links: LarkSessionLink[]) => LarkSessionLink[]): Promise<void> {
+    return this.serialize(async () => {
+      await this.writeJson(join(this.directory, 'sessions.json'), { version: 1, links: change(await this.readLinks()) })
+    })
+  }
+
+  // Public reads wait for queued writes so they never see a half-applied state; the writers
+  // themselves run inside the queue and must use readConfig directly.
+  private async settledConfig(): Promise<LarkConfig> {
+    await this.queue.catch(() => undefined)
+    return this.readConfig()
+  }
+
+  private readConfig(): Promise<LarkConfig> {
+    return this.readJson(join(this.directory, 'config.json'), configSchema, (file) => file, emptyConfig())
+  }
+
+  private async readLinks(): Promise<LarkSessionLink[]> {
+    return this.readJson(
+      join(this.directory, 'sessions.json'),
+      sessionsSchema,
+      (file) =>
+        file.links.flatMap((entry) => {
+          const parsed = sessionLinkSchema.safeParse(entry)
+          return parsed.success ? [parsed.data] : []
+        }),
+      []
+    )
+  }
+
+  private async readJson<File, Result>(path: string, schema: z.ZodType<File>, pick: (file: File) => Result, empty: Result): Promise<Result> {
+    let text: string
+    try {
+      text = await readFile(path, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error(`LarkStore: could not read ${path}.`, error)
+      return empty
+    }
+    try {
+      return pick(schema.parse(JSON.parse(text)))
+    } catch (error) {
+      console.error(`LarkStore: ignoring unreadable ${path}.`, error)
+      return empty
+    }
+  }
+
+  private async writeJson(path: string, value: unknown): Promise<void> {
+    await mkdir(this.directory, { recursive: true })
+    await writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8' })
+  }
+}
