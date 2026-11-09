@@ -574,10 +574,15 @@ while Codeflai is running.
 1. On the Lark open platform (`open.feishu.cn`, or `open.larksuite.com` for the international
    edition) create a **self-built app** and enable the **Bot** capability. No approval is
    needed for an app only your own tenant uses.
-2. Under **Permissions**, enable exactly these scopes: `im:message.group_at_msg:readonly`,
-   `im:message.group_msg`, `im:message:readonly`, `im:message:send_as_bot`, `im:resource`,
-   `contact:contact.base:readonly`. (`im:message.group_msg` reads all group messages, which is
-   what lets the bot fetch the message you quoted.)
+2. Under **Permissions**, enable these scopes: `im:message.group_at_msg:readonly`,
+   `im:message:readonly`, `im:message:send_as_bot`, `im:resource`,
+   `contact:contact.base:readonly` and `contact:user.base:readonly`. Both contact scopes are
+   needed for the sender's name: with only the first, Lark answers the lookup without a name and
+   the whitelist shows an `ou_…` id instead.
+   `im:message.group_msg` (read all group messages) is **optional**. It is a sensitive scope a
+   tenant admin may refuse, and without it everything works, quoted messages and their images
+   included, except reading chat history after Codeflai was offline (see
+   [Limitations](#limitations)).
 3. Open **Settings › Lark** in Codeflai, paste the **App ID** (`cli_` followed by 16 letters
    or digits; Settings refuses anything else) and **App Secret**, switch it on and save. The
    secret is stored encrypted with the operating system's key store and is never shown again.
@@ -637,8 +642,8 @@ to hand its text and images to the agent:
 - **Agent**: write `claude` or `codex`; without either, Claude is used. Naming both is an
   error.
 - **Skill**: a token such as `/fast-do` (or `$fast-do`) that **opens** the instruction is
-  passed to the agent as its skill: `@Codeflai /fast-do 修复 codeflai 的登录 bug`. Anywhere
-  else in the sentence it is just text. Claude Code's own commands (`/login`, `/logout`,
+  passed to the agent as its skill, and the rest of the message is the instruction:
+  `@Codeflai /fast-do 修复 codeflai 的登录 bug`. Anywhere else in the sentence it is just text. Claude Code's own commands (`/login`, `/logout`,
   `/exit`, `/quit`, `/clear`, `/compact`, `/resume`, `/config`, `/permissions`, `/model`,
   `/upgrade`, `/doctor`, `/init`) are never passed as a skill.
 - **Always a new worktree.** The session gets its own worktree and branch, like New session
@@ -689,9 +694,14 @@ ignored. Messages that predate the connection are never executed.
 
 - Round-end reports are triggered by the Codeflai window, so no idle reply is sent while no
   Codeflai window is open (the session itself keeps running).
-- Instructions sent while Codeflai was offline are **never executed**: after Codeflai
-  reconnects it replies "stale, please resend" to those from whitelisted people in the last
-  24 hours, and nothing starts. The first time you connect there is nothing to catch up.
+- Instructions sent while Codeflai was offline are **never executed**; they are answered
+  "stale, please resend" and nothing starts. Lark itself redelivers events a bot missed: in a
+  test, a message sent while Codeflai was closed arrived about 10 minutes after reconnecting,
+  65 minutes after it was sent, and was answered that way. How long Lark keeps retrying is not
+  known. With the optional `im:message.group_msg` scope Codeflai also reads the last 24 hours of
+  history from whitelisted people when it reconnects, so nothing is missed however long it was
+  offline; without it, Codeflai logs once that this catch-up is off. The first time you connect
+  there is nothing to catch up.
 - Lark only, one computer, no chat interface inside Codeflai, and you cannot send follow-up
   input to a running session from the chat.
 - The first version that includes this feature changes the host protocol (version 3), so
