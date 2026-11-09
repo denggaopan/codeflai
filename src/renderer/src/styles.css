@@ -3168,3 +3168,16 @@ body[data-sidebar-resizing='true'] .app-main {
 .settings-lark-send code {
   font-size: 0.75rem;
 }
+
+/* Without an explicit family <code> falls back to the browser's monospace default, which on a
+   Chinese Windows is a CJK font (NSimSun) that draws ASCII with wide gaps after the dots. */
+.settings-lark-code,
+.settings-lark-permissions code,
+.settings-lark-send code {
+  font-family: var(--font-mono);
+}
+
+/* The intro sentence otherwise sits flush against the first switch row. */
+.settings-lark-intro {
+  margin: 0 0 12px;
+}

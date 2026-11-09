@@ -272,6 +272,8 @@ export const zhTW: Translations = {
   'settings.larkCopy': '複製',
   'settings.larkCopied': '已複製',
   'settings.larkPermissions': '應用程式需要的權限：',
+  'settings.larkPermissionOptional': '（選用，僅用於回覆 Codeflai 離線期間傳來的訊息）',
+  'settings.larkPairingNeedsEnabled': '請先啟用 Lark 機器人並儲存。',
   'settings.larkSetupHint': '在「事件與回呼」中訂閱 im.message.receive_v1，並選擇「使用長連線接收事件」。修改權限或事件後，需要發佈新版本才會生效。',
   'notice.issueAutomationFailed': '無法為「{project}」啟動自動 issue 工作階段：{reason}',
   'notice.issueAutomationSwitchedOff': '無法為「{project}」啟動自動 issue 工作階段：{reason}。已為它關閉自動處理 issue。',

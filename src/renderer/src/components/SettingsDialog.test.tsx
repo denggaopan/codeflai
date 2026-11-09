@@ -16,6 +16,7 @@ const links = {
 } as const
 
 const larkOff: LarkStatus = { enabled: false, domain: 'feishu', appId: '', secretSet: false, connection: 'off', members: [] }
+const larkOn: LarkStatus = { ...larkOff, enabled: true, appId: 'cli_a8af37daa578d029', secretSet: true, connection: 'connected' }
 
 // Only the handful of bridge methods this dialog touches are stubbed; the cast keeps the
 // fake narrow without widening every vi.fn() to a plain function type (which would cost the
@@ -562,6 +563,7 @@ describe('SettingsDialog', () => {
     it('offers Bind me without an owner and Add teammate only with one', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
+      api.larkStatus.mockResolvedValue(larkOn)
       renderDialog(api)
 
       await user.click(await screen.findByRole('button', { name: 'Bind me' }))
@@ -569,11 +571,34 @@ describe('SettingsDialog', () => {
       expect(screen.queryByRole('button', { name: 'Add teammate' })).not.toBeInTheDocument()
     })
 
+    it('keeps pairing off until the bot is switched on and saved', async () => {
+      const api = createFakeApi()
+      api.larkStatus.mockResolvedValue({
+        ...larkOff,
+        members: [{ openId: 'ou_o', name: 'Olive', role: 'owner', addedAt: '2026-11-01T00:00:00.000Z' }]
+      })
+      renderDialog(api)
+
+      expect(await screen.findByRole('button', { name: 'Re-bind' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Add teammate' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Add teammate' })).toHaveAttribute('title', expect.stringMatching(/switch on/i))
+    })
+
+    it('lists every permission the app needs, marking the history one optional', async () => {
+      const api = createFakeApi()
+      renderDialog(api)
+
+      expect(await screen.findByText('contact:user.base:readonly')).toBeInTheDocument()
+      expect(screen.getByText('contact:contact.base:readonly')).toBeInTheDocument()
+      expect(screen.getByText('im:message.group_msg').closest('li')).toHaveTextContent(/optional/i)
+      expect(screen.getByText('im:resource').closest('li')).not.toHaveTextContent(/optional/i)
+    })
+
     it('lists the owner with Re-bind only and members with Remove', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
       const withMembers: LarkStatus = {
-        ...larkOff,
+        ...larkOn,
         members: [
           { openId: 'ou_o', name: 'Olive', role: 'owner', addedAt: '2026-11-01T00:00:00.000Z' },
           { openId: 'ou_m', name: 'Mo', role: 'member', addedAt: '2026-11-02T00:00:00.000Z' }
@@ -597,8 +622,9 @@ describe('SettingsDialog', () => {
     it('shows the code a Bind me click produced', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
+      api.larkStatus.mockResolvedValue(larkOn)
       api.larkStartPairing.mockResolvedValue({
-        ...larkOff,
+        ...larkOn,
         pairing: { code: '654321', role: 'owner', expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() }
       })
       renderDialog(api)
@@ -610,6 +636,7 @@ describe('SettingsDialog', () => {
     it('shows a pairing failure as a notice', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()
+      api.larkStatus.mockResolvedValue(larkOn)
       api.larkStartPairing.mockRejectedValue(new Error('Save the App ID first'))
       renderDialog(api)
 

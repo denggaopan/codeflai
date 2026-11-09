@@ -98,7 +98,7 @@ describe('parseLarkCommand', () => {
   it('hoists a skill token that opens the instruction', () => {
     expect(parseLarkCommand('/fast-do 修复 codeflai 的登录 bug', projects)).toMatchObject({
       skill: 'fast-do',
-      instruction: '/fast-do 修复 codeflai 的登录 bug'
+      instruction: '修复 codeflai 的登录 bug'
     })
     expect(parseLarkCommand('$fast-do 用 codex 在 codeflai 修', projects)).toMatchObject({
       skill: 'fast-do'
@@ -106,11 +106,12 @@ describe('parseLarkCommand', () => {
   })
 
   it('hoists a leading skill token after the mention placeholder is stripped', () => {
-    expect(parseLarkCommand('@_user_1 /fast-do 在 codeflai 修', projects)).toMatchObject({ skill: 'fast-do' })
+    expect(parseLarkCommand('@_user_1 /fast-do 在 codeflai 修', projects)).toMatchObject({ skill: 'fast-do', instruction: '在 codeflai 修' })
   })
 
   it('does not hoist a skill token in mid-sentence', () => {
     expect(parseLarkCommand('用 /fast-do 在 codeflai 修', projects)).not.toHaveProperty('skill')
+    expect(parseLarkCommand('用 /fast-do 在 codeflai 修', projects)).toMatchObject({ instruction: '用 /fast-do 在 codeflai 修' })
     expect(parseLarkCommand('在 codeflai 打开 /settings 页面看看', projects)).not.toHaveProperty('skill')
   })
 

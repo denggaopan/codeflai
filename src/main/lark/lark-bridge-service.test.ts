@@ -19,6 +19,7 @@ import type {
   LarkFetchedMessage,
   LarkIncomingMessage
 } from './lark-client'
+import { LarkHistoryUnavailableError } from './lark-http'
 import { LARK_REPLY } from './lark-replies'
 import { LarkStore, type SecretCipher } from './lark-store'
 
@@ -485,6 +486,9 @@ describe('LarkBridgeService', () => {
     await makeOwner()
     await deliver(message({ content: text('/fast-do Alpha fix the bug') }))
     expect(sessions.created[0]?.options.taskPrompt?.skill).toBe('fast-do')
+    // The skill travels in argv; the task file keeps only what the sender asked for.
+    expect(sessions.created[0]?.options.taskPrompt?.text).toContain('Alpha fix the bug')
+    expect(sessions.created[0]?.options.taskPrompt?.text).not.toContain('/fast-do')
   })
 
   it('leaves a mid-sentence skill token in the prompt', async () => {
@@ -856,6 +860,29 @@ describe('LarkBridgeService', () => {
       await connectAndCatchUp()
       expect(client.replies).toEqual([])
       expect(await store.lastOnlineAt()).toEqual(now)
+    })
+
+    it('stops at the first chat when history is not readable and says so once per run', async () => {
+      await store.addKnownChat('oc_other')
+      const listed: string[] = []
+      client.listMessages = async (chatId: string) => {
+        listed.push(chatId)
+        throw new LarkHistoryUnavailableError()
+      }
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        await connectAndCatchUp()
+        await connectAndCatchUp()
+        expect(listed).toEqual(['oc_chat', 'oc_chat'])
+        expect(warn).toHaveBeenCalledTimes(1)
+        expect(String(warn.mock.calls[0]?.[0])).toContain('im:message.group_msg')
+        expect(error).not.toHaveBeenCalled()
+        expect(await store.lastOnlineAt()).toEqual(now)
+      } finally {
+        warn.mockRestore()
+        error.mockRestore()
+      }
     })
 
     it('does nothing for a connected task queued before applyConfig disabled the link', async () => {

@@ -154,6 +154,8 @@ export function parseLarkCommand(text: string, projects: readonly LarkProjectRef
     projectId: project.id,
     projectName: project.name,
     ...(skill ? { skill } : {}),
-    instruction: stripped
+    // A hoisted skill already opens the agent's first message; left in the task file too it reads
+    // as a second request to run it. A project name is required, so something always remains.
+    instruction: skill ? stripped.slice(stripped.indexOf(' ') + 1) : stripped
   }
 }

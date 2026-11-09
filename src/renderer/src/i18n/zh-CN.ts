@@ -267,6 +267,8 @@ export const zhCN: Translations = {
   'settings.larkCopy': '复制',
   'settings.larkCopied': '已复制',
   'settings.larkPermissions': '应用需要的权限：',
+  'settings.larkPermissionOptional': '（可选，仅用于回复 Codeflai 离线期间发来的消息）',
+  'settings.larkPairingNeedsEnabled': '请先启用 Lark 机器人并保存。',
   'settings.larkSetupHint': '在「事件与回调」中订阅 im.message.receive_v1，并选择「使用长连接接收事件」。修改权限或事件后，需要发布新版本才会生效。',
   'notice.issueAutomationFailed': '无法为“{project}”启动自动 issue 会话：{reason}',
   'notice.issueAutomationSwitchedOff': '无法为“{project}”启动自动 issue 会话：{reason}。已为它关闭自动处理 issue。',

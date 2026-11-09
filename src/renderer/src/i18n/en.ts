@@ -274,6 +274,8 @@ export const en = {
   'settings.larkCopy': 'Copy',
   'settings.larkCopied': 'Copied',
   'settings.larkPermissions': 'Permissions the app needs:',
+  'settings.larkPermissionOptional': '(optional — only for answering messages sent while Codeflai was offline)',
+  'settings.larkPairingNeedsEnabled': 'Switch on the Lark bot and save first.',
   'settings.larkSetupHint': 'Under Events & callbacks, subscribe to im.message.receive_v1 and choose "Receive events through persistent connection". After changing permissions or events, publish a new version of the app.',
   'notice.issueAutomationFailed': 'Could not start an automatic issue session for "{project}": {reason}',
   'notice.issueAutomationSwitchedOff':

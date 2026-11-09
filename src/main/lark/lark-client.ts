@@ -1,7 +1,16 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { LarkDomain } from '../../shared/contracts'
 import { LarkBotIdentity } from './lark-bot-identity'
-import { LARK_HTTP_TIMEOUT_MS, LARK_IMAGE_MAX_BYTES, withRequestTimeout, writeCapped } from './lark-http'
+import {
+  describeLarkError,
+  LARK_HTTP_TIMEOUT_MS,
+  LARK_IMAGE_MAX_BYTES,
+  LARK_MISSING_SCOPE_CODE,
+  larkErrorCode,
+  LarkHistoryUnavailableError,
+  withRequestTimeout,
+  writeCapped
+} from './lark-http'
 
 export const LARK_BOT_INFO_TIMEOUT_MS = 10_000
 
@@ -252,17 +261,21 @@ export class SdkLarkClient implements LarkClient {
     const found: LarkIncomingMessage[] = []
     let pageToken: string | undefined
     for (let page = 0; page < 100; page += 1) {
-      const response = await api.im.v1.message.list({
-        params: {
-          container_id_type: 'chat',
-          container_id: chatId,
-          start_time: String(Math.floor(sinceMs / 1000)),
-          end_time: String(Math.floor(untilMs / 1000)),
-          sort_type: 'ByCreateTimeAsc',
-          page_size: 50,
-          ...(pageToken === undefined ? {} : { page_token: pageToken })
-        }
-      })
+      const response = await api.im.v1.message
+        .list({
+          params: {
+            container_id_type: 'chat',
+            container_id: chatId,
+            start_time: String(Math.floor(sinceMs / 1000)),
+            end_time: String(Math.floor(untilMs / 1000)),
+            sort_type: 'ByCreateTimeAsc',
+            page_size: 50,
+            ...(pageToken === undefined ? {} : { page_token: pageToken })
+          }
+        })
+        .catch((error: unknown) => {
+          throw larkErrorCode(error) === LARK_MISSING_SCOPE_CODE ? new LarkHistoryUnavailableError() : error
+        })
       for (const item of response?.data?.items ?? []) {
         const mapped = toListedMessage(item, botOpenId)
         if (mapped !== undefined) found.push(mapped)
@@ -290,8 +303,14 @@ export class SdkLarkClient implements LarkClient {
         path: { user_id: openId },
         params: { user_id_type: 'open_id' }
       })
-      return response?.data?.user?.name || undefined
-    } catch {
+      const name = response?.data?.user?.name
+      // Lark answers 200 without the field when only contact:contact.base:readonly is granted:
+      // `name` also needs contact:user.base:readonly. Log the field names (never their values) so
+      // a missing scope shows up as such instead of as a silent open_id in the whitelist.
+      if (!name) console.warn('Lark user lookup returned no name; fields:', Object.keys(response?.data?.user ?? {}).join(','))
+      return name || undefined
+    } catch (error) {
+      console.warn('Lark user lookup failed:', describeLarkError(error))
       return undefined
     }
   }

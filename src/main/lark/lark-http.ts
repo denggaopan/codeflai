@@ -15,6 +15,43 @@ export const LARK_HTTP_TIMEOUT_MS = 15_000
 /** An image larger than this is not downloaded; the session starts without it. */
 export const LARK_IMAGE_MAX_BYTES = 20 * 1024 * 1024
 
+/**
+ * Lark's "Lack of necessary permissions" code. Seen when listing chat history without
+ * `im:message.group_msg`, a scope that tenant admins may refuse to grant.
+ */
+export const LARK_MISSING_SCOPE_CODE = 230027
+
+/**
+ * Chat history cannot be read: the app lacks `im:message.group_msg`, which a tenant admin may
+ * refuse to grant. Everything else works without it, so callers treat this as "catch-up is not
+ * available" rather than as a failure.
+ */
+export class LarkHistoryUnavailableError extends Error {
+  constructor() {
+    super('The Lark app may not read chat history (im:message.group_msg is not granted).')
+    this.name = 'LarkHistoryUnavailableError'
+  }
+}
+
+type LarkErrorShape = { name?: unknown; response?: { status?: unknown; data?: { code?: unknown; msg?: unknown } } }
+
+/** Lark's own error code from a rejected SDK request (axios puts Lark's body on `response.data`). */
+export function larkErrorCode(error: unknown): number | undefined {
+  const code = (error as LarkErrorShape | undefined)?.response?.data?.code
+  return typeof code === 'number' ? code : undefined
+}
+
+/**
+ * A log line for a failed Lark request: the error's name, HTTP status, Lark code and Lark's
+ * message, never the request or the rest of the response, which can carry message content.
+ */
+export function describeLarkError(error: unknown): string {
+  if (!(error instanceof Error)) return 'unknown error'
+  const response = (error as LarkErrorShape).response
+  const parts: unknown[] = [error.name, response?.status, response?.data?.code, response?.data?.msg]
+  return parts.filter((part) => typeof part === 'string' || typeof part === 'number').join(' ')
+}
+
 export class LarkImageTooLargeError extends Error {
   constructor() {
     super(`The image is larger than ${LARK_IMAGE_MAX_BYTES} bytes.`)

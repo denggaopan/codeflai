@@ -6,7 +6,16 @@ import { Readable } from 'node:stream'
 import type { HttpInstance, HttpRequestOptions } from '@larksuiteoapi/node-sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { LARK_HTTP_TIMEOUT_MS, LARK_IMAGE_MAX_BYTES, LarkImageTooLargeError, withRequestTimeout, writeCapped } from './lark-http'
+import {
+  describeLarkError,
+  LARK_HTTP_TIMEOUT_MS,
+  LARK_IMAGE_MAX_BYTES,
+  LARK_MISSING_SCOPE_CODE,
+  larkErrorCode,
+  LarkImageTooLargeError,
+  withRequestTimeout,
+  writeCapped
+} from './lark-http'
 
 describe('withRequestTimeout', () => {
   const recording = () => {
@@ -101,5 +110,32 @@ describe('writeCapped', () => {
 
   it('caps images at 20 MiB', () => {
     expect(LARK_IMAGE_MAX_BYTES).toBe(20 * 1024 * 1024)
+  })
+})
+
+describe('larkErrorCode', () => {
+  // The shape axios rejects with when Lark answers HTTP 4xx, as observed against the real service.
+  const axiosLike = (code: unknown, msg = 'Lack of necessary permissions') =>
+    Object.assign(new Error('Request failed with status code 400'), {
+      name: 'AxiosError',
+      response: { status: 400, data: { code, msg } }
+    })
+
+  it("reads Lark's own code from the response body", () => {
+    expect(larkErrorCode(axiosLike(LARK_MISSING_SCOPE_CODE))).toBe(230027)
+  })
+
+  it('is undefined for errors without a Lark body', () => {
+    expect(larkErrorCode(new Error('socket hang up'))).toBeUndefined()
+    expect(larkErrorCode(axiosLike('230027'))).toBeUndefined()
+    expect(larkErrorCode(undefined)).toBeUndefined()
+  })
+
+  it('describes an error by name, status, code and message only', () => {
+    expect(describeLarkError(axiosLike(230027, 'need scope: im:message.group_msg'))).toBe(
+      'AxiosError 400 230027 need scope: im:message.group_msg'
+    )
+    expect(describeLarkError(new Error('x'))).toBe('Error')
+    expect(describeLarkError('boom')).toBe('unknown error')
   })
 })

@@ -5,14 +5,18 @@ import { useTranslation } from '../i18n/use-translation'
 import { useAppStore } from '../store/use-app-store'
 
 // What the Lark app must be granted before the bot can read and answer messages. Names are the
-// platform's own identifiers, so they are never translated.
-const LARK_PERMISSIONS: ReadonlyArray<string> = [
-  'im:message.group_at_msg:readonly',
-  'im:message.group_msg',
-  'im:message:readonly',
-  'im:message:send_as_bot',
-  'im:resource',
-  'contact:contact.base:readonly'
+// platform's own identifiers, so they are never translated. Checked against a real app:
+// contact:contact.base:readonly lets the user lookup succeed, but its answer carries no `name`
+// without contact:user.base:readonly. im:message.group_msg is a sensitive scope tenant admins may
+// refuse; without it only the offline catch-up is lost (quoted messages are still readable).
+const LARK_PERMISSIONS: ReadonlyArray<{ name: string; optional?: true }> = [
+  { name: 'im:message.group_at_msg:readonly' },
+  { name: 'im:message:readonly' },
+  { name: 'im:message:send_as_bot' },
+  { name: 'im:resource' },
+  { name: 'contact:contact.base:readonly' },
+  { name: 'contact:user.base:readonly' },
+  { name: 'im:message.group_msg', optional: true }
 ]
 
 const formatRemaining = (ms: number): string => {
@@ -114,6 +118,13 @@ export default function LarkSettings() {
       .catch(() => undefined)
   }
 
+  // A code can only be redeemed through a running bot, so pairing waits for the saved switch;
+  // a code minted while it is off would quietly run out its ten minutes.
+  const pairingBlocked = !status?.enabled
+  const pairingProps = {
+    disabled: pairingBlocked,
+    title: pairingBlocked ? t('settings.larkPairingNeedsEnabled') : undefined
+  }
   const members = status?.members ?? []
   const owner = members.find((member) => member.role === 'owner')
   const connection = status?.connection ?? 'off'
@@ -129,7 +140,7 @@ export default function LarkSettings() {
 
   return (
     <>
-      <p className="settings-dialog-hint">{t('settings.larkHint')}</p>
+      <p className="settings-dialog-hint settings-lark-intro">{t('settings.larkHint')}</p>
 
       <div className="settings-dialog-section">
         <span className="settings-dialog-label" id="settings-lark-enable-label">
@@ -220,7 +231,7 @@ export default function LarkSettings() {
               {t('settings.larkAddedOn', { date: new Date(member.addedAt).toLocaleDateString(locale) })}
             </span>
             {member.role === 'owner' ? (
-              <button type="button" className="settings-update-button" onClick={() => startPairing('owner')}>
+              <button type="button" className="settings-update-button" {...pairingProps} onClick={() => startPairing('owner')}>
                 {t('settings.larkRebind')}
               </button>
             ) : (
@@ -238,11 +249,11 @@ export default function LarkSettings() {
       </ul>
       <div className="settings-dialog-section">
         {owner === undefined ? (
-          <button type="button" className="settings-update-button" onClick={() => startPairing('owner')}>
+          <button type="button" className="settings-update-button" {...pairingProps} onClick={() => startPairing('owner')}>
             {t('settings.larkBindMe')}
           </button>
         ) : (
-          <button type="button" className="settings-update-button" onClick={() => startPairing('member')}>
+          <button type="button" className="settings-update-button" {...pairingProps} onClick={() => startPairing('member')}>
             {t('settings.larkAddTeammate')}
           </button>
         )}
@@ -272,8 +283,9 @@ export default function LarkSettings() {
       <p className="settings-dialog-hint">{t('settings.larkPermissions')}</p>
       <ul className="settings-lark-permissions">
         {LARK_PERMISSIONS.map((permission) => (
-          <li key={permission}>
-            <code>{permission}</code>
+          <li key={permission.name}>
+            <code>{permission.name}</code>
+            {permission.optional && <span className="settings-dialog-hint"> {t('settings.larkPermissionOptional')}</span>}
           </li>
         ))}
       </ul>

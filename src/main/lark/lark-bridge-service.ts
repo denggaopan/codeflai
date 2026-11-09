@@ -6,6 +6,7 @@ import type { CommandRunner } from '../infrastructure/command-runner'
 import type { CreateSessionOptions } from '../services/session-coordinator'
 import { extractMessageText, parseLarkCommand, type LarkCommand } from './lark-command'
 import type { LarkClient, LarkIncomingMessage } from './lark-client'
+import { describeLarkError, LarkHistoryUnavailableError } from './lark-http'
 import {
   buildLarkTaskPrompt,
   formatChangeList,
@@ -47,6 +48,7 @@ export class LarkBridgeService {
   private connection: LarkConnection = 'off'
   private error?: string
   private disposed = false
+  private historyUnavailableLogged = false
   private unsubscribe?: () => void
   private stampTimer?: NodeJS.Timeout
   // Bumped on every connect, disconnect, applyConfig and dispose; queued work for an older link does nothing.
@@ -221,12 +223,21 @@ export class LarkBridgeService {
           try {
             for (const missed of await client.listMessages(chatId, since, now)) await this.catchUp(missed)
           } catch (error) {
-            console.error('Lark catch-up failed for a chat:', error instanceof Error ? error.name : 'unknown error')
+            if (error instanceof LarkHistoryUnavailableError) {
+              // A missing scope is the same for every chat and lasts until the app is changed, so
+              // stop here and say it once per run instead of once per chat per reconnect.
+              if (!this.historyUnavailableLogged) {
+                this.historyUnavailableLogged = true
+                console.warn('Lark catch-up is off: the app is not granted im:message.group_msg.')
+              }
+              break
+            }
+            console.error('Lark catch-up failed for a chat:', describeLarkError(error))
           }
         }
       }
     } catch (error) {
-      console.error('Lark catch-up failed:', error instanceof Error ? error.name : 'unknown error')
+      console.error('Lark catch-up failed:', describeLarkError(error))
     }
     if (this.disposed || generation !== this.generation) return
     await this.stamp()
