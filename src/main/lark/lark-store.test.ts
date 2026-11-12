@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { LarkStore, LARK_PAIRING_MAX_FAILURES, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type ReadText, type SecretCipher } from './lark-store'
+import { LarkStore, LARK_LINK_MESSAGE_LIMIT, LARK_PAIRING_MAX_FAILURES, LARK_PAIRING_TTL_MS, LARK_PROCESSED_LIMIT, type ReadText, type SecretCipher } from './lark-store'
 
 class FakeCipher implements SecretCipher {
   available = true
@@ -349,6 +349,59 @@ describe('LarkStore', () => {
     expect(await store.sessionLink('missing')).toBeUndefined()
     await store.removeSessionLink('s1')
     expect(await store.sessionLink('s1')).toBeUndefined()
+  })
+
+  it('clears a field patched to undefined and keeps the rest', async () => {
+    const store = build()
+    await store.linkSession({ sessionId: 's1', chatId: 'oc_1', triggerMessageId: 'om_1', baseCommit: 'abc', agent: 'claude' })
+    await store.updateSessionLink('s1', { lastReport: 'r', replyTo: 'om_2', reported: true })
+    await store.updateSessionLink('s1', { lastReport: undefined, reported: false })
+    expect(await build().sessionLink('s1')).toEqual({
+      sessionId: 's1',
+      chatId: 'oc_1',
+      triggerMessageId: 'om_1',
+      baseCommit: 'abc',
+      agent: 'claude',
+      replyTo: 'om_2',
+      reported: false
+    })
+  })
+
+  it("finds a session by any message of its conversation, newest link first, and bounds what it remembers", async () => {
+    const store = build()
+    await store.linkSession({ sessionId: 's1', chatId: 'oc_1', triggerMessageId: 'om_t1', baseCommit: '', agent: 'claude' })
+    await store.linkSession({ sessionId: 's2', chatId: 'oc_1', triggerMessageId: 'om_t2', baseCommit: '', agent: 'codex' })
+    await store.addSessionMessage('s1', 'om_r1')
+    await store.addSessionMessage('s1', 'om_r1')
+
+    expect((await store.sessionLinkForMessage(['om_t1']))?.sessionId).toBe('s1')
+    expect((await store.sessionLinkForMessage([undefined, 'om_r1']))?.sessionId).toBe('s1')
+    expect((await store.sessionLinkForMessage(['om_t2', 'om_r1']))?.sessionId).toBe('s2')
+    expect(await store.sessionLinkForMessage(['om_other', undefined])).toBeUndefined()
+    expect(await store.sessionLinkForMessage([undefined, ''])).toBeUndefined()
+    expect((await store.sessionLink('s1'))?.messageIds).toEqual(['om_r1'])
+
+    for (let i = 0; i < LARK_LINK_MESSAGE_LIMIT + 2; i += 1) await store.addSessionMessage('s1', `om_m${i}`)
+    const ids = (await store.sessionLink('s1'))?.messageIds ?? []
+    expect(ids).toHaveLength(LARK_LINK_MESSAGE_LIMIT)
+    expect(ids.at(-1)).toBe(`om_m${LARK_LINK_MESSAGE_LIMIT + 1}`)
+    expect((await store.sessionLinks()).map((link) => link.sessionId)).toEqual(['s1', 's2'])
+  })
+
+  it('reads a sessions file written before follow-ups existed', async () => {
+    await writeFile(
+      join(directory, 'sessions.json'),
+      JSON.stringify({ version: 1, links: [{ sessionId: 's1', chatId: 'c', triggerMessageId: 'om_1', baseCommit: 'a', agent: 'claude', lastReport: 'x' }] }),
+      'utf8'
+    )
+    expect((await build().sessionLinkForMessage(['om_1']))?.lastReport).toBe('x')
+  })
+
+  it('puts follow-up attachments inside the trigger directory and refuses unsafe ids', () => {
+    const store = build()
+    expect(store.followUpDirectory('om_t', 'om_f')).toBe(join(directory, 'attachments', 'om_t', 'follow-ups', 'om_f'))
+    expect(() => store.followUpDirectory('om_t', '../evil')).toThrow()
+    expect(() => store.followUpDirectory('../evil', 'om_f')).toThrow()
   })
 
   it('a corrupt sessions file reads as empty', async () => {

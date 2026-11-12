@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 
 import { _electron as electron, expect, test } from '@playwright/test'
 
-import { LARK_REPLY, idleReply, startedReply } from '../src/main/lark/lark-replies'
+import { LARK_REPLY, followUpSentReply, idleReply, questionReply, startedReply } from '../src/main/lark/lark-replies'
 import { createRepo } from './create-repo'
 
 /**
@@ -40,12 +40,13 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
   page.on('pageerror', (error) => errors.push(error.message))
 
   let counter = 0
-  const send = (openId: string, text: string, extra: { parentId?: string; ageMs?: number } = {}): string => {
+  const send = (openId: string, text: string, extra: { parentId?: string; rootId?: string; ageMs?: number } = {}): string => {
     const messageId = `om_e2e_${++counter}`
     const event = {
       messageId,
       chatId: 'oc_e2e',
       ...(extra.parentId ? { parentId: extra.parentId } : {}),
+      ...(extra.rootId ? { rootId: extra.rootId } : {}),
       messageType: 'text',
       content: JSON.stringify({ text: `@_user_1 ${text}` }),
       createTimeMs: Date.now() - (extra.ageMs ?? 0),
@@ -56,13 +57,13 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
     appendFileSync(inbox, `${JSON.stringify(event)}\n`, 'utf8')
     return messageId
   }
-  const outbox = (): Array<{ messageId: string; text: string }> => {
+  const outbox = (): Array<{ messageId: string; text: string; id: string }> => {
     const path = join(larkDir, 'outbox.jsonl')
     if (!existsSync(path)) return []
     return readFileSync(path, 'utf8')
       .split('\n')
       .filter((line) => line.trim() !== '')
-      .map((line) => JSON.parse(line) as { messageId: string; text: string })
+      .map((line) => JSON.parse(line) as { messageId: string; text: string; id: string })
   }
   const replyTo = (messageId: string): string[] => outbox().filter((entry) => entry.messageId === messageId).map((entry) => entry.text)
   const sessions = () => page.evaluate(async () => (await window.codeflai.getSnapshot()).state.sessions)
@@ -146,6 +147,22 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
     const [reportPrefix] = idleReply('claude', 'X').split('X')
     expect(report.text.startsWith(reportPrefix)).toBe(true)
     expect(report.text.slice(reportPrefix.length)).toMatch(/^\S+ lark-e2e-output\.txt$/)
+
+    // The task file tells the agent where to report: the placeholder is filled with a real path.
+    const taskFile = join(userDataDir, 'issue-automation', `${session.id}.md`)
+    const taskPrompt = readFileSync(taskFile, 'utf8')
+    expect(taskPrompt).toContain(join(userDataDir, 'issue-automation', `${session.id}.report.json`))
+    expect(taskPrompt).not.toContain('{{reportFile}}')
+
+    // Replying to the bot's started message in Lark types the reply into the same session; the
+    // "agent" answers with a question in its report file, which comes back under the reply.
+    const startedId = outbox().find((entry) => entry.messageId === runId)!.id
+    const followId = send('ou_owner', 'CODEFLAI_TEST_LARK_QUESTION', { parentId: startedId, rootId: runId })
+    await expect
+      .poll(() => replyTo(followId), { timeout: 30_000 })
+      .toEqual([followUpSentReply('claude'), questionReply('claude', 'CSV or JSON?')])
+    expect(await sessions()).toHaveLength(1)
+    await expect.poll(() => existsSync(join(userDataDir, 'issue-automation', `${session.id}.report.json`)), { timeout: 15_000 }).toBe(false)
     expect(errors).toEqual([])
   } finally {
     // Removing the project ends every PTY so the resident host can exit within the E2E idle

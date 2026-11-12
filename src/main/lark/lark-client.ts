@@ -31,6 +31,8 @@ export type LarkIncomingMessage = {
   messageId: string
   chatId: string
   parentId?: string
+  /** The first message of the reply tree this one belongs to; absent for a message that starts one. */
+  rootId?: string
   messageType: string
   content: string
   createTimeMs: number
@@ -55,7 +57,8 @@ export interface LarkClient {
   listMessages(chatId: string, sinceMs: number, untilMs: number): Promise<LarkIncomingMessage[]>
   downloadImage(messageId: string, imageKey: string, targetPath: string): Promise<void>
   userName(openId: string): Promise<string | undefined>
-  reply(messageId: string, text: string): Promise<void>
+  /** Resolves with the id of the posted reply, or undefined when the service did not return one. */
+  reply(messageId: string, text: string): Promise<string | undefined>
 }
 
 // Minimal view of the `im.message.receive_v1` event, as observed against the real service.
@@ -65,6 +68,7 @@ export type LarkReceiveEvent = {
     message_id: string
     chat_id: string
     parent_id?: string
+    root_id?: string
     message_type: string
     content: string
     create_time: string
@@ -80,6 +84,7 @@ export function toIncomingMessage(event: LarkReceiveEvent, botOpenId: string | u
     messageId: message.message_id,
     chatId: message.chat_id,
     ...(message.parent_id ? { parentId: message.parent_id } : {}),
+    ...(message.root_id ? { rootId: message.root_id } : {}),
     messageType: message.message_type,
     content: message.content,
     createTimeMs: Number(message.create_time),
@@ -94,6 +99,7 @@ export type LarkListedItem = {
   message_id?: string
   chat_id?: string
   parent_id?: string
+  root_id?: string
   msg_type?: string
   create_time?: string
   body?: { content?: string }
@@ -112,6 +118,7 @@ export function toListedMessage(item: LarkListedItem, botOpenId: string | undefi
     messageId: item.message_id,
     chatId: item.chat_id,
     ...(item.parent_id ? { parentId: item.parent_id } : {}),
+    ...(item.root_id ? { rootId: item.root_id } : {}),
     messageType: item.msg_type,
     content: item.body.content,
     createTimeMs: Number(item.create_time),
@@ -315,12 +322,13 @@ export class SdkLarkClient implements LarkClient {
     }
   }
 
-  async reply(messageId: string, text: string): Promise<void> {
+  async reply(messageId: string, text: string): Promise<string | undefined> {
     const api = this.requireApi()
-    await api.im.v1.message.reply({
+    const response = await api.im.v1.message.reply({
       path: { message_id: messageId },
       data: { msg_type: 'text', content: JSON.stringify({ text }) }
     })
+    return response?.data?.message_id || undefined
   }
 
   private requireApi(): Lark.Client {

@@ -10,18 +10,37 @@ import { describeLarkError, LarkHistoryUnavailableError } from './lark-http'
 import {
   buildLarkTaskPrompt,
   formatChangeList,
+  larkFollowUpLine,
   larkSessionTitle,
   parseChangedFiles,
   type ChangedFile,
   type LarkQuote
 } from './lark-prompt'
 import { WorktreeRequiredError } from '../services/session-coordinator'
-import { agentMissingReply, exitReply, idleReply, LARK_REPLY, startedReply, type LarkAgent } from './lark-replies'
-import type { LarkStore } from './lark-store'
+import type { TypeIntoAgent } from './agent-typer'
+import {
+  agentMissingReply,
+  blockedReply,
+  doneReply,
+  exitReply,
+  followUpFailedReply,
+  followUpSentReply,
+  idleReply,
+  LARK_REPLY,
+  questionReply,
+  startedReply,
+  type LarkAgent
+} from './lark-replies'
+import { parseLarkReport, type LarkReport } from './lark-report'
+import type { LarkSessionLink, LarkStore } from './lark-store'
 
 export const LARK_STALE_MESSAGE_MS = 5 * 60_000
 export const LARK_CATCH_UP_WINDOW_MS = 24 * 60 * 60_000
 export const LARK_ONLINE_STAMP_INTERVAL_MS = 60_000
+/** How often linked sessions' report files are checked; a read of a missing file is cheap. */
+export const LARK_REPORT_POLL_MS = 3_000
+/** Consecutive unreadable reads before a report file is dropped; a half-written one survives. */
+export const LARK_REPORT_INVALID_LIMIT = 3
 
 const UNKNOWN_NAME = '群成员'
 // Lark image keys are opaque tokens; one that is not is never passed to the API or into a path.
@@ -34,6 +53,12 @@ export interface LarkSessionSource {
 }
 
 export type AgentAvailability = (agent: LarkAgent) => Promise<boolean>
+
+/** The report files of Lark sessions (PromptFileStore in production). Neither method rejects. */
+export interface LarkReportFiles {
+  read(sessionId: string): Promise<string | undefined>
+  remove(sessionId: string): Promise<void>
+}
 
 type RunCommand = Extract<LarkCommand, { type: 'run' }>
 
@@ -51,6 +76,8 @@ export class LarkBridgeService {
   private historyUnavailableLogged = false
   private unsubscribe?: () => void
   private stampTimer?: NodeJS.Timeout
+  private reportTimer?: NodeJS.Timeout
+  private readonly invalidReports = new Map<string, number>()
   // Bumped on every connect, disconnect, applyConfig and dispose; queued work for an older link does nothing.
   private generation = 0
   // Last status seen per session; undefined until the first state arrives (the baseline).
@@ -63,13 +90,22 @@ export class LarkBridgeService {
       sessions: LarkSessionSource
       runner: CommandRunner
       agentAvailable: AgentAvailability
+      /** Where agents leave their round reports; read on a timer and on the idle edge. */
+      reports: LarkReportFiles
+      /** Types a follow-up into a running session, then presses Enter. */
+      typeInto: TypeIntoAgent
       clock?: () => Date
       onStatus?: (status: LarkStatus) => void
+      reportPollMs?: number
     }
   ) {}
 
   async start(): Promise<void> {
     this.unsubscribe ??= this.deps.sessions.onStateChanged((state) => this.handleState(state))
+    if (this.reportTimer === undefined) {
+      this.reportTimer = setInterval(() => void this.checkReports(), this.deps.reportPollMs ?? LARK_REPORT_POLL_MS)
+      this.reportTimer.unref()
+    }
     await this.connect()
   }
 
@@ -89,21 +125,92 @@ export class LarkBridgeService {
     this.enqueueTask(() => this.idleTask(sessionId))
   }
 
+  /** Passes on the report files of running Lark sessions; the poll timer's tick. Never throws. */
+  async checkReports(): Promise<void> {
+    this.enqueueTask(() => this.reportTask())
+  }
+
+  // The agent's own report says more than silence can, so it goes first; a round that already
+  // reported needs no guess on top. The guess remains for an agent that never writes one.
   private async idleTask(sessionId: string): Promise<void> {
     if (this.disposed) return
     try {
       const link = await this.deps.store.sessionLink(sessionId)
-      if (link === undefined || link.baseCommit === '') return
+      if (link === undefined) return
       const record = (await this.deps.sessions.snapshot()).sessions.find((session) => session.id === sessionId)
       if (record === undefined || record.status !== 'running') return
+      if (await this.deliverReport(link, record)) return
+      if (link.reported === true || link.baseCommit === '') return
       const files = await this.changedFiles(record.launchPath, link.baseCommit)
       const text = idleReply(link.agent, formatChangeList(files))
       if (text === link.lastReport) return
-      if (await this.send(link.triggerMessageId, text)) {
+      if (await this.sendForSession(link, text)) {
         await this.deps.store.updateSessionLink(sessionId, { lastReport: text })
       }
     } catch (error) {
       console.error(`Lark idle report failed for ${sessionId}:`, error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
+  private async reportTask(): Promise<void> {
+    if (this.disposed) return
+    try {
+      const links = await this.deps.store.sessionLinks()
+      if (links.length === 0) return
+      const records = new Map((await this.deps.sessions.snapshot()).sessions.map((session) => [session.id, session] as const))
+      for (const link of links) {
+        const record = records.get(link.sessionId)
+        if (record === undefined || !(record.status === 'running' || record.status === 'creating')) continue
+        await this.deliverReport(link, record)
+      }
+    } catch (error) {
+      console.error('Lark report check failed:', error instanceof Error ? error.name : 'unknown error')
+    }
+  }
+
+  /**
+   * Passes on the session's report file if there is one, then deletes it so the next report is
+   * new. Resolves true when a report was sent. A failed send keeps the file for the next check.
+   */
+  private async deliverReport(link: LarkSessionLink, record: SessionRecord): Promise<boolean> {
+    const { reports, store } = this.deps
+    const raw = await reports.read(link.sessionId)
+    if (raw === undefined) return false
+    const report = parseLarkReport(raw)
+    if (report === undefined) {
+      const count = (this.invalidReports.get(link.sessionId) ?? 0) + 1
+      this.invalidReports.set(link.sessionId, count)
+      if (count >= LARK_REPORT_INVALID_LIMIT) {
+        console.warn(`Lark dropped an unreadable report of session ${link.sessionId}.`)
+        this.invalidReports.delete(link.sessionId)
+        await reports.remove(link.sessionId)
+      }
+      return false
+    }
+    this.invalidReports.delete(link.sessionId)
+    const text = await this.reportText(link, record, report)
+    if (!(await this.sendForSession(link, text))) return false
+    await reports.remove(link.sessionId)
+    try {
+      await store.updateSessionLink(link.sessionId, { reported: true, lastReport: text })
+    } catch (error) {
+      // The report is out; at worst the idle edge adds its guess after it.
+      console.error(`Lark could not record the report of session ${link.sessionId}:`, error instanceof Error ? error.name : 'unknown error')
+    }
+    return true
+  }
+
+  private async reportText(link: LarkSessionLink, record: SessionRecord, report: LarkReport): Promise<string> {
+    switch (report.status) {
+      case 'question':
+        return questionReply(link.agent, report.question)
+      case 'blocked':
+        return blockedReply(link.agent, report.reason)
+      case 'done': {
+        const files =
+          link.baseCommit === '' ? [] : await this.changedFiles(record.launchPath, link.baseCommit).catch(() => [] as ChangedFile[])
+        return doneReply(link.agent, report.summary, formatChangeList(files))
+      }
     }
   }
 
@@ -143,8 +250,10 @@ export class LarkBridgeService {
     try {
       const link = await this.deps.store.sessionLink(session.id)
       if (link === undefined) return
+      // A report written just before leaving still reaches the chat, ahead of the exit notice.
+      await this.deliverReport(link, session)
       const files = link.baseCommit === '' ? [] : await this.changedFiles(session.launchPath, link.baseCommit).catch(() => [])
-      await this.send(link.triggerMessageId, exitReply(formatChangeList(files)))
+      await this.sendForSession(link, exitReply(formatChangeList(files)))
     } catch (error) {
       console.error(`Lark exit report failed for ${session.id}:`, error instanceof Error ? error.name : 'unknown error')
     }
@@ -154,6 +263,7 @@ export class LarkBridgeService {
     try {
       const link = await this.deps.store.sessionLink(sessionId)
       if (link === undefined) return
+      this.invalidReports.delete(sessionId)
       await this.deps.store.removeSessionLink(sessionId)
       await rm(this.deps.store.attachmentDirectory(link.triggerMessageId), { recursive: true, force: true })
     } catch (error) {
@@ -172,6 +282,8 @@ export class LarkBridgeService {
     this.unsubscribe = undefined
     this.generation += 1
     this.stopStamping()
+    if (this.reportTimer !== undefined) clearInterval(this.reportTimer)
+    this.reportTimer = undefined
     this.deps.client.disconnect()
   }
 
@@ -306,13 +418,32 @@ export class LarkBridgeService {
     await this.send(messageId, text)
   }
 
-  private async send(messageId: string, text: string): Promise<boolean> {
+  /** Resolves with whether the reply went out, and the posted reply's id when the service gave one. */
+  private async send(messageId: string, text: string): Promise<{ sent: boolean; id?: string }> {
     try {
-      await this.deps.client.reply(messageId, text)
-      return true
+      const id = await this.deps.client.reply(messageId, text)
+      return { sent: true, ...(id === undefined ? {} : { id }) }
     } catch (error) {
       console.error(`Lark reply failed for ${messageId}:`, error instanceof Error ? error.name : 'unknown error')
-      return false
+      return { sent: false }
+    }
+  }
+
+  /**
+   * A reply in a session's conversation: under its latest follow-up (else its trigger), and
+   * remembered so that answering the reply in Lark reaches the same session.
+   */
+  private async sendForSession(link: LarkSessionLink, text: string): Promise<boolean> {
+    const { sent, id } = await this.send(link.replyTo ?? link.triggerMessageId, text)
+    if (id !== undefined) await this.remember(link.sessionId, id)
+    return sent
+  }
+
+  private async remember(sessionId: string, messageId: string): Promise<void> {
+    try {
+      await this.deps.store.addSessionMessage(sessionId, messageId)
+    } catch (error) {
+      console.error(`Lark could not remember a message of session ${sessionId}:`, error instanceof Error ? error.name : 'unknown error')
     }
   }
 
@@ -387,6 +518,21 @@ export class LarkBridgeService {
       await store.addKnownChat(incoming.chatId)
     } catch (error) {
       console.error('Lark could not remember a chat:', error instanceof Error ? error.name : 'unknown error')
+    }
+
+    // A reply in a session's conversation (to its trigger, a bot reply or an earlier follow-up)
+    // continues that session; only a message outside every conversation is a new command.
+    let link: LarkSessionLink | undefined
+    try {
+      link = await store.sessionLinkForMessage([incoming.parentId, incoming.rootId])
+    } catch (error) {
+      console.error(`Lark could not look up the conversation of ${incoming.messageId}:`, error instanceof Error ? error.name : 'unknown error')
+      await this.reply(incoming.messageId, LARK_REPLY.startFailed)
+      return
+    }
+    if (link !== undefined) {
+      await this.followUp(incoming, generation, link, member.name, own)
+      return
     }
 
     let command: LarkCommand
@@ -542,7 +688,7 @@ export class LarkBridgeService {
     } catch (error) {
       console.error(`Lark could not read the owner for session ${record.id}:`, error instanceof Error ? error.name : 'unknown error')
     }
-    await this.reply(
+    const started = await this.send(
       incoming.messageId,
       startedReply({
         agent: command.agent,
@@ -552,5 +698,80 @@ export class LarkBridgeService {
         ownerName
       })
     )
+    if (started.id !== undefined) await this.remember(record.id, started.id)
+  }
+
+  /**
+   * Types a member's reply into the session it answers. Only a running session takes one: a
+   * stopped session was ended by a person (Lark sessions do not exit on their own), and waking
+   * it from the chat would undo that. The text is typed as a line, so it reaches the agent the
+   * way the owner's own keystrokes would, queued behind its current turn if it is busy.
+   */
+  private async followUp(
+    incoming: LarkIncomingMessage,
+    generation: number,
+    link: LarkSessionLink,
+    storedName: string,
+    own: { text: string; imageKeys: string[] } | undefined
+  ): Promise<void> {
+    const text = own?.text ?? ''
+    const imageKeys = own?.imageKeys ?? []
+    try {
+      const record = (await this.deps.sessions.snapshot()).sessions.find((session) => session.id === link.sessionId)
+      if (record === undefined) {
+        await this.reply(incoming.messageId, LARK_REPLY.followUpGone)
+        return
+      }
+      if (record.status !== 'running') {
+        await this.reply(incoming.messageId, LARK_REPLY.followUpStopped)
+        return
+      }
+      if (text === '' && imageKeys.length === 0) {
+        await this.reply(incoming.messageId, LARK_REPLY.empty)
+        return
+      }
+      const imagePaths = await this.downloadFollowUpImages(link, incoming.messageId, imageKeys)
+      if (!this.live(generation)) return
+      // A report the agent left before this reply arrived belongs to the round it answers; it
+      // goes out first, so it cannot later read as the answer to this follow-up.
+      await this.deliverReport(link, record)
+      await this.deps.typeInto(link.sessionId, larkFollowUpLine({ senderName: storedName, text, imagePaths }))
+    } catch (error) {
+      console.error(`Lark follow-up failed for ${incoming.messageId}:`, error instanceof Error ? error.name : 'unknown error')
+      await this.reply(incoming.messageId, followUpFailedReply(link.agent))
+      return
+    }
+
+    await this.remember(link.sessionId, incoming.messageId)
+    const next: LarkSessionLink = { ...link, replyTo: incoming.messageId }
+    try {
+      await this.deps.store.updateSessionLink(link.sessionId, { replyTo: incoming.messageId, reported: false, lastReport: undefined })
+    } catch (error) {
+      console.error(`Lark could not update session ${link.sessionId} after a follow-up:`, error instanceof Error ? error.name : 'unknown error')
+    }
+    await this.sendForSession(next, followUpSentReply(link.agent))
+  }
+
+  // Under the trigger's attachment directory, so they go when the session is forgotten. A failed
+  // download only drops that image, as for a new task.
+  private async downloadFollowUpImages(link: LarkSessionLink, messageId: string, imageKeys: readonly string[]): Promise<string[]> {
+    if (imageKeys.length === 0) return []
+    const directory = this.deps.store.followUpDirectory(link.triggerMessageId, messageId)
+    await mkdir(directory, { recursive: true })
+    const paths: string[] = []
+    for (const [index, key] of imageKeys.entries()) {
+      if (!SAFE_IMAGE_KEY.test(key)) {
+        console.error(`Lark dropped an image with an invalid key for ${messageId}.`)
+        continue
+      }
+      const target = join(directory, `${index}.png`)
+      try {
+        await this.deps.client.downloadImage(messageId, key, target)
+        paths.push(target)
+      } catch (error) {
+        console.error(`Lark image download failed for ${messageId}:`, error instanceof Error ? error.name : 'unknown error')
+      }
+    }
+    return paths
   }
 }

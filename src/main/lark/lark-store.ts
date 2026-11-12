@@ -24,6 +24,8 @@ export const LARK_PROCESSED_LIMIT = 500
 export const LARK_KNOWN_CHATS_LIMIT = 50
 /** Wrong guesses a pending pairing code survives; the fifth clears it. */
 export const LARK_PAIRING_MAX_FAILURES = 5
+/** Message ids remembered per session conversation (bot replies and follow-ups), newest kept. */
+export const LARK_LINK_MESSAGE_LIMIT = 50
 
 // Lark message ids look like `om_x100b61e7abb0fca4ffa63c824cbbe7c`. The id becomes a directory
 // name, so anything that could climb out of the attachments folder is refused.
@@ -43,7 +45,18 @@ export type LarkSessionLink = {
   baseCommit: string
   agent: 'claude' | 'codex'
   lastReport?: string
+  /**
+   * Later messages of the session's conversation: the bot's replies and the follow-ups it
+   * passed on. A reply to any of them (or to the trigger) is a follow-up for this session.
+   */
+  messageIds?: string[]
+  /** Where the next report goes: the latest follow-up, else the trigger message. */
+  replyTo?: string
+  /** A structured report was sent for the current round, so the idle edge has nothing to add. */
+  reported?: boolean
 }
+
+export type LarkSessionLinkPatch = Partial<Pick<LarkSessionLink, 'lastReport' | 'replyTo' | 'reported'>>
 
 const pairingSchema = z.strictObject({
   code: z.string(),
@@ -73,7 +86,10 @@ const sessionLinkSchema = z.strictObject({
   triggerMessageId: z.string(),
   baseCommit: z.string(),
   agent: z.enum(['claude', 'codex']),
-  lastReport: z.string().optional()
+  lastReport: z.string().optional(),
+  messageIds: z.array(z.string()).optional(),
+  replyTo: z.string().optional(),
+  reported: z.boolean().optional()
 })
 const sessionsSchema = z.object({ version: z.literal(1), links: z.array(z.unknown()) })
 
@@ -112,6 +128,12 @@ export class LarkStore {
   attachmentDirectory(triggerMessageId: string): string {
     if (!SAFE_MESSAGE_ID.test(triggerMessageId)) throw new Error('Unsafe Lark message id.')
     return join(this.directory, 'attachments', triggerMessageId)
+  }
+
+  /** Inside the trigger's directory, so forgetting the session removes a follow-up's images too. */
+  followUpDirectory(triggerMessageId: string, messageId: string): string {
+    if (!SAFE_MESSAGE_ID.test(messageId)) throw new Error('Unsafe Lark message id.')
+    return join(this.attachmentDirectory(triggerMessageId), 'follow-ups', messageId)
   }
 
   async status(connection: LarkConnection, error?: string): Promise<LarkStatus> {
@@ -275,8 +297,45 @@ export class LarkStore {
     return (await this.readLinks()).find((link) => link.sessionId === sessionId)
   }
 
-  updateSessionLink(sessionId: string, patch: Partial<Pick<LarkSessionLink, 'lastReport'>>): Promise<void> {
-    return this.mutateLinks((links) => links.map((link) => (link.sessionId === sessionId ? { ...link, ...patch } : link)))
+  async sessionLinks(): Promise<LarkSessionLink[]> {
+    await this.queue.catch(() => undefined)
+    return this.readLinks()
+  }
+
+  /**
+   * The session whose conversation contains one of `messageIds` (the trigger, a bot reply or a
+   * follow-up), most recently linked first. Undefined ids are skipped.
+   */
+  async sessionLinkForMessage(messageIds: ReadonlyArray<string | undefined>): Promise<LarkSessionLink | undefined> {
+    const wanted = new Set(messageIds.filter((id): id is string => id !== undefined && id !== ''))
+    if (wanted.size === 0) return undefined
+    const links = await this.sessionLinks()
+    return [...links].reverse().find((link) => wanted.has(link.triggerMessageId) || (link.messageIds ?? []).some((id) => wanted.has(id)))
+  }
+
+  /** `undefined` in the patch clears that field. */
+  updateSessionLink(sessionId: string, patch: LarkSessionLinkPatch): Promise<void> {
+    return this.mutateLinks((links) =>
+      links.map((link) => {
+        if (link.sessionId !== sessionId) return link
+        const next: LarkSessionLink = { ...link, ...patch }
+        for (const key of Object.keys(patch) as Array<keyof LarkSessionLinkPatch>) {
+          if (patch[key] === undefined) delete next[key]
+        }
+        return next
+      })
+    )
+  }
+
+  /** Remembers a message of the session's conversation, so a reply to it is recognised. */
+  addSessionMessage(sessionId: string, messageId: string): Promise<void> {
+    return this.mutateLinks((links) =>
+      links.map((link) =>
+        link.sessionId === sessionId
+          ? { ...link, messageIds: [...(link.messageIds ?? []).filter((id) => id !== messageId), messageId].slice(-LARK_LINK_MESSAGE_LIMIT) }
+          : link
+      )
+    )
   }
 
   removeSessionLink(sessionId: string): Promise<void> {

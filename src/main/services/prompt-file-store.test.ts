@@ -69,6 +69,32 @@ describe('DirectoryPromptFileStore', () => {
     await expect(stat(store.resultPath('session-a'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('names the report file apart from the result file, reads it, and removes it on its own', async () => {
+    const root = await temporaryDirectory()
+    const store = new DirectoryPromptFileStore(root)
+    expect(store.reportPath('session-a')).toBe(join(root, 'session-a.report.json'))
+    await expect(store.readReport('session-a')).resolves.toBeUndefined()
+
+    await store.write('session-a', 'x')
+    await writeFile(store.reportPath('session-a'), '{"status":"done","summary":"ok"}', 'utf8')
+    await expect(store.readReport('session-a')).resolves.toBe('{"status":"done","summary":"ok"}')
+
+    await store.removeReport('session-a')
+    await expect(stat(store.reportPath('session-a'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(root, 'session-a.md'), 'utf8')).resolves.toBe('x')
+    await expect(store.removeReport('session-a')).resolves.toBeUndefined()
+  })
+
+  it('decodes a UTF-16 report file and removes it with the prompt', async () => {
+    const store = new DirectoryPromptFileStore(await temporaryDirectory())
+    await store.write('session-a', 'x')
+    await writeFile(store.reportPath('session-a'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"a":1}', 'utf16le')]))
+    await expect(store.readReport('session-a')).resolves.toBe('{"a":1}')
+
+    await store.remove('session-a')
+    await expect(stat(store.reportPath('session-a'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('refuses a session id that is not a plain identifier', async () => {
     const store = new DirectoryPromptFileStore(await temporaryDirectory())
 
@@ -76,6 +102,9 @@ describe('DirectoryPromptFileStore', () => {
     await expect(store.remove('..\\escape')).resolves.toBeUndefined()
     expect(() => store.resultPath('..\\escape')).toThrow('Refusing to name a prompt file')
     await expect(store.readResult('..\\escape')).resolves.toBeUndefined()
+    expect(() => store.reportPath('..\\escape')).toThrow('Refusing to name a prompt file')
+    await expect(store.readReport('..\\escape')).resolves.toBeUndefined()
+    await expect(store.removeReport('..\\escape')).resolves.toBeUndefined()
   })
 })
 

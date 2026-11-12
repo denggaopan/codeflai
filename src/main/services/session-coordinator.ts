@@ -5,7 +5,7 @@ import { renameSessionRequestSchema } from '../../shared/contracts'
 import { issueSessionTitle, parseIssueOutcome, renderIssueAutomationTemplate } from '../../shared/issue-automation'
 import { noIssueRunHistory, type IssueRunHistory } from './issue-run-history'
 import type { ProjectService } from './project-service'
-import { unavailablePromptFileStore, type PromptFileStore } from './prompt-file-store'
+import { REPORT_FILE_PLACEHOLDER, unavailablePromptFileStore, type PromptFileStore } from './prompt-file-store'
 import type { SessionStore } from './session-store'
 import type { SessionLocation, WorktreeService } from './worktree-service'
 import type { TerminalEventMap, TerminalStartOptions } from './terminal-service'
@@ -91,7 +91,8 @@ export type CreateSessionOptions = {
   /**
    * A neutral task prompt (Lark sessions): written to a file like the issue prompt, but the
    * session carries no `automation` marker and no issue run history. Exclusive with
-   * `initialPrompt`.
+   * `initialPrompt`. Every `{{reportFile}}` in the text becomes the session's report file path
+   * (PromptFileStore.reportPath), the one value that needs the id minted here.
    */
   taskPrompt?: { text: string; skill?: string }
   /**
@@ -215,7 +216,8 @@ export class SessionCoordinator {
 
       try {
         if (options.taskPrompt !== undefined) {
-          const file = await this.promptFiles.write(record.id, options.taskPrompt.text)
+          const text = options.taskPrompt.text.split(REPORT_FILE_PLACEHOLDER).join(this.promptFiles.reportPath(record.id))
+          const file = await this.promptFiles.write(record.id, text)
           await this.terminalService.start(record, {
             initialPrompt: {
               file,

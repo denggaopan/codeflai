@@ -1,4 +1,11 @@
+import { REPORT_FILE_PLACEHOLDER } from '../services/prompt-file-store'
+
 export type LarkQuote = { senderName: string; text: string; imagePaths: string[] }
+
+/** How a follow-up starts when it is typed into the agent; the task prompt tells the agent so. */
+export const LARK_FOLLOW_UP_PREFIX = '[Lark 回复'
+/** Longest follow-up text typed into the agent; Lark itself bounds a message far above this. */
+export const LARK_FOLLOW_UP_LIMIT = 4000
 
 const FENCE_END = 'REFERENCE>>>'
 export const LARK_CHANGE_LIST_LIMIT = 20
@@ -45,7 +52,36 @@ export function buildLarkTaskPrompt(input: {
       fenced.join('\n')
     )
   }
+  sections.push(
+    [
+      '## 回报方式',
+      `每一轮结束前，把这一轮的结果写成 JSON，用 UTF-8 覆盖写入文件 ${REPORT_FILE_PLACEHOLDER}。Codeflai 会把它转发给发起人，三种写法：`,
+      '- 需要发起人决定才能继续：`{"status": "question", "question": "一个具体的问题"}`，写完就结束这一轮，等待回复。只问一个问题；不要用会弹出选项界面的提问工具，发起人看不到它。',
+      '- 完成：`{"status": "done", "summary": "一两句话说明结果，比如 PR 链接"}`',
+      '- 无法继续：`{"status": "blocked", "reason": "卡在哪里"}`',
+      `发起人在群里的后续回复会以「${LARK_FOLLOW_UP_PREFIX} · 姓名] 内容」的形式输入给你，它和上面的发起人指令同样可信；处理完同样写回报文件。`
+    ].join('\n')
+  )
   return sections.join('\n\n') + '\n'
+}
+
+// C0 and C1 controls, DEL included. Typed into a TUI, ESC or CR would act as keys rather than text.
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]+/gu
+
+const typeable = (value: string): string => value.replace(CONTROL_CHARS, ' ').replace(/\s+/gu, ' ').trim()
+
+/**
+ * The single line typed into the agent for a follow-up: who wrote it, what they wrote, and the
+ * paths of any images they attached. Control characters become spaces, so the line can only ever
+ * be text plus the Enter the typer sends after it. The prefix also means it never starts with `/`:
+ * a reply of `/logout` or `/clear` reaches the agent as words, not as one of its CLI's commands.
+ */
+export function larkFollowUpLine(input: { senderName: string; text: string; imagePaths: readonly string[] }): string {
+  const chars = Array.from(typeable(input.text))
+  const text = chars.length <= LARK_FOLLOW_UP_LIMIT ? chars.join('') : `${chars.slice(0, LARK_FOLLOW_UP_LIMIT).join('')}…`
+  const images = input.imagePaths.map(typeable).filter((path) => path !== '')
+  const body = [text, ...(images.length === 0 ? [] : [`（图片：${images.join(' ')}）`])].filter((part) => part !== '').join(' ')
+  return `${LARK_FOLLOW_UP_PREFIX} · ${typeable(input.senderName) || '群成员'}] ${body}`
 }
 
 export type ChangedFile = { status: string; path: string }

@@ -8,9 +8,11 @@ import type { AppState, SessionKind, SessionRecord } from '../../shared/contract
 import type { CommandResult, CommandRunner } from '../infrastructure/command-runner'
 import { WorktreeRequiredError, type CreateSessionOptions } from '../services/session-coordinator'
 import {
+  LARK_REPORT_INVALID_LIMIT,
   LARK_STALE_MESSAGE_MS,
   LarkBridgeService,
   type AgentAvailability,
+  type LarkReportFiles,
   type LarkSessionSource
 } from './lark-bridge-service'
 import type {
@@ -80,9 +82,25 @@ class FakeLarkClient implements LarkClient {
     this.listed.push({ chatId, sinceMs, untilMs })
     return this.history.get(chatId) ?? []
   }
-  async reply(messageId: string, text: string): Promise<void> {
+  replyIds: string[] = []
+  async reply(messageId: string, text: string): Promise<string | undefined> {
     if (this.failReply) throw new Error('reply failed')
     this.replies.push({ messageId, text })
+    const id = `om_reply_${this.replyIds.length + 1}`
+    this.replyIds.push(id)
+    return id
+  }
+}
+
+class FakeReports implements LarkReportFiles {
+  files = new Map<string, string>()
+  removed: string[] = []
+  async read(sessionId: string): Promise<string | undefined> {
+    return this.files.get(sessionId)
+  }
+  async remove(sessionId: string): Promise<void> {
+    this.removed.push(sessionId)
+    this.files.delete(sessionId)
   }
 }
 
@@ -164,6 +182,9 @@ describe('LarkBridgeService', () => {
   let sessions: FakeSessions
   let runner: FakeRunner
   let available: Record<string, boolean>
+  let reports: FakeReports
+  let typed: Array<{ sessionId: string; line: string }>
+  let failType: boolean
   let bridge: LarkBridgeService
   let counter = 0
   let statuses: string[]
@@ -211,14 +232,24 @@ describe('LarkBridgeService', () => {
     runner = new FakeRunner()
     available = { claude: true, codex: true }
     statuses = []
+    reports = new FakeReports()
+    typed = []
+    failType = false
     bridge = new LarkBridgeService({
       store,
       client,
       sessions,
       runner,
       agentAvailable: (async (agent) => available[agent] === true) as AgentAvailability,
+      reports,
+      typeInto: async (sessionId, line) => {
+        if (failType) throw new Error('pty gone')
+        typed.push({ sessionId, line })
+      },
       clock: () => now,
-      onStatus: (status) => statuses.push(status.connection)
+      onStatus: (status) => statuses.push(status.connection),
+      // Tests drive the poll through checkReports(); the timer must not race them.
+      reportPollMs: 3_600_000
     })
     await bridge.start()
   })
@@ -248,6 +279,8 @@ describe('LarkBridgeService', () => {
       sessions,
       runner,
       agentAvailable: async () => true,
+      reports: new FakeReports(),
+      typeInto: async () => undefined,
       onStatus: (status) => seen.push(status.connection)
     })
     await other.start()
@@ -401,7 +434,9 @@ describe('LarkBridgeService', () => {
       chatId: 'oc_chat',
       triggerMessageId: incoming.messageId,
       baseCommit: 'abc123',
-      agent: 'codex'
+      agent: 'codex',
+      // The started reply: answering it in Lark reaches this session.
+      messageIds: ['om_reply_1']
     })
   })
 
@@ -637,6 +672,8 @@ describe('LarkBridgeService', () => {
       agentAvailable: async () => {
         throw new Error('locator broke')
       },
+      reports: new FakeReports(),
+      typeInto: async () => undefined,
       clock: () => now
     })
     await failing.start()
@@ -842,6 +879,8 @@ describe('LarkBridgeService', () => {
         sessions,
         runner,
         agentAvailable: async () => true,
+        reports: new FakeReports(),
+        typeInto: async () => undefined,
         clock: () => now
       })
       await second.start()
@@ -950,7 +989,7 @@ describe('LarkBridgeService', () => {
       const id = await linked('codex')
       await bridge.reportIdle(id)
       await bridge.whenIdle()
-      expect(client.replies.map((r) => r.text)).toEqual(['Codex 停下了，可能在等你回复，请到 Codeflai 查看'])
+      expect(client.replies.map((r) => r.text)).toEqual(['Codex 停下了，可能在等你回复。回复这条消息并 @我 可以接着说'])
     })
 
     it('does not repeat an identical report', async () => {
@@ -1052,6 +1091,256 @@ describe('LarkBridgeService', () => {
       expect(await store.sessionLink(id)).toBeUndefined()
       await expect(stat(dir)).rejects.toThrow()
       expect(client.replies).toEqual([])
+    })
+  })
+
+  describe('follow-ups', () => {
+    // A session started from Lark: its started reply is `om_reply_1`.
+    const startSession = async (): Promise<LarkIncomingMessage> => {
+      await makeOwner()
+      const trigger = message()
+      await deliver(trigger)
+      sessions.records = [
+        { id: 's1', projectId: 'p1', kind: 'claude', status: 'running', launchPath: 'C:/alpha-wt' } as unknown as SessionRecord
+      ]
+      client.replies = []
+      return trigger
+    }
+
+    it('types a reply to the started message into the session and acknowledges it under the reply', async () => {
+      const trigger = await startSession()
+      const reply = message({ parentId: 'om_reply_1', rootId: trigger.messageId, content: text('CSV 吧') })
+      await deliver(reply)
+      expect(typed).toEqual([{ sessionId: 's1', line: '[Lark 回复 · Olivia] CSV 吧' }])
+      expect(sessions.created).toHaveLength(1)
+      expect(client.replies).toEqual([{ messageId: reply.messageId, text: '已转给 Claude' }])
+      const link = await store.sessionLink('s1')
+      expect(link?.replyTo).toBe(reply.messageId)
+      expect(link?.messageIds).toEqual(['om_reply_1', reply.messageId, 'om_reply_2'])
+    })
+
+    it('treats a reply to the trigger, or anywhere under it, as a follow-up', async () => {
+      const trigger = await startSession()
+      await deliver(message({ parentId: trigger.messageId, rootId: trigger.messageId, content: text('再加个测试') }))
+      await deliver(message({ parentId: 'om_unknown', rootId: trigger.messageId, content: text('还有文档') }))
+      expect(typed.map((entry) => entry.line)).toEqual(['[Lark 回复 · Olivia] 再加个测试', '[Lark 回复 · Olivia] 还有文档'])
+      expect(sessions.created).toHaveLength(1)
+    })
+
+    it("answers a reply to the bot's acknowledgement as well", async () => {
+      await startSession()
+      await deliver(message({ parentId: 'om_reply_1', content: text('第一句') }))
+      await deliver(message({ parentId: 'om_reply_2', content: text('第二句') }))
+      expect(typed).toHaveLength(2)
+    })
+
+    it("names a member's follow-up after them", async () => {
+      await startSession()
+      await makeMember()
+      await deliver(message({ senderOpenId: MEMBER, parentId: 'om_reply_1', content: text('我来补充') }))
+      expect(typed).toEqual([{ sessionId: 's1', line: '[Lark 回复 · Mike] 我来补充' }])
+    })
+
+    it("refuses a non-member's reply without typing anything", async () => {
+      await startSession()
+      await deliver(message({ senderOpenId: 'ou_stranger', parentId: 'om_reply_1', content: text('rm -rf') }))
+      expect(typed).toEqual([])
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.denied])
+    })
+
+    it('answers a stale follow-up as stale and types nothing', async () => {
+      await startSession()
+      await deliver(message({ parentId: 'om_reply_1', createTimeMs: now.getTime() - LARK_STALE_MESSAGE_MS - 1_000 }))
+      expect(typed).toEqual([])
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.stale])
+    })
+
+    it('does not wake a stopped session', async () => {
+      await startSession()
+      sessions.records = sessions.records.map((r) => ({ ...r, status: 'stopped' }) as SessionRecord)
+      await deliver(message({ parentId: 'om_reply_1', content: text('继续') }))
+      expect(typed).toEqual([])
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.followUpStopped])
+    })
+
+    it('says so when the session is gone', async () => {
+      await startSession()
+      sessions.records = []
+      await deliver(message({ parentId: 'om_reply_1', content: text('继续') }))
+      expect(typed).toEqual([])
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.followUpGone])
+    })
+
+    it('asks for words when the follow-up is empty', async () => {
+      await startSession()
+      await deliver(message({ parentId: 'om_reply_1', content: JSON.stringify({ text: '@_user_1 ' }) }))
+      expect(typed).toEqual([])
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.empty])
+    })
+
+    it('reports a failed hand-off and leaves the conversation as it was', async () => {
+      await startSession()
+      failType = true
+      const reply = message({ parentId: 'om_reply_1', content: text('继续') })
+      await deliver(reply)
+      expect(client.replies).toEqual([{ messageId: reply.messageId, text: '没能转给 Claude，请到 Codeflai 查看' }])
+      expect((await store.sessionLink('s1'))?.replyTo).toBeUndefined()
+    })
+
+    it('downloads follow-up images under the trigger and lists their paths', async () => {
+      const trigger = await startSession()
+      const reply = message({ parentId: 'om_reply_1', messageType: 'image', content: JSON.stringify({ image_key: 'img_1' }) })
+      await deliver(reply)
+      const path = join(store.followUpDirectory(trigger.messageId, reply.messageId), '0.png')
+      expect(client.downloads).toContainEqual({ messageId: reply.messageId, imageKey: 'img_1', targetPath: path })
+      expect(typed).toEqual([{ sessionId: 's1', line: `[Lark 回复 · Olivia] （图片：${path}）` }])
+    })
+
+    it('still starts a new session for a mention outside every session conversation', async () => {
+      await startSession()
+      await deliver(message({ parentId: 'om_someone_else', content: text('Beta 看看这个') }))
+      expect(typed).toEqual([])
+      expect(sessions.created).toHaveLength(2)
+    })
+
+    it('sends a report left over from the answered round before typing the follow-up', async () => {
+      const trigger = await startSession()
+      reports.files.set('s1', '{"status":"question","question":"JSON 还是 CSV？"}')
+      const reply = message({ parentId: 'om_reply_1', content: text('CSV') })
+      await deliver(reply)
+      expect(client.replies).toEqual([
+        { messageId: trigger.messageId, text: 'Claude 在问你：JSON 还是 CSV？\n（回复这条消息并 @我 来回答）' },
+        { messageId: reply.messageId, text: '已转给 Claude' }
+      ])
+      expect(reports.files.size).toBe(0)
+      expect(typed).toHaveLength(1)
+    })
+
+    it('starts a new round: the next report goes under the follow-up and the idle guess is allowed again', async () => {
+      await startSession()
+      reports.files.set('s1', '{"status":"done","summary":"第一轮"}')
+      await bridge.checkReports()
+      await bridge.whenIdle()
+      const reply = message({ parentId: 'om_reply_2', content: text('再改一下') })
+      await deliver(reply)
+      const link = await store.sessionLink('s1')
+      expect(link?.reported).toBe(false)
+      expect(link?.lastReport).toBeUndefined()
+      client.replies = []
+      reports.files.set('s1', '{"status":"done","summary":"第二轮"}')
+      await bridge.checkReports()
+      await bridge.whenIdle()
+      expect(client.replies).toEqual([{ messageId: reply.messageId, text: 'Claude 完成了：第二轮' }])
+    })
+  })
+
+  describe('structured reports', () => {
+    const rec = (id: string, status: string): SessionRecord =>
+      ({ id, projectId: 'p1', kind: 'claude', status, launchPath: 'C:/alpha-wt' }) as unknown as SessionRecord
+    const linked = async (baseCommit = 'abc123'): Promise<void> => {
+      await store.linkSession({ sessionId: 's1', chatId: 'oc_chat', triggerMessageId: 'om_trigger', baseCommit, agent: 'claude' })
+      sessions.records = [rec('s1', 'running')]
+      sessions.emit() // baseline
+      await bridge.whenIdle()
+    }
+    const check = async (): Promise<void> => {
+      await bridge.checkReports()
+      await bridge.whenIdle()
+    }
+
+    it('passes on a question and deletes the file', async () => {
+      await linked()
+      reports.files.set('s1', '\uFEFF{"status":"question","question":"JSON 还是 CSV？"}')
+      await check()
+      expect(client.replies).toEqual([{ messageId: 'om_trigger', text: 'Claude 在问你：JSON 还是 CSV？\n（回复这条消息并 @我 来回答）' }])
+      expect(reports.files.size).toBe(0)
+      const link = await store.sessionLink('s1')
+      expect(link?.reported).toBe(true)
+      // Answering the question in Lark reaches the session.
+      expect(link?.messageIds).toEqual(['om_reply_1'])
+    })
+
+    it('adds the change list to a done report', async () => {
+      await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      reports.files.set('s1', '{"status":"done","summary":"已开 PR #57"}')
+      await check()
+      expect(client.replies.map((r) => r.text)).toEqual(['Claude 完成了：已开 PR #57\n改了：\nM src/a.ts'])
+    })
+
+    it('passes on a blocked report', async () => {
+      await linked()
+      reports.files.set('s1', '{"status":"blocked","reason":"gh 未登录"}')
+      await check()
+      expect(client.replies.map((r) => r.text)).toEqual(['Claude 卡住了：gh 未登录\n（回复这条消息并 @我 告诉它怎么办）'])
+    })
+
+    it('sends the report instead of the guess on the idle edge', async () => {
+      await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      reports.files.set('s1', '{"status":"question","question":"要保留旧列吗？"}')
+      await bridge.reportIdle('s1')
+      await bridge.whenIdle()
+      expect(client.replies.map((r) => r.text)).toEqual(['Claude 在问你：要保留旧列吗？\n（回复这条消息并 @我 来回答）'])
+    })
+
+    it('adds no guess on the idle edge once the round has reported', async () => {
+      await linked()
+      runner.diff = 'M\tsrc/a.ts\n'
+      reports.files.set('s1', '{"status":"blocked","reason":"缺少密钥"}')
+      await check()
+      await bridge.reportIdle('s1')
+      await bridge.whenIdle()
+      expect(client.replies).toHaveLength(1)
+    })
+
+    it('reports even without a base commit', async () => {
+      await linked('')
+      reports.files.set('s1', '{"status":"done","summary":"好了"}')
+      await check()
+      expect(client.replies.map((r) => r.text)).toEqual(['Claude 完成了：好了'])
+      expect(runner.calls).toEqual([])
+    })
+
+    it('keeps the file when the reply fails and sends it on the next check', async () => {
+      await linked()
+      reports.files.set('s1', '{"status":"question","question":"q"}')
+      client.failReply = true
+      await check()
+      expect(reports.files.size).toBe(1)
+      client.failReply = false
+      await check()
+      expect(client.replies).toHaveLength(1)
+      expect(reports.files.size).toBe(0)
+    })
+
+    it('waits out a half-written file, then drops one that never parses', async () => {
+      await linked()
+      reports.files.set('s1', '{"status":"quest')
+      for (let i = 1; i < LARK_REPORT_INVALID_LIMIT; i += 1) await check()
+      expect(reports.files.size).toBe(1)
+      await check()
+      expect(reports.files.size).toBe(0)
+      expect(client.replies).toEqual([])
+    })
+
+    it('does not read reports of sessions that are not running, but sends one ahead of the exit notice', async () => {
+      await linked()
+      sessions.records = [rec('s1', 'stopped')]
+      reports.files.set('s1', '{"status":"done","summary":"做完了"}')
+      await check()
+      expect(client.replies).toEqual([])
+      sessions.emit()
+      await bridge.whenIdle()
+      expect(client.replies.map((r) => r.text)).toEqual(['Claude 完成了：做完了', '会话已结束。'])
+    })
+
+    it('does nothing for sessions without a link', async () => {
+      sessions.records = [rec('s1', 'running')]
+      reports.files.set('s1', '{"status":"done","summary":"x"}')
+      await check()
+      expect(client.replies).toEqual([])
+      expect(reports.files.size).toBe(1)
     })
   })
 })

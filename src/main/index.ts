@@ -18,6 +18,7 @@ import { legacyPtyHostEndpoint, type TerminalReplay } from '../shared/pty-protoc
 import { cliLocator, type CliLocator } from './infrastructure/cli-locator'
 import { commandRunner } from './infrastructure/command-runner'
 import { registerIpc, type LarkIpcPort } from './ipc/register-ipc'
+import { createAgentTyper } from './lark/agent-typer'
 import { LarkBridgeService } from './lark/lark-bridge-service'
 import { FileLarkClient } from './lark/file-lark-client'
 import { SdkLarkClient, type LarkClient } from './lark/lark-client'
@@ -41,7 +42,7 @@ import { IssueOutcomeWatcher } from './services/issue-outcome-watcher'
 import { FileIssueRunHistory } from './services/issue-run-history'
 import { attachSessions, type TerminalImplementation } from './services/session-attachment'
 import { SessionStore } from './services/session-store'
-import { DirectoryPromptFileStore } from './services/prompt-file-store'
+import { DirectoryPromptFileStore, type PromptFileStore } from './services/prompt-file-store'
 import { TerminalService, type TerminalEventMap, type TerminalStartOptions } from './services/terminal-service'
 import {
   createCliTitleAdapter,
@@ -480,6 +481,8 @@ const buildLarkBridge = (options: {
   cipher: SecretCipher
   coordinator: SessionCoordinator
   agentLocator: AgentLocator
+  promptFiles: PromptFileStore
+  terminal: Pick<DeferredTerminal, 'write'>
 }): { bridge: LarkBridgeService; ipc: LarkIpcPort } => {
   const larkStore = new LarkStore(join(app.getPath('userData'), 'lark'), options.cipher)
   const statusListeners = new Set<(status: LarkStatus) => void>()
@@ -489,6 +492,12 @@ const buildLarkBridge = (options: {
     sessions: options.coordinator,
     runner: commandRunner,
     agentAvailable: async (agent) => (await options.agentLocator.resolveAgent(agent)) !== undefined,
+    reports: {
+      read: (sessionId) => options.promptFiles.readReport(sessionId),
+      remove: (sessionId) => options.promptFiles.removeReport(sessionId)
+    },
+    // The same write the renderer's keystrokes take, so a follow-up lands like typing would.
+    typeInto: createAgentTyper((sessionId, data) => options.terminal.write(sessionId, data)),
     onStatus: (status) => {
       for (const listener of [...statusListeners]) listener(status)
     }
@@ -658,7 +667,9 @@ if (!app.requestSingleInstanceLock()) {
         : new SdkLarkClient(),
       cipher: isE2E ? e2eLarkCipher : electronCipher,
       coordinator,
-      agentLocator
+      agentLocator,
+      promptFiles,
+      terminal
     })
     void sessionsReconciled.then(() => larkBridge.start()).catch((error: unknown) => {
       console.error('Codeflai: the Lark bridge could not start.', error)

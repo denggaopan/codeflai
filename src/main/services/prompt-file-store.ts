@@ -11,6 +11,12 @@ import { join } from 'node:path'
  * its outcome there (shared/issue-automation.ts, `parseIssueOutcome`), and the main process
  * reads it while the session runs. Both files share the session's lifetime.
  */
+/**
+ * Stands in a task prompt (Lark) for the report file's path, which only exists once the session
+ * id is minted; the coordinator fills it in before writing the prompt file.
+ */
+export const REPORT_FILE_PLACEHOLDER = '{{reportFile}}'
+
 export interface PromptFileStore {
   /** Writes the prompt and resolves with the absolute path the agent will be told to read. */
   write(sessionId: string, text: string): Promise<string>
@@ -18,6 +24,15 @@ export interface PromptFileStore {
   resultPath(sessionId: string): string
   /** The result file's text, or undefined while the agent has not written one. Never rejects. */
   readResult(sessionId: string): Promise<string | undefined>
+  /**
+   * The absolute path a task session's agent writes its round report to (see lark-report.ts).
+   * Separate from the issue result file: the two mean different things. Throws for an unsafe id.
+   */
+  reportPath(sessionId: string): string
+  /** The report file's text, or undefined while there is none. Never rejects. */
+  readReport(sessionId: string): Promise<string | undefined>
+  /** Deletes a report once it has been passed on, so the next one is new. Never rejects. */
+  removeReport(sessionId: string): Promise<void>
   /** Best effort and never rejects: a prompt file outliving its session is clutter, not a fault. */
   remove(sessionId: string): Promise<void>
 }
@@ -50,28 +65,50 @@ export class DirectoryPromptFileStore implements PromptFileStore {
 
   async readResult(sessionId: string): Promise<string | undefined> {
     if (!SAFE_SESSION_ID.test(sessionId)) return undefined
+    return this.readAgentFile(this.resultPath(sessionId))
+  }
+
+  reportPath(sessionId: string): string {
+    return this.pathFor(sessionId, '.report.json')
+  }
+
+  async readReport(sessionId: string): Promise<string | undefined> {
+    if (!SAFE_SESSION_ID.test(sessionId)) return undefined
+    return this.readAgentFile(this.reportPath(sessionId))
+  }
+
+  async removeReport(sessionId: string): Promise<void> {
+    if (!SAFE_SESSION_ID.test(sessionId)) return
+    await this.removeQuietly(this.reportPath(sessionId))
+  }
+
+  async remove(sessionId: string): Promise<void> {
+    if (!SAFE_SESSION_ID.test(sessionId)) return
+    for (const path of [this.pathFor(sessionId, '.md'), this.resultPath(sessionId), this.reportPath(sessionId)]) {
+      await this.removeQuietly(path)
+    }
+  }
+
+  private async readAgentFile(path: string): Promise<string | undefined> {
     try {
-      return decodeResult(await readFile(this.resultPath(sessionId)))
+      return decodeResult(await readFile(path))
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error(`PromptFileStore: could not read ${this.resultPath(sessionId)}.`, error)
+        console.error(`PromptFileStore: could not read ${path}.`, error)
       }
       return undefined
     }
   }
 
-  async remove(sessionId: string): Promise<void> {
-    if (!SAFE_SESSION_ID.test(sessionId)) return
-    for (const path of [this.pathFor(sessionId, '.md'), this.resultPath(sessionId)]) {
-      try {
-        await rm(path, { force: true })
-      } catch (error) {
-        console.error(`PromptFileStore: could not remove ${path}.`, error)
-      }
+  private async removeQuietly(path: string): Promise<void> {
+    try {
+      await rm(path, { force: true })
+    } catch (error) {
+      console.error(`PromptFileStore: could not remove ${path}.`, error)
     }
   }
 
-  private pathFor(sessionId: string, extension: '.md' | '.result.json'): string {
+  private pathFor(sessionId: string, extension: '.md' | '.result.json' | '.report.json'): string {
     if (!SAFE_SESSION_ID.test(sessionId)) throw new Error(`Refusing to name a prompt file after session id "${sessionId}".`)
     return join(this.directory, `${sessionId}${extension}`)
   }
@@ -86,5 +123,10 @@ export const unavailablePromptFileStore: PromptFileStore = {
     throw new Error('Prompt files are not configured.')
   },
   readResult: async () => undefined,
+  reportPath: () => {
+    throw new Error('Prompt files are not configured.')
+  },
+  readReport: async () => undefined,
+  removeReport: async () => undefined,
   remove: async () => undefined
 }

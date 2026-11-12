@@ -35,6 +35,12 @@ describe('toIncomingMessage', () => {
     })
   })
 
+  it('carries the root of the reply tree', () => {
+    const mapped = toIncomingMessage({ ...event, message: { ...event.message, root_id: 'om_root' } }, 'ou_bot')
+    expect(mapped.rootId).toBe('om_root')
+    expect(toIncomingMessage(event, 'ou_bot')).not.toHaveProperty('rootId')
+  })
+
   it('treats every message as not mentioning the bot until its id is known', () => {
     expect(toIncomingMessage(event, undefined).mentionsBot).toBe(false)
     expect(toIncomingMessage(event, 'ou_other').mentionsBot).toBe(false)
@@ -76,6 +82,7 @@ describe('toListedMessage', () => {
       senderOpenId: 'ou_sender',
       mentionsBot: true
     })
+    expect(toListedMessage({ ...item, root_id: 'om_root' }, 'ou_bot')?.rootId).toBe('om_root')
   })
 
   it('does not detect a mention of the bot when its id is unknown or different', () => {

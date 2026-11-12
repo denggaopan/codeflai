@@ -47,6 +47,16 @@ const resultFilePath = () => {
   return undefined
 }
 
+// A Lark session's task file names its report file ({{reportFile}}, filled in by the
+// coordinator); like the issue result file it sits beside the task file.
+const reportFilePath = () => {
+  for (const argument of argv) {
+    const match = /Read the task file at (.+)\.md and carry it out/.exec(argument)
+    if (match) return `${match[1]}.report.json`
+  }
+  return undefined
+}
+
 const issueOutcomes = {
   CODEFLAI_TEST_ISSUE_NONE: '{"issue": null}\n',
   CODEFLAI_TEST_ISSUE_CLAIM: '{"issue": 42, "title": "Fix login crash"}\n'
@@ -64,6 +74,11 @@ const handleLine = (line) => {
   // A Lark session reports the files its agent changed; this makes the "agent" change one.
   if (line.trim() === 'CODEFLAI_TEST_WRITE_FILE') {
     fs.writeFileSync('lark-e2e-output.txt', 'written by the fake agent\n', 'utf8')
+  }
+  // A Lark follow-up arrives as "[Lark 回复 · name] text", so this matches anywhere in the line.
+  if (line.includes('CODEFLAI_TEST_LARK_QUESTION')) {
+    const path = reportFilePath()
+    if (path) fs.writeFileSync(path, '{"status": "question", "question": "CSV or JSON?"}\n', 'utf8')
   }
   const activityOutput = {
     'CODEFLAI_TEST_CLAUDE_BACKGROUND_START': '\r\n\u273b Waiting for 2 background agents to finish\r\n',

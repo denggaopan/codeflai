@@ -11,7 +11,10 @@ export const LARK_REPLY = {
   ambiguousAgent: '请只指定一个 agent（claude 或 codex）',
   empty: '请写出要做什么',
   notGit: '这个项目不是 Git 仓库或还没有提交，无法执行',
-  startFailed: '启动失败，请到 Codeflai 查看'
+  startFailed: '启动失败，请到 Codeflai 查看',
+  // A stopped session is not woken from the chat: stopping is what a person does to end it.
+  followUpStopped: '这个会话已经停止，没有转给它。要继续请在 Codeflai 里点开它恢复，或者 @我 重新发起',
+  followUpGone: '这个会话已经不在了，请 @我 重新发起'
 } as const
 
 export const agentLabel = (agent: LarkAgent): string => (agent === 'claude' ? 'Claude' : 'Codex')
@@ -32,7 +35,24 @@ export const startedReply = (input: {
 }
 
 export const idleReply = (agent: LarkAgent, changeList: string): string =>
-  changeList === '' ? `${agentLabel(agent)} 停下了，可能在等你回复，请到 Codeflai 查看` : `本轮结束，改了：\n${changeList}`
+  changeList === ''
+    ? `${agentLabel(agent)} 停下了，可能在等你回复。回复这条消息并 @我 可以接着说`
+    : `本轮结束，改了：\n${changeList}`
+
+const withChanges = (text: string, changeList: string): string => (changeList === '' ? text : `${text}\n改了：\n${changeList}`)
+
+export const questionReply = (agent: LarkAgent, question: string): string =>
+  `${agentLabel(agent)} 在问你：${question}\n（回复这条消息并 @我 来回答）`
+
+export const doneReply = (agent: LarkAgent, summary: string, changeList: string): string =>
+  withChanges(`${agentLabel(agent)} 完成了：${summary}`, changeList)
+
+export const blockedReply = (agent: LarkAgent, reason: string): string =>
+  `${agentLabel(agent)} 卡住了：${reason}\n（回复这条消息并 @我 告诉它怎么办）`
+
+export const followUpSentReply = (agent: LarkAgent): string => `已转给 ${agentLabel(agent)}`
+
+export const followUpFailedReply = (agent: LarkAgent): string => `没能转给 ${agentLabel(agent)}，请到 Codeflai 查看`
 
 export const exitReply = (changeList: string): string =>
   '会话已结束。' + (changeList ? `\n改动：\n${changeList}` : '')

@@ -8,12 +8,13 @@ import type { LarkConnectionState, LarkClient, LarkFetchedMessage, LarkIncomingM
  * composition root picks it; this class reads no environment variable itself). A test appends
  * one JSON `LarkIncomingMessage` per line to `inbox.jsonl`, lists quotable messages in
  * `fetched.json` (a map of message id to `LarkFetchedMessage`), and reads the bot's replies
- * from `outbox.jsonl`.
+ * from `outbox.jsonl` (each line carries the reply's own `id`).
  */
 export class FileLarkClient implements LarkClient {
   private timer?: NodeJS.Timeout
   private consumed = 0
   private reading = false
+  private replies = 0
 
   constructor(
     private readonly directory: string,
@@ -88,7 +89,12 @@ export class FileLarkClient implements LarkClient {
     return `E2E ${openId}`
   }
 
-  async reply(messageId: string, text: string): Promise<void> {
-    await appendFile(join(this.directory, 'outbox.jsonl'), `${JSON.stringify({ messageId, text })}\n`, 'utf8')
+  // Each reply gets an id of its own, written beside it, so a test can answer one the way a
+  // person replies to the bot in Lark.
+  async reply(messageId: string, text: string): Promise<string | undefined> {
+    this.replies += 1
+    const id = `om_bot_${process.pid}_${this.replies}`
+    await appendFile(join(this.directory, 'outbox.jsonl'), `${JSON.stringify({ messageId, text, id })}\n`, 'utf8')
+    return id
   }
 }

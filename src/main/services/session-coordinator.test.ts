@@ -105,6 +105,9 @@ const fakePromptFiles = () => ({
   write: vi.fn(async (sessionId: string, _text: string) => `C:\\Profile\\issue-automation\\${sessionId}.md`),
   resultPath: vi.fn((sessionId: string) => `C:\\Profile\\issue-automation\\${sessionId}.result.json`),
   readResult: vi.fn(async (_sessionId: string): Promise<string | undefined> => undefined),
+  reportPath: vi.fn((sessionId: string) => `C:\\Profile\\issue-automation\\${sessionId}.report.json`),
+  readReport: vi.fn(async (_sessionId: string): Promise<string | undefined> => undefined),
+  removeReport: vi.fn(async (_sessionId: string): Promise<void> => undefined),
   remove: vi.fn(async (_sessionId: string): Promise<void> => undefined)
 })
 
@@ -219,6 +222,17 @@ describe('SessionCoordinator.create with an initial prompt', () => {
     expect(record).not.toHaveProperty('automation')
     expect(issueRuns.started).not.toHaveBeenCalled()
     expect(issueRuns.settle).not.toHaveBeenCalled()
+  })
+
+  it("fills the task prompt's report file placeholder with the new session's report path", async () => {
+    const { promptFiles, coordinator } = buildHarness()
+
+    await coordinator.create('project-1', 'claude', { worktree: true, taskPrompt: { text: 'Write to {{reportFile}}; again {{reportFile}}; keep {{other}}' } })
+
+    expect(promptFiles.write).toHaveBeenCalledWith(
+      'session-1',
+      'Write to C:\\Profile\\issue-automation\\session-1.report.json; again C:\\Profile\\issue-automation\\session-1.report.json; keep {{other}}'
+    )
   })
 
   it('removes the task prompt file and the record when the PTY fails to start, without issue history', async () => {
