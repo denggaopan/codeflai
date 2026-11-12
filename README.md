@@ -658,14 +658,56 @@ to hand its text and images to the agent:
 The session is an ordinary session in the sidebar. You can open, stop or delete it like any
 other.
 
+### Answering the agent from the chat
+
+Reply to any message of a session's conversation (your instruction, or any of the bot's replies
+to it) and `@Codeflai` in the reply. Instead of starting a new session, Codeflai types your reply
+into the session that is already running, as one line starting `[Lark 回复 · <your name>]`,
+and answers `已转给 Claude`. Images in the reply are downloaded and their paths added to the
+line. If the agent is still working, the line waits in its input queue like anything typed at
+the keyboard.
+
+- The `@` is required in a group: without the `im:message.group_msg` scope Lark does not deliver
+  messages that do not mention the bot.
+- Only people on the whitelist can answer, and the reply must be fresh, as for an instruction.
+- **A stopped session is not woken.** Sessions from Lark do not exit on their own, so a stopped
+  one was ended by someone; Codeflai answers that it is stopped and does nothing. Restore it in
+  Codeflai, or start a new one.
+- A message that replies to nothing, or to a message outside every session's conversation,
+  is a new instruction as before.
+- Everything typed into the session goes through the same filter: control characters become
+  spaces, so a reply cannot press keys. The line always starts with `[`, so a reply such as
+  `/logout` reaches the agent as text and not as one of its CLI's commands.
+
+### How the agent reports
+
+The task file tells the agent to end each round by writing a small JSON report beside it
+(`<userData>/issue-automation/<session id>.report.json`). Codeflai checks for it every three
+seconds and on the Done edge, sends it to the chat, and deletes it:
+
+| Report | Reply |
+| --- | --- |
+| `{"status": "question", "question": "..."}` | `Claude 在问你：...`, plus how to answer |
+| `{"status": "done", "summary": "..."}` | `Claude 完成了：...` and the changed files |
+| `{"status": "blocked", "reason": "..."}` | `Claude 卡住了：...`, plus how to answer |
+
+A report says more than silence can, so a round that reported gets no Done guess on top.
+An agent that writes nothing still gets the Done reply below. The report file is read by the
+main process, so unlike the Done reply it is passed on even while no Codeflai window is open.
+A file that stays unreadable for three checks is dropped.
+
 ### What the bot replies
 
-Every reply is attached under the message that asked.
+Every reply is attached under the message that asked, or under your latest reply once you
+have answered the agent.
 
 | When | Reply |
 | --- | --- |
 | Session started | which project, agent and branch (and, for a teammate, who asked and whose computer it runs on) |
-| The agent finishes a round (Done) | the changed files, one `status path` per line (first 20), or "stopped, may be waiting for you" if nothing changed |
+| The agent reports (see above) | its question, result or blocker |
+| The agent finishes a round (Done) without a report | the changed files, one `status path` per line (first 20), or "stopped, may be waiting for you; reply and @ me to go on" if nothing changed |
+| Your reply was passed on | `已转给 Claude` (or `没能转给 Claude，请到 Codeflai 查看` if typing failed) |
+| Your reply was for a stopped session | `这个会话已经停止，没有转给它…` |
 | The session ends | `会话已结束` and the changed files |
 | Sender not on the whitelist | `没有权限` (also for a wrong or expired pairing code) |
 | Nobody bound yet | `未绑定` |
@@ -692,8 +734,8 @@ ignored. Messages that predate the connection are never executed.
 
 ### Limitations
 
-- Round-end reports are triggered by the Codeflai window, so no idle reply is sent while no
-  Codeflai window is open (the session itself keeps running).
+- The Done reply is triggered by the Codeflai window, so it is not sent while no Codeflai
+  window is open (the session itself keeps running). The agent's own reports are not affected.
 - Instructions sent while Codeflai was offline are **never executed**; they are answered
   "stale, please resend" and nothing starts. Lark itself redelivers events a bot missed: in a
   test, a message sent while Codeflai was closed arrived about 10 minutes after reconnecting,
@@ -702,8 +744,8 @@ ignored. Messages that predate the connection are never executed.
   history from whitelisted people when it reconnects, so nothing is missed however long it was
   offline; without it, Codeflai logs once that this catch-up is off. The first time you connect
   there is nothing to catch up.
-- Lark only, one computer, no chat interface inside Codeflai, and you cannot send follow-up
-  input to a running session from the chat.
+- Lark only, one computer, no chat interface inside Codeflai. Replies reach only a running
+  session.
 - The first version that includes this feature changes the host protocol (version 3), so
   running sessions are restarted once with resume on that upgrade.
 
@@ -963,6 +1005,11 @@ real machine can confirm.
 - A whitelisted teammate's instruction runs, and the session title and start reply say who
   asked.
 - An account that is not on the whitelist gets `没有权限` and nothing starts.
+- Ask for something the agent has to ask about (`... 加一个导出按钮，格式你问我`): the question
+  arrives as `Claude 在问你：…`. Reply to it with `@Codeflai` and an answer: `已转给 Claude`
+  arrives, the answer shows up in the session's terminal as one submitted line (not stuck in
+  the input box), and the agent carries on and reports again under your reply. Repeat with Codex.
+- Reply to a stopped session's message: the stopped reply arrives and nothing is typed.
 - Close Codeflai, send an instruction, reopen: the stale reply arrives and nothing starts.
 - Open **Settings › Lark** and check the layout in every theme.
 
