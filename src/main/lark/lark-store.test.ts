@@ -169,6 +169,83 @@ describe('LarkStore', () => {
     expect(mates).toEqual([expect.objectContaining({ name: 'Mate Renamed', role: 'member' })])
   })
 
+  describe('a teammate bound to a project', () => {
+    const pairMate = async (store: LarkStore, projectId?: string, name = 'Mate'): Promise<void> => {
+      await store.startPairing('member', projectId)
+      expect(await store.redeemPairing('123456', 'ou_mate', name)).toBe('added')
+    }
+
+    it('carries the project from the code onto the member', async () => {
+      const store = build()
+      await bindOwner(store)
+      await store.startPairing('member', 'p1')
+      expect((await store.status('off')).pairing).toMatchObject({ code: '123456', role: 'member', projectId: 'p1' })
+      expect(await store.redeemPairing('123456', 'ou_mate', 'Mate')).toBe('added')
+      expect(await store.memberFor('ou_mate')).toMatchObject({ role: 'member', projectId: 'p1' })
+      expect(await build().memberFor('ou_mate')).toMatchObject({ projectId: 'p1' })
+    })
+
+    it('leaves a teammate paired without a project unrestricted', async () => {
+      const store = build()
+      await bindOwner(store)
+      await pairMate(store)
+      expect((await store.status('off')).pairing).toBeUndefined()
+      expect(await store.memberFor('ou_mate')).not.toHaveProperty('projectId')
+    })
+
+    it('refuses to bind the owner to a project', async () => {
+      await expect(build().startPairing('owner', 'p1')).rejects.toThrow('Only a teammate can be bound to a project.')
+    })
+
+    it('a later code without a project lifts the restriction', async () => {
+      const store = build()
+      await bindOwner(store)
+      await pairMate(store, 'p1')
+      const before = await store.memberFor('ou_mate')
+      now = new Date(now.getTime() + 60_000)
+      await pairMate(store, undefined, 'Mate 2')
+      const after = await store.memberFor('ou_mate')
+      expect(after).not.toHaveProperty('projectId')
+      expect(after).toMatchObject({ name: 'Mate 2', addedAt: before?.addedAt })
+    })
+
+    it('a later code for another project rebinds the teammate', async () => {
+      const store = build()
+      await bindOwner(store)
+      await pairMate(store, 'p1')
+      await pairMate(store, 'p2')
+      expect((await store.status('off')).members.filter((member) => member.openId === 'ou_mate')).toEqual([
+        expect.objectContaining({ projectId: 'p2' })
+      ])
+    })
+
+    it('the owner redeeming a project code stays an unrestricted owner', async () => {
+      const store = build()
+      await bindOwner(store)
+      await store.startPairing('member', 'p1')
+      expect(await store.redeemPairing('123456', 'ou_owner', 'Owner')).toBe('added')
+      const owner = await store.owner()
+      expect(owner).toMatchObject({ openId: 'ou_owner', role: 'owner' })
+      expect(owner).not.toHaveProperty('projectId')
+      expect((await store.status('off')).pairing).toBeUndefined()
+    })
+
+    it('reads members written before projects existed', async () => {
+      await writeFile(
+        join(directory, 'config.json'),
+        JSON.stringify({
+          version: 1,
+          enabled: true,
+          domain: 'feishu',
+          appId: 'cli_a1',
+          members: [{ openId: 'ou_old', name: 'Old', role: 'member', addedAt: '2026-11-01T00:00:00.000Z' }]
+        }),
+        'utf8'
+      )
+      expect(await build().memberFor('ou_old')).toEqual({ openId: 'ou_old', name: 'Old', role: 'member', addedAt: '2026-11-01T00:00:00.000Z' })
+    })
+  })
+
   it('removing a member revokes it immediately', async () => {
     const store = build()
     await bindOwner(store)

@@ -62,7 +62,8 @@ const pairingSchema = z.strictObject({
   code: z.string(),
   role: z.enum(['owner', 'member']),
   expiresAt: z.string().datetime(),
-  failures: z.number().int().min(0).default(0)
+  failures: z.number().int().min(0).default(0),
+  projectId: z.string().min(1).optional()
 })
 
 const configSchema = z.object({
@@ -139,7 +140,15 @@ export class LarkStore {
   async status(connection: LarkConnection, error?: string): Promise<LarkStatus> {
     const config = await this.settledConfig()
     const pending = config.pairing
-    const pairing = pending === undefined ? undefined : { code: pending.code, role: pending.role, expiresAt: pending.expiresAt }
+    const pairing =
+      pending === undefined
+        ? undefined
+        : {
+            code: pending.code,
+            role: pending.role,
+            expiresAt: pending.expiresAt,
+            ...(pending.projectId === undefined ? {} : { projectId: pending.projectId })
+          }
     return {
       enabled: config.enabled,
       domain: config.domain,
@@ -180,12 +189,14 @@ export class LarkStore {
     }
   }
 
-  startPairing(role: 'owner' | 'member'): Promise<void> {
+  /** `projectId` confines the teammate who redeems the code to that project. */
+  startPairing(role: 'owner' | 'member', projectId?: string): Promise<void> {
     return this.mutateConfig((config) => {
+      if (role === 'owner' && projectId !== undefined) throw new Error('Only a teammate can be bound to a project.')
       if (role === 'member' && !config.members.some((member) => member.role === 'owner')) throw new Error('Bind an owner first.')
       const code = String(this.random(1_000_000)).padStart(6, '0')
       const expiresAt = new Date(this.clock().getTime() + LARK_PAIRING_TTL_MS).toISOString()
-      return { ...config, pairing: { code, role, expiresAt, failures: 0 } }
+      return { ...config, pairing: { code, role, expiresAt, failures: 0, ...(projectId === undefined ? {} : { projectId }) } }
     })
   }
 
@@ -206,7 +217,14 @@ export class LarkStore {
       const { pairing: _used, ...withoutPairing } = config
       // The owner redeeming a member code consumes it but must never be demoted.
       if (pairing.role === 'member' && config.members.some((member) => member.openId === openId && member.role === 'owner')) return withoutPairing
-      const entry: LarkMember = { openId, name, role: pairing.role, addedAt: this.clock().toISOString() }
+      // The project comes from this code alone: a code without one lifts an earlier restriction.
+      const entry: LarkMember = {
+        openId,
+        name,
+        role: pairing.role,
+        addedAt: this.clock().toISOString(),
+        ...(pairing.projectId === undefined ? {} : { projectId: pairing.projectId })
+      }
       const previous = config.members.find((member) => member.openId === openId)
       const others = config.members.filter(
         (member) => member.openId !== openId && !(pairing.role === 'owner' && member.role === 'owner')

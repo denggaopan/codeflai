@@ -412,7 +412,9 @@ export const larkMemberSchema = z.strictObject({
   openId: z.string().min(1),
   name: z.string(),
   role: z.enum(['owner', 'member']),
-  addedAt: z.string().datetime()
+  addedAt: z.string().datetime(),
+  // A teammate bound to a project can start and answer sessions only there. Absent: unrestricted.
+  projectId: z.string().min(1).optional()
 })
 export const larkConnectionSchema = z.enum(['off', 'connecting', 'connected', 'error'])
 export const larkStatusSchema = z.strictObject({
@@ -424,7 +426,12 @@ export const larkStatusSchema = z.strictObject({
   error: z.string().optional(),
   members: z.array(larkMemberSchema),
   pairing: z
-    .strictObject({ code: z.string(), role: z.enum(['owner', 'member']), expiresAt: z.string().datetime() })
+    .strictObject({
+      code: z.string(),
+      role: z.enum(['owner', 'member']),
+      expiresAt: z.string().datetime(),
+      projectId: z.string().min(1).optional()
+    })
     .optional()
 })
 /**
@@ -445,7 +452,10 @@ export const larkSaveConfigRequestSchema = z.strictObject({
     .refine((value) => value === '' || isLarkAppId(value), { message: 'The App ID must look like cli_ followed by 16 letters or digits.' }),
   appSecret: z.string().min(1).max(256).optional()
 })
-export const larkPairingRequestSchema = z.strictObject({ role: z.enum(['owner', 'member']) })
+export const larkPairingRequestSchema = z.strictObject({
+  role: z.enum(['owner', 'member']),
+  projectId: z.string().min(1).optional()
+})
 export const larkRemoveMemberRequestSchema = z.strictObject({ openId: z.string().min(1) })
 export const larkSessionIdleRequestSchema = z.strictObject({ sessionId: z.string().min(1) })
 
