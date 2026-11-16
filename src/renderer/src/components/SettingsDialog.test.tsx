@@ -619,6 +619,103 @@ describe('SettingsDialog', () => {
       expect(api.larkRemoveMember).toHaveBeenCalledWith('ou_m')
     })
 
+    describe('binding a teammate to a project', () => {
+      const owner = { openId: 'ou_o', name: 'Olive', role: 'owner' as const, addedAt: '2026-11-01T00:00:00.000Z' }
+      const withOwner: LarkStatus = { ...larkOn, members: [owner] }
+      const seedProjects = (): void => {
+        useAppStore.setState({
+          appState: {
+            version: 1,
+            projects: [
+              { id: 'p1', name: 'Alpha', path: 'C:/alpha', createdAt: '2026-11-01T00:00:00.000Z' },
+              { id: 'p2', name: 'Beta', path: 'C:/beta', createdAt: '2026-11-01T00:00:00.000Z' }
+            ],
+            sessions: []
+          }
+        })
+      }
+      const projectSelect = (): Promise<HTMLElement> => screen.findByRole('combobox', { name: 'Project for the new teammate' })
+
+      it('offers every project, with all projects selected', async () => {
+        seedProjects()
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue(withOwner)
+        renderDialog(api)
+
+        const select = await projectSelect()
+        expect(within(select).getAllByRole('option').map((option) => option.textContent)).toEqual(['All projects', 'Alpha', 'Beta'])
+        expect(select).toHaveValue('')
+      })
+
+      it('has no project choice before an owner is bound', async () => {
+        seedProjects()
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue(larkOn)
+        renderDialog(api)
+
+        await screen.findByRole('button', { name: 'Bind me' })
+        expect(screen.queryByRole('combobox', { name: 'Project for the new teammate' })).not.toBeInTheDocument()
+      })
+
+      it('sends the chosen project with Add teammate', async () => {
+        const user = userEvent.setup()
+        seedProjects()
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue(withOwner)
+        api.larkStartPairing.mockResolvedValue(withOwner)
+        renderDialog(api)
+
+        await user.selectOptions(await projectSelect(), 'Beta')
+        await user.click(screen.getByRole('button', { name: 'Add teammate' }))
+        expect(api.larkStartPairing.mock.calls).toEqual([['member', 'p2']])
+
+        await user.selectOptions(await projectSelect(), 'All projects')
+        await user.click(screen.getByRole('button', { name: 'Add teammate' }))
+        expect(api.larkStartPairing.mock.calls[1]).toEqual(['member'])
+      })
+
+      it('falls back to all projects when the chosen project is removed', async () => {
+        const user = userEvent.setup()
+        seedProjects()
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue(withOwner)
+        api.larkStartPairing.mockResolvedValue(withOwner)
+        renderDialog(api)
+
+        await user.selectOptions(await projectSelect(), 'Beta')
+        act(() => {
+          const { appState } = useAppStore.getState()
+          useAppStore.setState({ appState: { ...appState, projects: appState.projects.filter((project) => project.id !== 'p2') } })
+        })
+        expect(await projectSelect()).toHaveValue('')
+        await user.click(screen.getByRole('button', { name: 'Add teammate' }))
+        expect(api.larkStartPairing.mock.calls).toEqual([['member']])
+      })
+
+      it('shows which project a teammate and a pending code are limited to', async () => {
+        seedProjects()
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue({
+          ...withOwner,
+          members: [
+            owner,
+            { openId: 'ou_a', name: 'Ann', role: 'member', addedAt: '2026-11-02T00:00:00.000Z', projectId: 'p1' },
+            { openId: 'ou_g', name: 'Gus', role: 'member', addedAt: '2026-11-02T00:00:00.000Z', projectId: 'p-gone' },
+            { openId: 'ou_f', name: 'Fay', role: 'member', addedAt: '2026-11-02T00:00:00.000Z' }
+          ],
+          pairing: { code: '123456', role: 'member', expiresAt: new Date(Date.now() + 9 * 60_000).toISOString(), projectId: 'p2' }
+        })
+        renderDialog(api)
+
+        const row = (name: string): HTMLElement => screen.getByText(name).closest('li') as HTMLElement
+        expect(within(row(await screen.findByText('Ann').then(() => 'Ann'))).getByText('Only Alpha')).toBeInTheDocument()
+        expect(within(row('Gus')).getByText('Project removed')).toBeInTheDocument()
+        expect(within(row('Fay')).queryByText(/^Only|Project removed/)).not.toBeInTheDocument()
+        expect(within(row('Olive')).queryByText(/^Only|Project removed/)).not.toBeInTheDocument()
+        expect(screen.getByText('Only Beta')).toBeInTheDocument()
+      })
+    })
+
     it('shows the code a Bind me click produced', async () => {
       const user = userEvent.setup()
       const api = createFakeApi()

@@ -45,6 +45,9 @@ export default function LarkSettings() {
   const [copied, setCopied] = useState(false)
   // Shown only after a save was attempted, so the field does not turn red while being typed.
   const [appIdRejected, setAppIdRejected] = useState(false)
+  const projects = useAppStore((state) => state.appState.projects)
+  // The project the next teammate is confined to; '' is "all projects" (unrestricted).
+  const [teammateProject, setTeammateProject] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -107,8 +110,17 @@ export default function LarkSettings() {
     if (next) setStatus(next)
   }
 
-  const startPairing = (role: 'owner' | 'member'): void => {
-    void window.codeflai.larkStartPairing(role).then(adopt).catch(report)
+  const startPairing = (role: 'owner' | 'member', projectId?: string): void => {
+    const request = projectId === undefined ? window.codeflai.larkStartPairing(role) : window.codeflai.larkStartPairing(role, projectId)
+    void request.then(adopt).catch(report)
+  }
+
+  // A choice whose project has since left the list must not be sent: the select would show it
+  // as blank, and the main process would refuse the code.
+  const chosenProject = projects.some((project) => project.id === teammateProject) ? teammateProject : ''
+  const projectLimit = (projectId: string): string => {
+    const project = projects.find((candidate) => candidate.id === projectId)
+    return project ? t('settings.larkMemberProject', { project: project.name }) : t('settings.larkProjectRemoved')
   }
 
   const copy = (text: string): void => {
@@ -227,6 +239,7 @@ export default function LarkSettings() {
           <li key={member.openId} className="settings-lark-member">
             <span className="settings-lark-member-name">{member.name || member.openId}</span>
             {member.role === 'owner' && <span className="settings-lark-badge">{t('settings.larkOwnerBadge')}</span>}
+            {member.projectId !== undefined && <span className="settings-lark-badge">{projectLimit(member.projectId)}</span>}
             <span className="settings-dialog-hint">
               {t('settings.larkAddedOn', { date: new Date(member.addedAt).toLocaleDateString(locale) })}
             </span>
@@ -253,9 +266,34 @@ export default function LarkSettings() {
             {t('settings.larkBindMe')}
           </button>
         ) : (
-          <button type="button" className="settings-update-button" {...pairingProps} onClick={() => startPairing('member')}>
-            {t('settings.larkAddTeammate')}
-          </button>
+          <>
+            <label className="settings-dialog-label" htmlFor="settings-lark-teammate-project">
+              {t('settings.larkTeammateProject')}
+            </label>
+            <span className="settings-lark-add">
+              <select
+                id="settings-lark-teammate-project"
+                className="settings-select"
+                value={chosenProject}
+                onChange={(event) => setTeammateProject(event.target.value)}
+              >
+                <option value="">{t('settings.larkAllProjects')}</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="settings-update-button"
+                {...pairingProps}
+                onClick={() => startPairing('member', chosenProject === '' ? undefined : chosenProject)}
+              >
+                {t('settings.larkAddTeammate')}
+              </button>
+            </span>
+          </>
         )}
       </div>
 
@@ -267,6 +305,7 @@ export default function LarkSettings() {
             })}
           </span>
           <code className="settings-lark-code">{pairing.code}</code>
+          {pairing.projectId !== undefined && <span className="settings-lark-badge">{projectLimit(pairing.projectId)}</span>}
           <span className="settings-dialog-hint">
             {remaining > 0 ? t('settings.larkPairingExpires', { time: formatRemaining(remaining) }) : t('settings.larkPairingExpired')}
           </span>
