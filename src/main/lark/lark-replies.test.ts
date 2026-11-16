@@ -23,6 +23,7 @@ describe('lark replies', () => {
       stale: '这条消息发出时 Codeflai 未运行，没有执行，请重新发送',
       noProject: '找不到项目：请在消息里写出 Codeflai 中的项目名',
       ambiguousProject: '消息里匹配到多个项目，请只写一个',
+      projectGone: '你绑定的项目已不在 Codeflai 中，请联系管理员重新添加',
       ambiguousAgent: '请只指定一个 agent（claude 或 codex）',
       empty: '请写出要做什么',
       notGit: '这个项目不是 Git 仓库或还没有提交，无法执行',

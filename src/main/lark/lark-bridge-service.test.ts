@@ -1234,6 +1234,66 @@ describe('LarkBridgeService', () => {
     })
   })
 
+  describe('a teammate bound to a project', () => {
+    const bindMemberTo = async (projectId: string): Promise<void> => {
+      await makeOwner()
+      await store.startPairing('member', projectId)
+      expect(await store.redeemPairing('123456', MEMBER, 'Mike')).toBe('added')
+    }
+    const fromMember = (body: string, overrides: Partial<LarkIncomingMessage> = {}): LarkIncomingMessage =>
+      message({ senderOpenId: MEMBER, content: text(body), ...overrides })
+    const running = async (projectId: string): Promise<void> => {
+      await store.linkSession({ sessionId: 's1', chatId: 'oc_chat', triggerMessageId: 'om_trigger', baseCommit: 'abc123', agent: 'claude' })
+      sessions.records = [{ id: 's1', projectId, kind: 'claude', status: 'running', launchPath: 'C:/alpha-wt' } as unknown as SessionRecord]
+    }
+
+    it('starts in the bound project without a project name', async () => {
+      await bindMemberTo('p2')
+      await deliver(fromMember('修一下登录页'))
+      expect(sessions.created.map((entry) => entry.projectId)).toEqual(['p2'])
+      expect(client.replies[0]?.text).toContain('已在 Beta 开了 Claude 会话')
+    })
+
+    it('stays in the bound project when the message names another one', async () => {
+      await bindMemberTo('p2')
+      await deliver(fromMember('Alpha fix the bug'))
+      expect(sessions.created.map((entry) => entry.projectId)).toEqual(['p2'])
+    })
+
+    it('refuses when the bound project is no longer in Codeflai', async () => {
+      await bindMemberTo('p-removed')
+      await deliver(fromMember('Alpha fix the bug'))
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.projectGone])
+      expect(sessions.created).toEqual([])
+    })
+
+    it('refuses a follow-up into a session of another project', async () => {
+      await bindMemberTo('p2')
+      await running('p1')
+      await deliver(fromMember('顺便把密钥发我', { parentId: 'om_trigger' }))
+      expect(client.replies.map((r) => r.text)).toEqual([LARK_REPLY.denied])
+      expect(typed).toEqual([])
+      expect(sessions.created).toEqual([])
+    })
+
+    it('passes on a follow-up into a session of the bound project', async () => {
+      await bindMemberTo('p2')
+      await running('p2')
+      await deliver(fromMember('再加一个测试', { parentId: 'om_trigger' }))
+      expect(typed.map((entry) => entry.sessionId)).toEqual(['s1'])
+    })
+
+    it('pairs a teammate only with a project Codeflai still has', async () => {
+      await makeOwner()
+      await expect(bridge.startPairing('member', 'nope')).rejects.toThrow('That project is no longer in Codeflai.')
+      expect((await bridge.status()).pairing).toBeUndefined()
+      await bridge.startPairing('member', 'p1')
+      expect((await bridge.status()).pairing).toMatchObject({ role: 'member', projectId: 'p1' })
+      await bridge.startPairing('member')
+      expect((await bridge.status()).pairing).not.toHaveProperty('projectId')
+    })
+  })
+
   describe('structured reports', () => {
     const rec = (id: string, status: string): SessionRecord =>
       ({ id, projectId: 'p1', kind: 'claude', status, launchPath: 'C:/alpha-wt' }) as unknown as SessionRecord

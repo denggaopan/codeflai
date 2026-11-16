@@ -1,7 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { AppState, LarkConnection, LarkStatus, SessionKind, SessionRecord } from '../../shared/contracts'
+import type { AppState, LarkConnection, LarkMember, LarkStatus, SessionKind, SessionRecord } from '../../shared/contracts'
 import type { CommandRunner } from '../infrastructure/command-runner'
 import type { CreateSessionOptions } from '../services/session-coordinator'
 import { extractMessageText, parseLarkCommand, type LarkCommand } from './lark-command'
@@ -118,6 +118,17 @@ export class LarkBridgeService {
 
   status(): Promise<LarkStatus> {
     return this.deps.store.status(this.connection, this.error)
+  }
+
+  /**
+   * Mints a pairing code. `projectId` confines the teammate who redeems it to that project, so
+   * it must name one Codeflai has: a binding to nothing would only ever refuse.
+   */
+  async startPairing(role: 'owner' | 'member', projectId?: string): Promise<void> {
+    if (projectId !== undefined && !(await this.deps.sessions.snapshot()).projects.some((project) => project.id === projectId)) {
+      throw new Error('That project is no longer in Codeflai.')
+    }
+    await this.deps.store.startPairing(role, projectId)
   }
 
   /** The renderer's Done edge for a session; queued behind inbound work and never throws. */
@@ -531,14 +542,21 @@ export class LarkBridgeService {
       return
     }
     if (link !== undefined) {
-      await this.followUp(incoming, generation, link, member.name, own)
+      await this.followUp(incoming, generation, link, member, own)
       return
     }
 
     let command: LarkCommand
     try {
       const projects = (await this.deps.sessions.snapshot()).projects.map((project) => ({ id: project.id, name: project.name }))
-      command = parseLarkCommand(text, projects)
+      // A teammate bound to a project runs there whatever the message names; a binding that no
+      // longer resolves is a refusal, not a licence to pick any project.
+      const bound = member.projectId === undefined ? undefined : projects.find((project) => project.id === member.projectId)
+      if (member.projectId !== undefined && bound === undefined) {
+        await this.reply(incoming.messageId, LARK_REPLY.projectGone)
+        return
+      }
+      command = parseLarkCommand(text, projects, bound)
       if (command.type === 'run' && !(await this.deps.agentAvailable(command.agent))) {
         await this.reply(incoming.messageId, agentMissingReply(command.agent))
         return
@@ -711,15 +729,21 @@ export class LarkBridgeService {
     incoming: LarkIncomingMessage,
     generation: number,
     link: LarkSessionLink,
-    storedName: string,
+    member: LarkMember,
     own: { text: string; imageKeys: string[] } | undefined
   ): Promise<void> {
+    const storedName = member.name
     const text = own?.text ?? ''
     const imageKeys = own?.imageKeys ?? []
     try {
       const record = (await this.deps.sessions.snapshot()).sessions.find((session) => session.id === link.sessionId)
       if (record === undefined) {
         await this.reply(incoming.messageId, LARK_REPLY.followUpGone)
+        return
+      }
+      // Typing into a session is running commands in its project, so the binding applies here too.
+      if (member.projectId !== undefined && record.projectId !== member.projectId) {
+        await this.reply(incoming.messageId, LARK_REPLY.denied)
         return
       }
       if (record.status !== 'running') {
