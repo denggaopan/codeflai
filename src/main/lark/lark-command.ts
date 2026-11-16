@@ -125,7 +125,11 @@ function leadingSkill(stripped: string): string | undefined {
   return name
 }
 
-export function parseLarkCommand(text: string, projects: readonly LarkProjectRef[]): LarkCommand {
+/**
+ * `bound` is the project a teammate is confined to. With it the message is never searched for a
+ * project name: any name in it is part of the task, and cannot move the session elsewhere.
+ */
+export function parseLarkCommand(text: string, projects: readonly LarkProjectRef[], bound?: LarkProjectRef): LarkCommand {
   const stripped = normalizeText(text)
   if (stripped === '') return { type: 'error', reason: 'empty' }
 
@@ -137,17 +141,22 @@ export function parseLarkCommand(text: string, projects: readonly LarkProjectRef
   if (mentionsClaude && mentionsCodex) return { type: 'error', reason: 'ambiguousAgent' }
   const agent = mentionsCodex ? 'codex' : 'claude'
 
-  const matched = new Map<string, LarkProjectRef>()
-  for (const project of projects) {
-    if (project.name !== '' && containsToken(stripped, project.name)) {
-      matched.set(project.id, project)
+  let project = bound
+  if (project === undefined) {
+    const matched = new Map<string, LarkProjectRef>()
+    for (const candidate of projects) {
+      if (candidate.name !== '' && containsToken(stripped, candidate.name)) {
+        matched.set(candidate.id, candidate)
+      }
     }
+    if (matched.size === 0) return { type: 'error', reason: 'noProject' }
+    if (matched.size > 1) return { type: 'error', reason: 'ambiguousProject' }
+    project = [...matched.values()][0]!
   }
-  if (matched.size === 0) return { type: 'error', reason: 'noProject' }
-  if (matched.size > 1) return { type: 'error', reason: 'ambiguousProject' }
-  const project = [...matched.values()][0]!
 
   const skill = leadingSkill(stripped)
+  // Only reachable for a bound teammate: otherwise the required project name follows the skill.
+  if (skill !== undefined && !stripped.includes(' ')) return { type: 'error', reason: 'empty' }
   return {
     type: 'run',
     agent,
@@ -155,7 +164,7 @@ export function parseLarkCommand(text: string, projects: readonly LarkProjectRef
     projectName: project.name,
     ...(skill ? { skill } : {}),
     // A hoisted skill already opens the agent's first message; left in the task file too it reads
-    // as a second request to run it. A project name is required, so something always remains.
+    // as a second request to run it. Something always remains: a lone skill was refused above.
     instruction: skill ? stripped.slice(stripped.indexOf(' ') + 1) : stripped
   }
 }

@@ -188,3 +188,45 @@ describe('extractMessageText', () => {
     expect(extractMessageText('text', 'not json')).toBeUndefined()
   })
 })
+
+describe('parseLarkCommand for a teammate bound to a project', () => {
+  const bound: LarkProjectRef = { id: 'p9', name: 'web' }
+
+  it('needs no project name in the message', () => {
+    expect(parseLarkCommand('修一下登录页', projects, bound)).toEqual({
+      type: 'run',
+      agent: 'claude',
+      projectId: 'p9',
+      projectName: 'web',
+      instruction: '修一下登录页'
+    })
+  })
+
+  it('treats other project names as part of the task', () => {
+    expect(parseLarkCommand('把 codeflai 和 codeflai-web 的做法抄过来', projects, bound)).toMatchObject({
+      type: 'run',
+      projectId: 'p9',
+      instruction: '把 codeflai 和 codeflai-web 的做法抄过来'
+    })
+  })
+
+  it('still hoists a leading skill', () => {
+    expect(parseLarkCommand('/fast-do 修一下', projects, bound)).toMatchObject({
+      type: 'run',
+      projectId: 'p9',
+      skill: 'fast-do',
+      instruction: '修一下'
+    })
+  })
+
+  it('rejects a skill with nothing to do', () => {
+    expect(parseLarkCommand('/fast-do', projects, bound)).toEqual({ type: 'error', reason: 'empty' })
+  })
+
+  it('still reads the agent, a bind and an empty message', () => {
+    expect(parseLarkCommand('用 codex 修一下', projects, bound)).toMatchObject({ type: 'run', agent: 'codex' })
+    expect(parseLarkCommand('claude 还是 codex', projects, bound)).toEqual({ type: 'error', reason: 'ambiguousAgent' })
+    expect(parseLarkCommand('绑定 123456', projects, bound)).toEqual({ type: 'bind', code: '123456' })
+    expect(parseLarkCommand('  ', projects, bound)).toEqual({ type: 'error', reason: 'empty' })
+  })
+})
