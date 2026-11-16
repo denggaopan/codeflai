@@ -121,7 +121,8 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
       'utf8'
     )
     const runId = send('ou_owner', `${project.name} 看看这个问题`, { parentId: 'om_quoted' })
-    await expect.poll(async () => (await sessions()).length, { timeout: 30_000 }).toBe(1)
+    // The record appears as `creating` and turns `running` once the PTY is up.
+    await expect.poll(async () => (await sessions()).map((entry) => entry.status), { timeout: 30_000 }).toEqual(['running'])
     const session = (await sessions())[0]
     expect(session).toMatchObject({ kind: 'claude', mode: 'worktree', status: 'running' })
     const branch = (session as { branchName: string }).branchName
@@ -163,6 +164,37 @@ test('pairs an owner in Settings, starts a worktree session from a message and r
       .toEqual([followUpSentReply('claude'), questionReply('claude', 'CSV or JSON?')])
     expect(await sessions()).toHaveLength(1)
     await expect.poll(() => existsSync(join(userDataDir, 'issue-automation', `${session.id}.report.json`)), { timeout: 15_000 }).toBe(false)
+
+    // A teammate added for one project: the code carries the project, and their command needs
+    // no project name to start a session there.
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await dialog.getByRole('button', { name: 'Lark', exact: true }).click()
+    await dialog.getByRole('combobox', { name: 'Project for the new teammate' }).selectOption({ label: project.name })
+    await dialog.getByRole('button', { name: 'Add teammate' }).click()
+    await expect(dialog.locator('.settings-lark-pairing').getByText(`Only ${project.name}`)).toBeVisible()
+    const mateCode = (await dialog.locator('.settings-lark-code').textContent())!.trim()
+    const mateBindId = send('ou_mate', `绑定 ${mateCode}`)
+    await expect.poll(() => replyTo(mateBindId), { timeout: 15_000 }).toEqual([LARK_REPLY.bound])
+    const mateRow = dialog.locator('.settings-lark-member', { hasText: 'E2E ou_mate' })
+    await expect(mateRow.getByText(`Only ${project.name}`)).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+
+    const mateRunId = send('ou_mate', '修一下登录页')
+    await expect.poll(async () => (await sessions()).length, { timeout: 30_000 }).toBe(2)
+    const mateSession = (await sessions()).find((entry) => entry.id !== session.id)!
+    expect(mateSession).toMatchObject({ projectId: project.id, kind: 'claude', mode: 'worktree' })
+    await expect
+      .poll(() => replyTo(mateRunId), { timeout: 15_000 })
+      .toEqual([
+        startedReply({
+          agent: 'claude',
+          projectName: project.name,
+          branch: (mateSession as { branchName: string }).branchName,
+          requesterName: 'E2E ou_mate',
+          ownerName: 'E2E ou_owner'
+        })
+      ])
     expect(errors).toEqual([])
   } finally {
     // Removing the project ends every PTY so the resident host can exit within the E2E idle
