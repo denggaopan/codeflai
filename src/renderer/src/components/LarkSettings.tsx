@@ -305,7 +305,13 @@ export default function LarkSettings() {
             })}
           </span>
           <code className="settings-lark-code">{pairing.code}</code>
-          {pairing.projectId !== undefined && <span className="settings-lark-badge">{projectLimit(pairing.projectId)}</span>}
+          {/* A teammate code always says what it grants: a missing badge is too quiet a cue that
+              the code about to be handed over limits nothing. */}
+          {pairing.role === 'member' && (
+            <span className="settings-lark-badge">
+              {pairing.projectId === undefined ? t('settings.larkAllProjects') : projectLimit(pairing.projectId)}
+            </span>
+          )}
           <span className="settings-dialog-hint">
             {remaining > 0 ? t('settings.larkPairingExpires', { time: formatRemaining(remaining) }) : t('settings.larkPairingExpired')}
           </span>

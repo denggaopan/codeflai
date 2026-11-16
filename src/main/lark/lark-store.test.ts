@@ -230,6 +230,22 @@ describe('LarkStore', () => {
       expect((await store.status('off')).pairing).toBeUndefined()
     })
 
+    // A binding that cannot be read must cost the member their access, never their restriction.
+    it.each([[''], [5], [null]])('does not admit a member whose stored project is %j', async (projectId) => {
+      await writeFile(
+        join(directory, 'config.json'),
+        JSON.stringify({
+          version: 1,
+          enabled: true,
+          domain: 'feishu',
+          appId: 'cli_a1',
+          members: [{ openId: 'ou_mate', name: 'Mate', role: 'member', addedAt: '2026-11-01T00:00:00.000Z', projectId }]
+        }),
+        'utf8'
+      )
+      expect(await build().memberFor('ou_mate')).toBeUndefined()
+    })
+
     it('reads members written before projects existed', async () => {
       await writeFile(
         join(directory, 'config.json'),

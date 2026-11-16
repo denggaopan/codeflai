@@ -155,7 +155,8 @@ export function parseLarkCommand(text: string, projects: readonly LarkProjectRef
   }
 
   const skill = leadingSkill(stripped)
-  // Only reachable for a bound teammate: otherwise the required project name follows the skill.
+  // A skill with nothing to do. A bound teammate gets here by sending only the token; anyone
+  // else only when a project is named exactly like the skill.
   if (skill !== undefined && !stripped.includes(' ')) return { type: 'error', reason: 'empty' }
   return {
     type: 'run',

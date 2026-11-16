@@ -692,6 +692,29 @@ describe('SettingsDialog', () => {
         expect(api.larkStartPairing.mock.calls).toEqual([['member']])
       })
 
+      it('says so on a teammate code that limits nothing', async () => {
+        seedProjects()
+        const api = createFakeApi()
+        const expiresAt = new Date(Date.now() + 9 * 60_000).toISOString()
+        api.larkStatus.mockResolvedValue({ ...withOwner, pairing: { code: '123456', role: 'member', expiresAt } })
+        renderDialog(api)
+
+        const panel = (await screen.findByText('123456')).closest('.settings-lark-pairing') as HTMLElement
+        expect(within(panel).getByText('All projects')).toBeInTheDocument()
+      })
+
+      it('shows no project line on an owner code', async () => {
+        const api = createFakeApi()
+        api.larkStatus.mockResolvedValue({
+          ...withOwner,
+          pairing: { code: '123456', role: 'owner', expiresAt: new Date(Date.now() + 9 * 60_000).toISOString() }
+        })
+        renderDialog(api)
+
+        const panel = (await screen.findByText('123456')).closest('.settings-lark-pairing') as HTMLElement
+        expect(within(panel).queryByText('All projects')).not.toBeInTheDocument()
+      })
+
       it('shows which project a teammate and a pending code are limited to', async () => {
         seedProjects()
         const api = createFakeApi()

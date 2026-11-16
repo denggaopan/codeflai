@@ -626,6 +626,10 @@ chat.
   the limit, generate a new code with the project you want and have them send it; the newest
   code they redeem decides. If the project is later removed from Codeflai, their instructions
   are refused with a note to ask you, never run somewhere else. The owner is never limited.
+  **The limit decides where their sessions start, not what the agent can reach**: the session
+  still runs with the permission bypass under your account, so an instruction can ask the agent
+  to read or change files outside that project. Add only people you would trust with the
+  whole computer.
 
 A code works once and expires after 10 minutes. It is also invalidated after 5 wrong
 attempts, so it cannot be guessed, and as soon as it shows up in any message the bot sees
