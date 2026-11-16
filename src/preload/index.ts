@@ -79,7 +79,8 @@ export type CodeflaiApi = {
   larkStatus(): Promise<LarkStatus>
   // The App Secret goes in but is never handed back: LarkStatus only carries `secretSet`.
   larkSaveConfig(request: LarkSaveConfigRequest): Promise<LarkStatus>
-  larkStartPairing(role: 'owner' | 'member'): Promise<LarkStatus>
+  /** `projectId` confines the teammate who redeems the code to that project. */
+  larkStartPairing(role: 'owner' | 'member', projectId?: string): Promise<LarkStatus>
   larkRemoveMember(openId: string): Promise<LarkStatus>
   onLarkStatusChanged(listener: (status: LarkStatus) => void): () => void
   // One-way like notifySessionIdle: the main process decides whether the session is a Lark one.
@@ -143,7 +144,8 @@ const api: CodeflaiApi = {
   },
   larkStatus: () => ipcRenderer.invoke(IPC.larkStatusGet),
   larkSaveConfig: (request) => ipcRenderer.invoke(IPC.larkSaveConfig, request),
-  larkStartPairing: (role) => ipcRenderer.invoke(IPC.larkStartPairing, { role }),
+  larkStartPairing: (role, projectId) =>
+    ipcRenderer.invoke(IPC.larkStartPairing, { role, ...(projectId === undefined ? {} : { projectId }) }),
   larkRemoveMember: (openId) => ipcRenderer.invoke(IPC.larkRemoveMember, { openId }),
   onLarkStatusChanged: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: LarkStatus): void => listener(payload)

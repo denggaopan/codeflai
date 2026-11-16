@@ -71,7 +71,7 @@ export type IpcTerminal = Pick<TerminalService, 'write' | 'resize' | 'on'> & {
 export interface LarkIpcPort {
   status(): Promise<LarkStatus>
   saveConfig(request: LarkSaveConfigRequest): Promise<void>
-  startPairing(role: 'owner' | 'member'): Promise<void>
+  startPairing(role: 'owner' | 'member', projectId?: string): Promise<void>
   removeMember(openId: string): Promise<void>
   applyConfig(): Promise<void>
   reportIdle(sessionId: string): Promise<void>
@@ -154,7 +154,8 @@ export function registerIpc(deps: RegisterIpcDependencies): () => void {
     [
       IPC.larkStartPairing,
       async (_event, payload): Promise<LarkStatus> => {
-        await lark.startPairing(larkPairingRequestSchema.parse(payload).role)
+        const request = larkPairingRequestSchema.parse(payload)
+        await lark.startPairing(request.role, request.projectId)
         return lark.status()
       }
     ],

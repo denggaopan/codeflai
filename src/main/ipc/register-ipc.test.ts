@@ -213,9 +213,9 @@ class FakeLark {
   async saveConfig(request: unknown): Promise<void> {
     this.calls.push(`save:${JSON.stringify(request)}`)
   }
-  async startPairing(role: string): Promise<void> {
+  async startPairing(role: string, projectId?: string): Promise<void> {
     if (this.pairingError) throw this.pairingError
-    this.calls.push(`pair:${role}`)
+    this.calls.push(projectId === undefined ? `pair:${role}` : `pair:${role}:${projectId}`)
   }
   async removeMember(openId: string): Promise<void> {
     this.calls.push(`remove:${openId}`)
@@ -1086,6 +1086,16 @@ describe('registerIpc: lark', () => {
     await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'admin' })).rejects.toThrow()
 
     expect(lark.calls).toEqual(['pair:owner', 'remove:ou_1'])
+  })
+
+  it('lark:start-pairing passes on the project a teammate is bound to', async () => {
+    const { ipcMain, lark } = buildHarness()
+
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'member', projectId: 'p1' })).resolves.toEqual(larkStatus)
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'member', projectId: '' })).rejects.toThrow()
+    await expect(ipcMain.invoke(IPC.larkStartPairing, { role: 'member', project: 'p1' })).rejects.toThrow()
+
+    expect(lark.calls).toEqual(['pair:member:p1'])
   })
 
   it('lets a pairing error reach the renderer as a rejection', async () => {
