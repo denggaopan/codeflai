@@ -618,6 +618,14 @@ chat.
   `已绑定`.
 - **Add a teammate**: click **Add teammate** (available once you are bound) and give them
   the code to send the same way.
+- **Limit a teammate to one project**: before clicking **Add teammate**, pick a project in the
+  dropdown next to it (the default, **All projects**, limits nothing). A teammate added this way
+  can only start sessions in that project and does not name it in their messages; any project
+  name they write is treated as part of the task. They cannot answer a session of another
+  project either (`没有权限`). The list shows `Only <project>` next to them. To change or lift
+  the limit, generate a new code with the project you want and have them send it; the newest
+  code they redeem decides. If the project is later removed from Codeflai, their instructions
+  are refused with a note to ask you, never run somewhere else. The owner is never limited.
 
 A code works once and expires after 10 minutes. It is also invalidated after 5 wrong
 attempts, so it cannot be guessed, and as soon as it shows up in any message the bot sees
@@ -638,7 +646,8 @@ to hand its text and images to the agent:
 
 - **Project**: the project's name as shown in Codeflai must appear in the message; exactly one
   project may match. Names match as whole ASCII words, so `codeflai` is not found inside
-  `codeflai-web`, while Chinese text around the name needs no spaces.
+  `codeflai-web`, while Chinese text around the name needs no spaces. A teammate limited to one
+  project (see above) leaves the name out: `@Codeflai 修复登录页的报错` is enough.
 - **Agent**: write `claude` or `codex`; without either, Claude is used. Naming both is an
   error.
 - **Skill**: a token such as `/fast-do` (or `$fast-do`) that **opens** the instruction is
@@ -1005,6 +1014,9 @@ real machine can confirm.
 - A whitelisted teammate's instruction runs, and the session title and start reply say who
   asked.
 - An account that is not on the whitelist gets `没有权限` and nothing starts.
+- Add a teammate with a project chosen: their `@Codeflai <task>` with no project name starts a
+  session in that project, a message naming another project still runs in theirs, and their
+  reply to a session of another project gets `没有权限`.
 - Ask for something the agent has to ask about (`... 加一个导出按钮，格式你问我`): the question
   arrives as `Claude 在问你：…`. Reply to it with `@Codeflai` and an answer: `已转给 Claude`
   arrives, the answer shows up in the session's terminal as one submitted line (not stuck in
